@@ -144,6 +144,7 @@ namespace Mesen.HdStudio
 
 			if(opt.MoviePath != null) {
 				Log($"Playing movie {opt.MoviePath}");
+				Log(CheckMovieRom(opt.RomPath!, opt.MoviePath));
 				RecordApi.MoviePlay(opt.MoviePath);
 			}
 
@@ -244,6 +245,58 @@ namespace Mesen.HdStudio
 			} finally {
 				Marshal.DestroyStructure<HdPackBuilderOptions>(optionsPtr);
 				Marshal.FreeHGlobal(optionsPtr);
+			}
+		}
+
+		/// <summary>
+		/// Compares the ROM with the one the movie was recorded with (BizHawk: SHA-1 of the ROM without its header,
+		/// FCEUX: MD5 of the ROM without its header). A different ROM version usually makes the movie desync.
+		/// </summary>
+		public static string CheckMovieRom(string romPath, string moviePath)
+		{
+			try {
+				byte[] rom = File.ReadAllBytes(romPath);
+				int headerSize = rom.Length >= 16 && rom[0] == 'N' && rom[1] == 'E' && rom[2] == 'S' && rom[3] == 0x1A ? 16 + ((rom[6] & 0x04) != 0 ? 512 : 0) : 0;
+				ReadOnlySpan<byte> romData = rom.AsSpan(headerSize);
+
+				string? expected = null;
+				string actual;
+				string ext = Path.GetExtension(moviePath).ToLowerInvariant();
+				if(ext == ".bk2") {
+					using System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(moviePath);
+					var entry = zip.GetEntry("Header.txt");
+					if(entry != null) {
+						using StreamReader reader = new(entry.Open());
+						string? line;
+						while((line = reader.ReadLine()) != null) {
+							if(line.StartsWith("SHA1 ")) {
+								expected = line.Substring(5).Trim().ToUpperInvariant();
+							}
+						}
+					}
+					actual = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(romData));
+				} else if(ext == ".fm2") {
+					foreach(string line in File.ReadLines(moviePath)) {
+						if(line.StartsWith("|")) {
+							break;
+						}
+						if(line.StartsWith("romChecksum base64:")) {
+							expected = Convert.ToHexString(Convert.FromBase64String(line.Substring(19).Trim()));
+						}
+					}
+					actual = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(romData));
+				} else {
+					return "ROM check: not available for this movie format";
+				}
+
+				if(expected == null) {
+					return "ROM check: the movie does not say which ROM it was recorded with";
+				}
+				return expected == actual
+					? "ROM check: OK, this is the ROM the movie was recorded with"
+					: $"WARNING: this ROM is not the one the movie was recorded with (expected {expected}, got {actual}). The movie will probably desync: find the matching ROM version.";
+			} catch(Exception ex) {
+				return "ROM check failed: " + ex.Message;
 			}
 		}
 
