@@ -24,7 +24,68 @@ private:
 public:
 	__forceinline bool RemoveSpriteLimit() { return _console->GetNesConfig().RemoveSpriteLimit; }
 	__forceinline bool UseAdaptiveSpriteLimit() { return _console->GetNesConfig().AdaptiveSpriteLimit; }
-	void* OnBeforeSendFrame() { return nullptr; }
+	void* OnBeforeSendFrame()
+	{
+		CaptureSpriteFrame();
+		return nullptr;
+	}
+
+	//HD Studio: send the sprites visible this frame (from OAM) to the builder, to detect metasprites
+	void CaptureSpriteFrame()
+	{
+		vector<HdStudioSprite> sprites;
+		if(_mask.SpritesEnabled && IsRenderingEnabled()) {
+			BaseMapper* mapper = _console->GetMapper();
+			bool isChrRam = !mapper->HasChrRom();
+			bool largeSprites = _control.LargeSprites;
+			sprites.reserve(128);
+
+			for(int i = 0; i < 64; i++) {
+				uint8_t y = _spriteRam[i * 4];
+				if(y >= 0xEF) {
+					//Sprite is offscreen
+					continue;
+				}
+
+				uint8_t tileIndex = _spriteRam[i * 4 + 1];
+				uint8_t attributes = _spriteRam[i * 4 + 2];
+				uint8_t x = _spriteRam[i * 4 + 3];
+				bool horizontalMirror = (attributes & 0x40) != 0;
+				bool verticalMirror = (attributes & 0x80) != 0;
+				uint16_t paletteOffset = ((attributes & 0x03) << 2) | 0x10;
+				uint32_t paletteColors = ReadPaletteRam(paletteOffset + 3) | (ReadPaletteRam(paletteOffset + 2) << 8) | (ReadPaletteRam(paletteOffset + 1) << 16) | 0xFF000000;
+
+				int parts = largeSprites ? 2 : 1;
+				for(int part = 0; part < parts; part++) {
+					uint16_t tileAddr;
+					if(largeSprites) {
+						//8x16 sprites: when flipped vertically, the bottom tile is displayed on top
+						int sourcePart = verticalMirror ? (1 - part) : part;
+						tileAddr = (((tileIndex & 0x01) ? 0x1000 : 0x0000) | ((tileIndex & 0xFE) << 4)) + sourcePart * 16;
+					} else {
+						tileAddr = _control.SpritePatternAddr | (tileIndex << 4);
+					}
+
+					AddressInfo absAddr = mapper->GetPpuAbsoluteAddress(tileAddr);
+					if(absAddr.Address < 0) {
+						continue;
+					}
+
+					HdStudioSprite sprite = {};
+					sprite.X = x;
+					sprite.Y = y + 1 + part * 8;
+					sprite.TileIndex = (isChrRam ? (tileAddr & _chrRamIndexMask) : absAddr.Address) / 16;
+					mapper->CopyChrTile(absAddr.Address & 0xFFFFFFF0, sprite.TileData);
+					sprite.PaletteColors = paletteColors;
+					sprite.HorizontalMirror = horizontalMirror;
+					sprite.VerticalMirror = verticalMirror;
+					sprites.push_back(sprite);
+				}
+			}
+		}
+
+		_hdPackBuilder->ProcessSpriteFrame(sprites);
+	}
 
 	__forceinline void StoreSpriteInformation(bool horizontalMirror, bool verticalMirror, uint16_t tileAddr, uint8_t lineOffset, NesSpriteInfo& sprite)
 	{

@@ -21,6 +21,27 @@ struct HdPackBuilderOptions
 	bool IgnoreOverscan;
 };
 
+//HD Studio: one 8x8 sprite tile as it appears on screen at the end of a frame
+struct HdStudioSprite
+{
+	int16_t X;
+	int16_t Y;
+	int32_t TileIndex;
+	uint8_t TileData[16];
+	uint32_t PaletteColors;
+	bool HorizontalMirror;
+	bool VerticalMirror;
+};
+
+//HD Studio: statistics for a group of sprites drawn touching each other (a "metasprite")
+struct HdStudioObjectStats
+{
+	uint32_t FrameCount = 0;
+	uint32_t FirstFrame = 0;
+	uint16_t Width = 0;
+	uint16_t Height = 0;
+};
+
 class HdPackBuilder
 {
 private:
@@ -40,6 +61,17 @@ private:
 	uint32_t _blankTileIndex = 0;
 	int _blankTilePalette = 0;
 
+	//HD Studio capture data (written to the "HdStudio" subfolder of the pack)
+	static constexpr size_t MaxStudioObjects = 100000;
+	unordered_map<HdTileKey, uint32_t> _studioTileUsage;
+	unordered_map<string, uint64_t> _studioPreviousTileUsage;
+	unordered_map<string, HdStudioObjectStats> _studioObjects;
+	uint32_t _studioFrameCount = 0;
+
+	string GetStudioTileKey(int32_t tileIndex, uint8_t* tileData);
+	void LoadHdStudioData();
+	void SaveHdStudioData();
+
 	void AddTile(HdPackTileInfo* tile, uint32_t usageCount);
 	void GenerateHdTile(HdPackTileInfo* tile);
 	void DrawTile(HdPackTileInfo* tile, int tileIndex, uint32_t* pngBuffer, int pageNumber, bool containsSpritesOnly);
@@ -49,6 +81,7 @@ public:
 	~HdPackBuilder();
 
 	void ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpuTileInfo& tile, BaseMapper* mapper, bool isSprite, uint32_t chrBankHash, bool transparencyRequired);
+	void ProcessSpriteFrame(vector<HdStudioSprite>& sprites);
 	void SaveHdPack();
 
 	//static void GetChrBankList(uint32_t *banks);

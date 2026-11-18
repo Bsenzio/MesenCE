@@ -1,5 +1,9 @@
 # Mesen Community Edition
 
+> **Modified version.** This fork of MesenCE adds **HD Studio**, a tool to automate the creation of NES HD packs
+> (headless capture, object detection and a report of the PNG images to draw), plus a new HD icon.
+> Changes started on 2026-11-18. See [HDSTUDIO.md](HDSTUDIO.md). Distributed under the same GPLv3 license.
+
 Mesen is a multi-system emulator for Windows, Linux, and macOS. It supports NES, SNES, Game Boy (GB/SGB/GBC), Game Boy Advance, PC Engine, SMS/Game Gear, and WonderSwan (WS/WSC).
 
 This is a community-managed fork, created to maintain and expand this emulator into the future.

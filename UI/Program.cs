@@ -52,6 +52,12 @@ namespace Mesen
 
 			Environment.CurrentDirectory = ConfigManager.HomeFolder;
 
+			if(HdStudio.HdStudioCapture.IsHdStudio(args) && !File.Exists(ConfigManager.GetConfigFile())) {
+				//Headless mode: create the default configuration instead of showing the setup wizard
+				ConfigManager.CreateConfig(false);
+				Environment.CurrentDirectory = ConfigManager.HomeFolder;
+			}
+
 			if(!File.Exists(ConfigManager.GetConfigFile())) {
 				//Could not find configuration file, show wizard
 				DependencyHelper.ExtractNativeDependencies(ConfigManager.HomeFolder);
@@ -72,6 +78,10 @@ namespace Mesen
 
 			if(CommandLineHelper.IsTestRunner(args)) {
 				return TestRunner.Run(args);
+			}
+
+			if(HdStudio.HdStudioCapture.IsHdStudio(args)) {
+				return HdStudio.HdStudioCapture.Run(args);
 			}
 
 			using SingleInstance instance = SingleInstance.Instance;

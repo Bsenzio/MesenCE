@@ -51,6 +51,8 @@ HdPackBuilder::HdPackBuilder(Emulator* emu, PpuModel ppuModel, bool isChrRam, Hd
 	}
 
 	_romName = FolderUtilities::GetFilename(_emu->GetRomInfo().RomFile.GetFileName(), false);
+
+	LoadHdStudioData();
 }
 
 HdPackBuilder::~HdPackBuilder()
@@ -110,6 +112,8 @@ void HdPackBuilder::ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpu
 		}
 	}
 
+	_studioTileUsage[tile.GetKey(false)]++;
+
 	auto result = _tileUsageCount.find(tile.GetKey(false));
 	if(result == _tileUsageCount.end()) {
 		//Check to see if a default tile matches
@@ -144,6 +148,198 @@ void HdPackBuilder::ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpu
 			result->second++;
 		}
 	}
+}
+
+string HdPackBuilder::GetStudioTileKey(int32_t tileIndex, uint8_t* tileData)
+{
+	if(_isChrRam) {
+		//CHR RAM tiles are identified by their content, like in hires.txt
+		string key;
+		key.reserve(32);
+		for(int i = 0; i < 16; i++) {
+			key += HexUtilities::ToHex(tileData[i]);
+		}
+		return key;
+	} else {
+		return HexUtilities::ToHex(tileIndex);
+	}
+}
+
+void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
+{
+	_studioFrameCount++;
+
+	size_t count = sprites.size();
+	if(count == 0) {
+		return;
+	}
+
+	//Group sprites that overlap or touch each other (union-find)
+	vector<size_t> parent(count);
+	for(size_t i = 0; i < count; i++) {
+		parent[i] = i;
+	}
+
+	auto findRoot = [&parent](size_t i) {
+		while(parent[i] != i) {
+			parent[i] = parent[parent[i]];
+			i = parent[i];
+		}
+		return i;
+	};
+
+	for(size_t i = 0; i < count; i++) {
+		for(size_t j = i + 1; j < count; j++) {
+			HdStudioSprite& a = sprites[i];
+			HdStudioSprite& b = sprites[j];
+			if(a.X <= b.X + 8 && b.X <= a.X + 8 && a.Y <= b.Y + 8 && b.Y <= a.Y + 8) {
+				parent[findRoot(i)] = findRoot(j);
+			}
+		}
+	}
+
+	std::map<size_t, vector<HdStudioSprite*>> groups;
+	for(size_t i = 0; i < count; i++) {
+		groups[findRoot(i)].push_back(&sprites[i]);
+	}
+
+	for(auto& group : groups) {
+		vector<HdStudioSprite*>& members = group.second;
+
+		int16_t minX = INT16_MAX, minY = INT16_MAX, maxX = INT16_MIN, maxY = INT16_MIN;
+		for(HdStudioSprite* s : members) {
+			minX = std::min(minX, s->X);
+			minY = std::min(minY, s->Y);
+			maxX = std::max(maxX, (int16_t)(s->X + 8));
+			maxY = std::max(maxY, (int16_t)(s->Y + 8));
+		}
+
+		std::sort(members.begin(), members.end(), [](HdStudioSprite* a, HdStudioSprite* b) {
+			if(a->Y != b->Y) {
+				return a->Y < b->Y;
+			}
+			if(a->X != b->X) {
+				return a->X < b->X;
+			}
+			return a->TileIndex < b->TileIndex;
+		});
+
+		//Signature: "dx,dy,tile,palette,flags;" for each sprite, relative to the group's top-left corner
+		stringstream sig;
+		for(HdStudioSprite* s : members) {
+			sig << (s->X - minX) << "," << (s->Y - minY) << "," << GetStudioTileKey(s->TileIndex, s->TileData) << "," << HexUtilities::ToHex(s->PaletteColors, true) << "," << ((s->HorizontalMirror ? 1 : 0) | (s->VerticalMirror ? 2 : 0)) << ";";
+		}
+
+		string key = sig.str();
+		auto result = _studioObjects.find(key);
+		if(result == _studioObjects.end()) {
+			if(_studioObjects.size() >= MaxStudioObjects) {
+				continue;
+			}
+			HdStudioObjectStats stats;
+			stats.FrameCount = 1;
+			stats.FirstFrame = _studioFrameCount;
+			stats.Width = (uint16_t)(maxX - minX);
+			stats.Height = (uint16_t)(maxY - minY);
+			_studioObjects[key] = stats;
+		} else {
+			result->second.FrameCount++;
+		}
+	}
+}
+
+void HdPackBuilder::LoadHdStudioData()
+{
+	//Merge the results of previous capture sessions into this one
+	string studioFolder = FolderUtilities::CombinePath(_saveFolder, "HdStudio");
+
+	ifstream captureFile(FolderUtilities::CombinePath(studioFolder, "capture.txt"));
+	string line;
+	while(std::getline(captureFile, line)) {
+		if(line.rfind("frames=", 0) == 0) {
+			_studioFrameCount = (uint32_t)std::stoul(line.substr(7));
+		}
+	}
+
+	ifstream objectsFile(FolderUtilities::CombinePath(studioFolder, "objects.txt"));
+	while(std::getline(objectsFile, line)) {
+		if(line.empty() || line[0] == '#') {
+			continue;
+		}
+
+		//frameCount \t firstFrame \t width \t height \t signature
+		vector<string> parts;
+		size_t start = 0;
+		size_t pos;
+		while((pos = line.find('\t', start)) != string::npos) {
+			parts.push_back(line.substr(start, pos - start));
+			start = pos + 1;
+		}
+		parts.push_back(line.substr(start));
+
+		if(parts.size() == 5 && _studioObjects.size() < MaxStudioObjects) {
+			HdStudioObjectStats stats;
+			stats.FrameCount = (uint32_t)std::stoul(parts[0]);
+			stats.FirstFrame = (uint32_t)std::stoul(parts[1]);
+			stats.Width = (uint16_t)std::stoul(parts[2]);
+			stats.Height = (uint16_t)std::stoul(parts[3]);
+			_studioObjects[parts[4]] = stats;
+		}
+	}
+
+	ifstream tilesFile(FolderUtilities::CombinePath(studioFolder, "tiles.txt"));
+	while(std::getline(tilesFile, line)) {
+		if(line.empty() || line[0] == '#') {
+			continue;
+		}
+
+		//tile \t palette \t pixelCount
+		size_t lastTab = line.rfind('\t');
+		if(lastTab != string::npos && lastTab > 0) {
+			_studioPreviousTileUsage[line.substr(0, lastTab)] += std::stoull(line.substr(lastTab + 1));
+		}
+	}
+}
+
+void HdPackBuilder::SaveHdStudioData()
+{
+	string studioFolder = FolderUtilities::CombinePath(_saveFolder, "HdStudio");
+	FolderUtilities::CreateFolder(studioFolder);
+
+	ofstream captureFile(FolderUtilities::CombinePath(studioFolder, "capture.txt"), ios::out);
+	captureFile << "frames=" << _studioFrameCount << std::endl;
+	captureFile << "scale=" << _hdData.Scale << std::endl;
+	captureFile << "chrRam=" << (_isChrRam ? 1 : 0) << std::endl;
+	captureFile << "rom=" << _romName << std::endl;
+	captureFile.close();
+
+	vector<std::pair<const string*, HdStudioObjectStats*>> objects;
+	objects.reserve(_studioObjects.size());
+	for(auto& kvp : _studioObjects) {
+		objects.push_back({ &kvp.first, &kvp.second });
+	}
+	std::sort(objects.begin(), objects.end(), [](auto& a, auto& b) { return a.second->FrameCount > b.second->FrameCount; });
+
+	ofstream objectsFile(FolderUtilities::CombinePath(studioFolder, "objects.txt"), ios::out);
+	objectsFile << "#frameCount\tfirstFrame\twidth\theight\tsprites(dx,dy,tile,palette,flags;...)" << std::endl;
+	for(auto& obj : objects) {
+		objectsFile << obj.second->FrameCount << "\t" << obj.second->FirstFrame << "\t" << obj.second->Width << "\t" << obj.second->Height << "\t" << *obj.first << std::endl;
+	}
+	objectsFile.close();
+
+	//Pixel usage of each tile+palette combination seen during this session
+	ofstream tilesFile(FolderUtilities::CombinePath(studioFolder, "tiles.txt"), ios::out);
+	std::map<string, uint64_t> tileUsage(_studioPreviousTileUsage.begin(), _studioPreviousTileUsage.end());
+	for(auto& kvp : _studioTileUsage) {
+		HdTileKey key = kvp.first;
+		tileUsage[GetStudioTileKey(key.TileIndex, key.TileData) + "\t" + HexUtilities::ToHex(key.PaletteColors, true)] += kvp.second;
+	}
+
+	tilesFile << "#tile\tpalette\tpixelCount" << std::endl;
+	for(auto& kvp : tileUsage) {
+		tilesFile << kvp.first << "\t" << kvp.second << std::endl;
+	}
+	tilesFile.close();
 }
 
 void HdPackBuilder::GenerateHdTile(HdPackTileInfo* tile)
@@ -401,6 +597,8 @@ void HdPackBuilder::SaveHdPack()
 	hiresFile.close();
 
 	delete[] pngBuffer;
+
+	SaveHdStudioData();
 }
 /*
 void HdPackBuilder::GetChrBankList(uint32_t *banks)
