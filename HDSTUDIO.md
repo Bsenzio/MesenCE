@@ -16,7 +16,11 @@ Nobody has to play: the built-in **deep explorer** (`UI/HdStudio/Scripts/explore
 explores the game with savestates, unless a movie or a Lua script is given. Every time something new appears (a new
 palette, a new sprite, a new screen layout) it saves the state; it plays in short random episodes and keeps going back
 to the saved states that are least visited and most productive, so dying or getting stuck does not stop the
-exploration. Its progress is shown in the console (`[lua] episode N: ...`). Then the recorder
+exploration. Because random play rarely finishes a level, half of the episodes start by changing 1 to 3 random bytes
+of the game's RAM (level number, lives, position...). Addresses whose changes are followed by a discovery earn credit
+(a lot for a new palette, i.e. a new level or area) and are chosen more often, so the explorer learns by itself which
+bytes select the level. Its progress, including the best addresses found, is shown in the console
+(`[lua] episode N: ...`). Then the recorder
 captures every tile with its real colors, and then **every tile stored in the cartridge (CHR-ROM)** is added to the
 pack too, including the ones that never appeared on screen. Those get the palette of the closest tile of the same
 bank that was seen (tiles of one character are usually stored together); if that guess is wrong the tile simply never

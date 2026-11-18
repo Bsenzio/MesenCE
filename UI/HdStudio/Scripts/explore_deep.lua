@@ -11,6 +11,12 @@
 --  * a sprite tile + palette never seen before (a new enemy, item, boss, animation...)
 --  * a screen layout never seen before (a new room or background, from a coarse 4x4 picture of the screen)
 --
+-- Memory mutation (learned): random play rarely finishes a level, so at the start of some episodes the explorer
+-- changes 1 to 3 random bytes of the game's RAM (level number, lives, position, timers...). When a discovery
+-- follows a mutation, the mutated addresses earn credit (a lot for a new palette, i.e. a new level/area), and
+-- addresses with credit are chosen more often: the explorer learns by itself which bytes select the level.
+-- States reached that way are saved like any other discovery, so exploration continues from the new area.
+--
 -- Savestates can only be created/loaded inside an "exec" callback, so the explorer hooks the game's NMI
 -- routine (address read from the $FFFA vector), which runs once per frame.
 -- All random choices are seeded, so two runs on the same game explore exactly the same way.
@@ -24,8 +30,24 @@ local STUCK_CHECKS = 60          -- nothing moved for 10 seconds even after pres
 local TAP_FRAMES = 5
 local COOLDOWN_FRAMES = 90
 local MAX_CELLS = 400
+local MUTATION_CHANCE = 0.5      -- part of the episodes that start with a RAM mutation
+local MUTATION_CREDIT = { P = 20, S = 3, L = 1 }
 
 local nesDebug = emu.memType.nesDebug
+local ramType = emu.memType.nesInternalRam
+
+-- Mutable addresses: internal RAM except the CPU stack page ($0100-$01FF)
+local mutableAddresses = {}
+for addr = 0, 0x7FF do
+  if addr < 0x100 or addr > 0x1FF then
+    mutableAddresses[#mutableAddresses + 1] = addr
+  end
+end
+local addressCredit = {}         -- addr -> learned credit
+local episodeMutations = {}      -- addresses mutated at the start of the current episode
+local pendingMutations = nil     -- { {addr, value}, ... } applied right after the next state load
+local mutationEpisodes = 0
+local productiveMutations = 0
 
 -- Exploration state
 local cells = {}          -- array of { key, state, visits, discoveries }
@@ -117,8 +139,19 @@ local function checkNovelty(buffer)
   end
   if key then
     knownKeys[key] = true
+    local kind = key:sub(1, 1)
     if currentCell then
-      currentCell.discoveries = currentCell.discoveries + KEY_WEIGHT[key:sub(1, 1)]
+      currentCell.discoveries = currentCell.discoveries + KEY_WEIGHT[kind]
+    end
+    -- Credit the RAM mutations of this episode (if any) for the discovery
+    if #episodeMutations > 0 then
+      if episodeMutations.credited ~= true then
+        productiveMutations = productiveMutations + 1
+        episodeMutations.credited = true
+      end
+      for _, addr in ipairs(episodeMutations) do
+        addressCredit[addr] = (addressCredit[addr] or 0) + MUTATION_CREDIT[kind]
+      end
     end
     if #cells < MAX_CELLS then
       pendingSave = key
@@ -197,11 +230,69 @@ local function countKeys()
   return n
 end
 
+-- Picks an address: 70% among the addresses that already produced discoveries (weighted by their credit),
+-- 30% any address (keeps searching for new useful bytes)
+local function pickAddress(salt)
+  local totalCredit = 0
+  for _, credit in pairs(addressCredit) do
+    totalCredit = totalCredit + credit
+  end
+  if totalCredit > 0 and rnd(salt) < 0.7 then
+    local r = rnd(salt + 1) * totalCredit
+    for addr, credit in pairs(addressCredit) do
+      r = r - credit
+      if r <= 0 then
+        return addr
+      end
+    end
+  end
+  return mutableAddresses[1 + math.floor(rnd(salt + 2) * #mutableAddresses)]
+end
+
+local function planMutations()
+  episodeMutations = {}
+  if rnd(11) >= MUTATION_CHANCE then
+    return nil
+  end
+  local count = 1 + math.floor(rnd(12) * 3)
+  local mutations = {}
+  for i = 1, count do
+    local addr = pickAddress(100 + i * 10)
+    local r = rnd(200 + i)
+    local value
+    if r < 0.4 then
+      value = math.floor(rnd(300 + i) * 16)         -- small values: level/area/stage numbers
+    elseif r < 0.7 then
+      value = -1                                      -- current value + 1 (next level, next room...)
+    else
+      value = math.floor(rnd(400 + i) * 256)         -- any value
+    end
+    mutations[#mutations + 1] = { addr, value }
+    episodeMutations[#episodeMutations + 1] = addr
+  end
+  mutationEpisodes = mutationEpisodes + 1
+  return mutations
+end
+
+local function topAddresses(n)
+  local list = {}
+  for addr, credit in pairs(addressCredit) do
+    list[#list + 1] = { addr = addr, credit = credit }
+  end
+  table.sort(list, function(a, b) return a.credit > b.credit end)
+  local parts = {}
+  for i = 1, math.min(n, #list) do
+    parts[#parts + 1] = string.format("$%04X:%d", list[i].addr, list[i].credit)
+  end
+  return table.concat(parts, " ")
+end
+
 local function endEpisode()
   local cell = chooseCell()
   episode = episode + 1
   if episode % 10 == 0 then
-    emu.log(string.format("episode %d: %d saved cells, %d discoveries", episode, #cells, countKeys()))
+    emu.log(string.format("episode %d: %d saved cells, %d discoveries, mutations %d/%d productive, best addresses: %s",
+      episode, #cells, countKeys(), productiveMutations, mutationEpisodes, topAddresses(5)))
   end
   episodeFrames = 0
   stillChecks = 0
@@ -214,6 +305,9 @@ local function endEpisode()
     cell.visits = cell.visits + 1
     currentCell = cell
     pendingLoad = cell
+    pendingMutations = planMutations()
+  else
+    episodeMutations = {}
   end
 end
 
@@ -228,6 +322,16 @@ local function onNmi()
     local cell = pendingLoad
     pendingLoad = nil
     emu.loadSavestate(cell.state)
+    if pendingMutations then
+      for _, m in ipairs(pendingMutations) do
+        local addr, value = m[1], m[2]
+        if value < 0 then
+          value = (emu.read(addr, ramType) + 1) & 0xFF
+        end
+        emu.write(addr, value, ramType)
+      end
+      pendingMutations = nil
+    end
   end
 end
 
