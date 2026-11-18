@@ -9,7 +9,15 @@ HD packs are a Mesen feature for **NES games only**.
 ## Stage 1: capture + report
 
 ```
-Mesen.exe --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [options]
+hdstudio.cmd game.nes [movie.mmo|movie.bk2] [script.lua] [options]
+```
+
+`hdstudio.cmd` (in the repository root) runs `bin\win-x64\Release\Mesen.exe --hdstudio ...` and waits until it
+finishes. Calling `Mesen.exe` directly also works, but Mesen is a windowed program, so PowerShell returns to the
+prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be quoted, for example:
+
+```
+.\hdstudio.cmd "D:\ROMs\Batman - Return of the Joker (USA).nes" UI\HdStudio\Scripts\explore.lua --frames=18000
 ```
 
 | Option | Default | Description |
@@ -28,6 +36,9 @@ How the game is played during the capture:
 * **Movie (`.mmo` or BizHawk `.bk2`)**: recommended. The movie is a recording of the controller inputs, so the emulator
   replays the exact same game session (a full playthrough covers the whole game). The capture ends with the movie.
 * **Lua script**: any Mesen Lua script can press buttons, change the game state, etc.
+  `UI/HdStudio/Scripts/explore.lua` is a generic explorer: it presses Start/A when nothing moves on screen
+  (title, menus, pause, continue screens) and otherwise plays with seeded random inputs (mostly walking right,
+  jumping and attacking). It reaches the first levels of most action games, but a movie covers much more.
 * **Nothing**: the game runs with no input for `--frames` frames (useful for title screens / attract mode).
 
 Running the command again on the same game **adds** to the existing pack: tiles, objects and statistics are merged,

@@ -1,4 +1,5 @@
 using Mesen.Config;
+using Mesen.Debugger.Utilities;
 using Mesen.Interop;
 using System;
 using System.Collections.Generic;
@@ -22,15 +23,17 @@ namespace Mesen.HdStudio
 
 		private readonly string _romPath;
 		private readonly string? _moviePath;
+		private readonly List<string> _luaScripts;
 		private readonly string _packFolder;
 		private readonly string _verifyFolder;
 		private readonly List<uint> _checkpoints = new();
 		private readonly Action<string> _log;
 
-		public HdStudioVerify(string romPath, string? moviePath, string packFolder, int frames, int shots, Action<string> log)
+		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, string packFolder, int frames, int shots, Action<string> log)
 		{
 			_romPath = romPath;
 			_moviePath = moviePath;
+			_luaScripts = luaScripts;
 			_packFolder = packFolder;
 			_verifyFolder = Path.Combine(packFolder, HdStudioReport.StudioFolderName, "verify");
 			_log = log;
@@ -102,6 +105,16 @@ namespace Mesen.HdStudio
 				RecordApi.MoviePlay(_moviePath);
 			}
 
+			//Scripts are loaded again for each pass so their state (frame counters, random seed) restarts with the game
+			List<int> scriptIds = new();
+			if(_luaScripts.Count > 0) {
+				DebugWorkspaceManager.Load();
+				foreach(string luaScript in _luaScripts) {
+					string path = (Path.GetDirectoryName(luaScript) ?? Program.OriginalFolder) + Path.DirectorySeparatorChar;
+					scriptIds.Add(DebugApi.LoadScript(luaScript, path, File.ReadAllText(luaScript)));
+				}
+			}
+
 			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
 			_log($"Pass '{suffix}' (HD packs {(enableHdPacks ? "enabled" : "disabled")})");
 
@@ -120,6 +133,9 @@ namespace Mesen.HdStudio
 			}
 
 			screenSize = ReadPngSize(Path.Combine(_verifyFolder, $"frame_{_checkpoints[0]:00000}_{suffix}.png"));
+			foreach(int scriptId in scriptIds) {
+				DebugApi.RemoveScript(scriptId);
+			}
 			if(RecordApi.MoviePlaying()) {
 				RecordApi.MovieStop();
 			}

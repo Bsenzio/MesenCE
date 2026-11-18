@@ -76,7 +76,7 @@ namespace Mesen.HdStudio
 
 			if(opt.Verify) {
 				int frames = opt.FramesSpecified ? opt.Frames : 1200;
-				return new HdStudioVerify(opt.RomPath, opt.MoviePath, outFolder, frames, opt.Shots, Log).Run();
+				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, outFolder, frames, opt.Shots, Log).Run();
 			}
 
 			if(!opt.ReportOnly) {
@@ -180,7 +180,7 @@ namespace Mesen.HdStudio
 					break;
 				}
 
-				int progress = (int)(sw.Elapsed.TotalSeconds / 5);
+				int progress = (int)(sw.Elapsed.TotalSeconds / 30);
 				if(progress != lastProgress) {
 					lastProgress = progress;
 					Log($"  {frames:N0} frames captured...");
