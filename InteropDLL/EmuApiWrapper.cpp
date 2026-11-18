@@ -186,6 +186,27 @@ extern "C"
 		_emu->GetVideoDecoder()->TakeScreenshot();
 	}
 
+	//HD Studio: save the current frame (as shown on screen, including HD packs) to a specific file
+	DllExport bool __stdcall HdStudioSaveScreenshot(const char* filename)
+	{
+		_emu->GetVideoDecoder()->WaitForAsyncFrameDecode();
+		std::stringstream stream;
+		_emu->GetVideoDecoder()->TakeScreenshot(stream);
+		string data = stream.str();
+		if(data.empty()) {
+			return false;
+		}
+		ofstream file(filename, ios::out | ios::binary);
+		file.write(data.data(), data.size());
+		return file.good();
+	}
+
+	//HD Studio: run exactly one frame, then pause again
+	DllExport void __stdcall HdStudioRunSingleFrame()
+	{
+		_emu->PauseOnNextFrame();
+	}
+
 	DllExport void __stdcall ProcessAudioPlayerAction(AudioPlayerActionParams p)
 	{
 		_emu->ProcessAudioPlayerAction(p);

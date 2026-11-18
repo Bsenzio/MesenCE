@@ -20,6 +20,8 @@ Mesen.exe --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [options]
 | `--out=FOLDER` | `HdPacks/<rom name>` | Output folder. The default is Mesen's HD pack folder, so the pack is used automatically when the game is opened in Mesen |
 | `--timeout=SEC` | `1800` | Maximum real time for the capture |
 | `--reportonly` | | Only regenerate the report from an existing capture |
+| `--verify` | | Check the HD pack instead of capturing (see below) |
+| `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |
 
 How the game is played during the capture:
 
@@ -41,6 +43,21 @@ In the pack folder:
 * `HdStudio/templates/obj_NNN_WxH.png`: one template per detected object, already at the final HD size
 * `HdStudio/chr_coverage.png`: every tile of the cartridge (CHR-ROM games), in red the ones that were never displayed
 * `HdStudio/objects.txt`, `tiles.txt`, `capture.txt`: raw capture data (merged between sessions)
+
+## Checking that an HD pack works
+
+```
+Mesen.exe --hdstudio game.nes [movie.mmo|movie.bk2] --verify
+```
+
+Plays the game twice from power-on (with and without HD packs) and stops both runs on exactly the same frames
+(fast-forward, then frame by frame). It prints whether the pack is active (an active pack renders at 256×240 × scale,
+e.g. 1024×960 at 4×) and writes `HdStudio/verify/verify.html` with the original and HD screenshots side by side.
+The pack must be in Mesen's `HdPacks/<rom name>` folder, which is where Mesen looks for it (the default `--out`).
+
+In the Mesen window you can also check it by hand: open the game and the picture uses the HD tiles (Mesen only shows
+a "[HDPack] Loaded with N errors" message when the pack has problems). Uncheck *Enable HD packs* in the NES settings
+and reload the game to compare with the original.
 
 ## Roadmap
 

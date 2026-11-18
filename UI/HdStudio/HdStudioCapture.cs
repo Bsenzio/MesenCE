@@ -26,6 +26,9 @@ namespace Mesen.HdStudio
 	///   --out=FOLDER      Output folder (default: Mesen's HdPacks folder / ROM name, so the pack is used automatically)
 	///   --timeout=SEC     Maximum real time in seconds (default 1800)
 	///   --reportonly      Only regenerate the report from an existing capture
+	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
+	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
+	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
 	/// </summary>
 	internal static class HdStudioCapture
 	{
@@ -40,6 +43,9 @@ namespace Mesen.HdStudio
 			public string? OutFolder;
 			public int TimeoutSeconds = 1800;
 			public bool ReportOnly;
+			public bool Verify;
+			public bool FramesSpecified;
+			public int Shots = 4;
 			public List<string> Errors = new();
 		}
 
@@ -67,6 +73,11 @@ namespace Mesen.HdStudio
 			ConfigManager.DisableSaveSettings = true;
 			string outFolder = opt.OutFolder ?? Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(opt.RomPath));
 			Directory.CreateDirectory(outFolder);
+
+			if(opt.Verify) {
+				int frames = opt.FramesSpecified ? opt.Frames : 1200;
+				return new HdStudioVerify(opt.RomPath, opt.MoviePath, outFolder, frames, opt.Shots, Log).Run();
+			}
 
 			if(!opt.ReportOnly) {
 				int result = Capture(opt, outFolder);
@@ -237,6 +248,12 @@ namespace Mesen.HdStudio
 					switch(name) {
 						case "hdstudio": break;
 						case "reportonly": opt.ReportOnly = true; break;
+						case "verify": opt.Verify = true; break;
+						case "shots":
+							if(!int.TryParse(value, out opt.Shots) || opt.Shots < 1 || opt.Shots > 20) {
+								opt.Errors.Add("invalid screenshot count (1-20): " + value);
+							}
+							break;
 						case "scale":
 							if(uint.TryParse(value, out uint scale) && scale >= 1 && scale <= 10) {
 								opt.Scale = scale;
@@ -257,6 +274,7 @@ namespace Mesen.HdStudio
 							if(!int.TryParse(value, out opt.Frames) || opt.Frames <= 0) {
 								opt.Errors.Add("invalid frame count: " + value);
 							}
+							opt.FramesSpecified = true;
 							break;
 						case "timeout":
 							if(!int.TryParse(value, out opt.TimeoutSeconds) || opt.TimeoutSeconds <= 0) {
@@ -315,7 +333,7 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--reportonly]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--reportonly] [--verify [--shots=4]]");
 		}
 
 		private static void Log(string message)
