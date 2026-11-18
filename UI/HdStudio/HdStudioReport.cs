@@ -54,6 +54,7 @@ namespace Mesen.HdStudio
 
 			List<ObjectGroup> groups = GroupObjects();
 			WriteTemplates(groups);
+			WriteObjectSheet(groups);
 			bool hasCoverageImage = WriteChrCoverageImage();
 			WriteJson(groups);
 			string htmlPath = WriteHtml(groups, hasCoverageImage);
@@ -218,16 +219,28 @@ namespace Mesen.HdStudio
 
 		private HashSet<int> SeenChrTiles()
 		{
-			HashSet<int> seen = new();
+			//Tiles that were actually displayed while the game was played (tiles.txt only lists those)
+			return ChrTileIndexes(_tileUsage.Keys);
+		}
+
+		private HashSet<int> InPackChrTiles()
+		{
+			//Tiles present in hires.txt: with --generate this includes the tiles that were never displayed
+			return ChrTileIndexes(_packTiles);
+		}
+
+		private HashSet<int> ChrTileIndexes(IEnumerable<(string Tile, uint Palette)> tiles)
+		{
+			HashSet<int> result = new();
 			if(!_rom.HasChrRom) {
-				return seen;
+				return result;
 			}
-			foreach(var tile in _packTiles) {
+			foreach(var tile in tiles) {
 				if(int.TryParse(tile.Tile, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index) && index < _rom.ChrTileCount && !_rom.IsBlankTile(index)) {
-					seen.Add(index);
+					result.Add(index);
 				}
 			}
-			return seen;
+			return result;
 		}
 
 		#endregion
@@ -250,6 +263,92 @@ namespace Mesen.HdStudio
 				HdStudioPng.Write(Path.Combine(folder, group.TemplateName), scaled, group.Width * _scale, group.Height * _scale);
 			}
 			_log($"Templates: {groups.Count} PNG files written to {folder}");
+		}
+
+		/// <summary>
+		/// One sprite sheet with every detected object at its final HD size (sheet_objects.png), and its layout
+		/// (sheet_objects.json): position of each object in the sheet and the original 8x8 tiles that compose it.
+		/// This is the sheet an artist redraws, and what HD Studio uses to put the redrawn art back into the pack.
+		/// </summary>
+		private void WriteObjectSheet(List<ObjectGroup> groups)
+		{
+			string pngPath = Path.Combine(_studioFolder, "sheet_objects.png");
+			string jsonPath = Path.Combine(_studioFolder, "sheet_objects.json");
+			if(groups.Count == 0) {
+				File.Delete(pngPath);
+				File.Delete(jsonPath);
+				return;
+			}
+
+			//Shelf packing, tallest objects first
+			int padding = 2 * _scale;
+			int maxWidth = Math.Max(1024, groups.Max(g => g.Width * _scale) + padding * 2);
+			List<(ObjectGroup Group, int X, int Y)> placed = new();
+			int x = padding, y = padding, shelfHeight = 0, sheetWidth = 0;
+			foreach(ObjectGroup g in groups.OrderByDescending(g => g.Height).ThenByDescending(g => g.Width)) {
+				int w = g.Width * _scale;
+				int h = g.Height * _scale;
+				if(x + w + padding > maxWidth) {
+					x = padding;
+					y += shelfHeight + padding;
+					shelfHeight = 0;
+				}
+				placed.Add((g, x, y));
+				x += w + padding;
+				shelfHeight = Math.Max(shelfHeight, h);
+				sheetWidth = Math.Max(sheetWidth, x);
+			}
+			int sheetHeight = y + shelfHeight + padding;
+
+			uint[] sheet = new uint[sheetWidth * sheetHeight];
+			foreach(var p in placed) {
+				uint[] pixels = HdStudioPng.Upscale(RenderObject(p.Group.Variants[0], p.Group.Width, p.Group.Height), p.Group.Width, p.Group.Height, _scale);
+				int w = p.Group.Width * _scale;
+				for(int py = 0; py < p.Group.Height * _scale; py++) {
+					Array.Copy(pixels, py * w, sheet, (p.Y + py) * sheetWidth + p.X, w);
+				}
+			}
+			HdStudioPng.Write(pngPath, sheet, sheetWidth, sheetHeight);
+
+			using FileStream stream = File.Create(jsonPath);
+			using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true });
+			json.WriteStartObject();
+			json.WriteString("image", "sheet_objects.png");
+			json.WriteNumber("scale", _scale);
+			json.WriteBoolean("chrRam", _isChrRam || !_rom.HasChrRom);
+			json.WriteStartArray("objects");
+			foreach(var p in placed.OrderBy(p => p.Group.Id)) {
+				json.WriteStartObject();
+				json.WriteNumber("id", p.Group.Id);
+				json.WriteNumber("x", p.X);
+				json.WriteNumber("y", p.Y);
+				json.WriteNumber("width", p.Group.Width * _scale);
+				json.WriteNumber("height", p.Group.Height * _scale);
+				json.WriteStartArray("palettes");
+				foreach(StudioObject variant in p.Group.Variants) {
+					json.WriteStartArray();
+					foreach(StudioSprite s in variant.Sprites) {
+						json.WriteStringValue(s.Palette.ToString("X8"));
+					}
+					json.WriteEndArray();
+				}
+				json.WriteEndArray();
+				json.WriteStartArray("tiles");
+				foreach(StudioSprite s in p.Group.Variants[0].Sprites) {
+					json.WriteStartObject();
+					json.WriteNumber("x", s.X * _scale);
+					json.WriteNumber("y", s.Y * _scale);
+					json.WriteString("tile", s.Tile);
+					json.WriteBoolean("flipH", (s.Flags & 1) != 0);
+					json.WriteBoolean("flipV", (s.Flags & 2) != 0);
+					json.WriteEndObject();
+				}
+				json.WriteEndArray();
+				json.WriteEndObject();
+			}
+			json.WriteEndArray();
+			json.WriteEndObject();
+			_log($"Object sheet: {sheetWidth}x{sheetHeight} px with {placed.Count} objects -> {pngPath}");
 		}
 
 		private uint[] RenderObject(StudioObject obj, int width, int height)
@@ -353,6 +452,7 @@ namespace Mesen.HdStudio
 				json.WriteNumber("chrTiles", _rom.ChrTileCount);
 				json.WriteNumber("chrTilesNonBlank", nonBlank);
 				json.WriteNumber("chrTilesSeen", seen.Count);
+				json.WriteNumber("chrTilesInPack", InPackChrTiles().Count);
 				json.WriteNumber("chrCoveragePercent", nonBlank > 0 ? Math.Round(100.0 * seen.Count / nonBlank, 1) : 0);
 			}
 			json.WriteStartArray("packImages");
@@ -429,13 +529,22 @@ namespace Mesen.HdStudio
 			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objetos (metasprites) detectados</span></div>");
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
-				sb.AppendLine($"<div class=\"stat\"><b>{coverage:0.0}%</b><span>de los tiles del cartucho vistos ({seen.Count:N0} de {nonBlank:N0})</span></div>");
+				sb.AppendLine($"<div class=\"stat\"><b>{coverage:0.0}%</b><span>de los tiles del cartucho vistos jugando ({seen.Count:N0} de {nonBlank:N0})</span></div>");
+				int inPack = InPackChrTiles().Count;
+				if(inPack > seen.Count) {
+					double packCoverage = nonBlank > 0 ? 100.0 * inPack / nonBlank : 0;
+					sb.AppendLine($"<div class=\"stat\"><b>{packCoverage:0.0}%</b><span>de los tiles del cartucho incluidos en el pack ({inPack:N0}); los no vistos llevan una paleta estimada</span></div>");
+				}
 			}
 			sb.AppendLine("</div>");
 
 			sb.AppendLine("<h2>Qué PNG dibujar</h2>");
 			sb.AppendLine($"<p>Cada tile original de 8×8 se reemplaza por una imagen de <b>{hdTile}×{hdTile} px</b>. Las hojas del pack ({_packImages.Count}) miden <b>{128 * _scale}×{128 * _scale} px</b> cada una (16×16 tiles). " +
 				"Para trabajar por personaje en vez de por tile, usa las plantillas de abajo: cada una ya tiene el tamaño HD final; redibújala encima respetando la cuadrícula.</p>");
+			if(groups.Count > 0) {
+				sb.AppendLine("<p><b>Hoja de sprites completa:</b> <a href=\"sheet_objects.png\"><code>sheet_objects.png</code></a> reúne todos los objetos de la tabla a tamaño HD " +
+					"(su distribución está en <code>sheet_objects.json</code>). Es la hoja para redibujar y cargar después en HD Studio.</p>");
+			}
 
 			sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>#</th><th>Vista</th><th>Plantilla PNG</th><th>Original</th><th>Tamaño HD</th><th>Tiles</th><th>Paletas</th><th>Presencia</th></tr></thead><tbody>");
 			foreach(ObjectGroup g in groups) {

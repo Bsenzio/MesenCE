@@ -18,19 +18,25 @@ class DependencyHelper
 				throw new Exception("Missing dependencies.zip");
 			}
 
-#if DEBUG
 			try {
-				//In builds done via VS (without the "OptimizeUi" flag), the core is not embedded in the .exe (to improve build performance)
-				//Copy it directly from the bin folder to the home folder
-				string[] extensions = new string[] { ".dll", ".so", "dylib" };
+				//In builds done without the "OptimizeUi" flag (Debug, or a plain Release build), the core is not embedded
+				//in the .exe (to improve build performance): copy it from the folder that contains Mesen.exe to the home folder.
+				//(HD Studio fork: this used to be Debug-only and used the current directory, so Release builds kept
+				//loading an outdated core from the home folder.)
+				string[] extensions = new string[] { ".dll", ".so", ".dylib" };
+				string exeFolder = AppContext.BaseDirectory;
 				foreach(string ext in extensions) {
-					string src = Path.Join(Program.OriginalFolder, "MesenCore" + ext);
-					if(File.Exists(src)) {
-						File.Copy(src, Path.Join(dest, "MesenCore" + ext), true);
+					string src = Path.Join(exeFolder, "MesenCore" + ext);
+					string target = Path.Join(dest, "MesenCore" + ext);
+					if(File.Exists(src) && !string.Equals(Path.GetFullPath(src), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase)) {
+						FileInfo srcInfo = new(src);
+						FileInfo targetInfo = new(target);
+						if(!targetInfo.Exists || targetInfo.LastWriteTimeUtc != srcInfo.LastWriteTimeUtc || targetInfo.Length != srcInfo.Length) {
+							File.Copy(src, target, true);
+						}
 					}
 				}
 			} catch { }
-#endif
 
 			using ZipArchive zip = new(depStream);
 			foreach(ZipArchiveEntry entry in zip.Entries) {

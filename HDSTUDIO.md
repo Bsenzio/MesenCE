@@ -6,7 +6,27 @@ and writes a report saying which PNG images to draw and at what size.
 
 HD packs are a Mesen feature for **NES games only**.
 
-## Stage 1: capture + report
+## Generate (fully automatic)
+
+```
+.\hdstudio.cmd "D:\ROMs\game.nes" --generate
+```
+
+Nobody has to play: the built-in explorer plays the game (unless a movie or a Lua script is given), the recorder
+captures every tile with its real colors, and then **every tile stored in the cartridge (CHR-ROM)** is added to the
+pack too, including the ones that never appeared on screen. Those get the palette of the closest tile of the same
+bank that was seen (tiles of one character are usually stored together); if that guess is wrong the tile simply never
+matches and the game shows the original graphics, so it cannot break the picture. The pack also enables
+`automaticFallbackTiles`: tiles with identical graphics stored at another address reuse the same HD image.
+
+Results (in addition to the files listed below): a pack with 100% of the cartridge tiles, and
+`HdStudio/sheet_objects.png` + `sheet_objects.json`, one sprite sheet with every detected character/object at its
+final HD size and the list of original tiles that compose each one (the sheet to redraw and load in HD Studio).
+
+Games that use CHR-RAM keep their graphics compressed inside the program code: for those only what is displayed
+while playing can be captured (a movie of a full playthrough gives the best result).
+
+## Capture + report
 
 ```
 hdstudio.cmd game.nes [movie.mmo|movie.bk2] [script.lua] [options]
@@ -27,6 +47,7 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 | `--frames=N` | `18000` | Frames to emulate when no movie is given (60 frames = 1 second) |
 | `--out=FOLDER` | `HdPacks/<rom name>` | Output folder. The default is Mesen's HD pack folder, so the pack is used automatically when the game is opened in Mesen |
 | `--timeout=SEC` | `1800` | Maximum real time for the capture |
+| `--generate` | | Fully automatic mode (see above) |
 | `--reportonly` | | Only regenerate the report from an existing capture |
 | `--verify` | | Check the HD pack instead of capturing (see below) |
 | `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |

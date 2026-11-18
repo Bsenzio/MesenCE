@@ -738,6 +738,9 @@ void NesConsole::StartRecordingHdPack(HdPackBuilderOptions options)
 
 	_hdPackBuilder.reset();
 	_hdPackBuilder.reset(new HdPackBuilder(_emu, _ppu->GetPpuModel(), !_mapper->HasChrRom(), options));
+	if(options.IncludeAllChrTiles && _mapper->HasChrRom()) {
+		_hdPackBuilder->SetChrRom(_mapper.get());
+	}
 
 	_memoryManager->UnregisterIODevice(_ppu.get());
 	_ppu.reset(new HdBuilderPpu(this, _hdPackBuilder.get(), options.ChrRamBankSize));

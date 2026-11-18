@@ -19,6 +19,9 @@ struct HdPackBuilderOptions
 	bool SortByUsageFrequency;
 	bool GroupBlankTiles;
 	bool IgnoreOverscan;
+
+	//HD Studio: also add every CHR-ROM tile that was not displayed during the recording (with a guessed palette)
+	bool IncludeAllChrTiles;
 };
 
 //HD Studio: one 8x8 sprite tile as it appears on screen at the end of a frame
@@ -67,8 +70,11 @@ private:
 	unordered_map<string, uint64_t> _studioPreviousTileUsage;
 	unordered_map<string, HdStudioObjectStats> _studioObjects;
 	uint32_t _studioFrameCount = 0;
+	vector<uint8_t> _chrRom;
+	uint32_t _studioAddedChrTiles = 0;
 
 	string GetStudioTileKey(int32_t tileIndex, uint8_t* tileData);
+	void AddUnseenChrTiles();
 	void LoadHdStudioData();
 	void SaveHdStudioData();
 
@@ -82,6 +88,7 @@ public:
 
 	void ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpuTileInfo& tile, BaseMapper* mapper, bool isSprite, uint32_t chrBankHash, bool transparencyRequired);
 	void ProcessSpriteFrame(vector<HdStudioSprite>& sprites);
+	void SetChrRom(BaseMapper* mapper);
 	void SaveHdPack();
 
 	//static void GetChrBankList(uint32_t *banks);

@@ -26,6 +26,8 @@ namespace Mesen.HdStudio
 	///   --out=FOLDER      Output folder (default: Mesen's HdPacks folder / ROM name, so the pack is used automatically)
 	///   --timeout=SEC     Maximum real time in seconds (default 1800)
 	///   --reportonly      Only regenerate the report from an existing capture
+	///   --generate        Fully automatic: plays the game with the built-in explorer (unless a movie/script is given)
+	///                     and adds every CHR-ROM tile of the cartridge to the pack, even the ones never displayed
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
 	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
 	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
@@ -44,6 +46,7 @@ namespace Mesen.HdStudio
 			public int TimeoutSeconds = 1800;
 			public bool ReportOnly;
 			public bool Verify;
+			public bool Generate;
 			public bool FramesSpecified;
 			public int Shots = 4;
 			public List<string> Errors = new();
@@ -76,7 +79,7 @@ namespace Mesen.HdStudio
 
 			if(opt.Verify) {
 				int frames = opt.FramesSpecified ? opt.Frames : 1200;
-				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, outFolder, frames, opt.Shots, Log).Run();
+				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, opt.Generate, outFolder, frames, opt.Shots, Log).Run();
 			}
 
 			if(!opt.ReportOnly) {
@@ -130,6 +133,11 @@ namespace Mesen.HdStudio
 					DebugApi.LoadScript(luaScript, path, script);
 					Log($"Lua script loaded: {luaScript}");
 				}
+			} else if(opt.Generate && opt.MoviePath == null) {
+				//Generate mode without a movie/script: the built-in explorer plays the game
+				DebugWorkspaceManager.Load();
+				DebugApi.LoadScript("explore.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer());
+				Log("Built-in explorer loaded (plays the game automatically)");
 			}
 
 			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
@@ -214,7 +222,8 @@ namespace Mesen.HdStudio
 				UseLargeSprites = false,
 				SortByUsageFrequency = true,
 				GroupBlankTiles = true,
-				IgnoreOverscan = false
+				IgnoreOverscan = false,
+				IncludeAllChrTiles = opt.Generate
 			};
 
 			IntPtr optionsPtr = Marshal.AllocHGlobal(Marshal.SizeOf(options));
@@ -235,6 +244,17 @@ namespace Mesen.HdStudio
 			return EmuApi.GetTimingInfo(CpuType.Nes).FrameCount;
 		}
 
+		/// <summary>UI/HdStudio/Scripts/explore.lua, embedded in Mesen.exe</summary>
+		public static string GetBuiltInExplorer()
+		{
+			using Stream? stream = typeof(HdStudioCapture).Assembly.GetManifestResourceStream("Mesen.HdStudio.explore.lua");
+			if(stream == null) {
+				throw new Exception("Built-in explorer script not found");
+			}
+			using StreamReader reader = new(stream);
+			return reader.ReadToEnd();
+		}
+
 		private static Options ParseArgs(string[] args)
 		{
 			Options opt = new();
@@ -249,6 +269,7 @@ namespace Mesen.HdStudio
 						case "hdstudio": break;
 						case "reportonly": opt.ReportOnly = true; break;
 						case "verify": opt.Verify = true; break;
+						case "generate": opt.Generate = true; break;
 						case "shots":
 							if(!int.TryParse(value, out opt.Shots) || opt.Shots < 1 || opt.Shots > 20) {
 								opt.Errors.Add("invalid screenshot count (1-20): " + value);
@@ -333,7 +354,7 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--generate] [--reportonly] [--verify [--shots=4]]");
 		}
 
 		private static void Log(string message)

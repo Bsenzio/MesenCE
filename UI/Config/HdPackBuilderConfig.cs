@@ -54,5 +54,8 @@ namespace Mesen.Config
 		[MarshalAs(UnmanagedType.I1)] public bool SortByUsageFrequency;
 		[MarshalAs(UnmanagedType.I1)] public bool GroupBlankTiles;
 		[MarshalAs(UnmanagedType.I1)] public bool IgnoreOverscan;
+
+		//HD Studio: also add the CHR-ROM tiles that were never displayed during the recording
+		[MarshalAs(UnmanagedType.I1)] public bool IncludeAllChrTiles;
 	}
 }

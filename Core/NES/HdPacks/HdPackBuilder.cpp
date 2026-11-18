@@ -165,6 +165,91 @@ string HdPackBuilder::GetStudioTileKey(int32_t tileIndex, uint8_t* tileData)
 	}
 }
 
+void HdPackBuilder::SetChrRom(BaseMapper* mapper)
+{
+	uint32_t size = mapper->GetChrRomSize();
+	_chrRom.resize(size);
+	for(uint32_t addr = 0; addr + 16 <= size; addr += 16) {
+		mapper->CopyChrTile(addr, _chrRom.data() + addr);
+	}
+}
+
+void HdPackBuilder::AddUnseenChrTiles()
+{
+	//Tiles that are already part of the pack (with any palette)
+	std::map<int32_t, uint32_t> knownTiles; //tile index -> palette of its most used variant
+	std::map<int32_t, uint32_t> knownUsage;
+	std::map<uint32_t, uint64_t> paletteUsage;
+	for(unique_ptr<HdPackTileInfo>& tile : _hdData.Tiles) {
+		if(tile->IsChrRamTile || tile->TileIndex < 0) {
+			continue;
+		}
+		auto usage = _studioTileUsage.find(tile->GetKey(false));
+		uint32_t count = usage != _studioTileUsage.end() ? usage->second : 0;
+		if(knownTiles.find(tile->TileIndex) == knownTiles.end() || count > knownUsage[tile->TileIndex]) {
+			knownTiles[tile->TileIndex] = tile->PaletteColors;
+			knownUsage[tile->TileIndex] = count;
+		}
+		paletteUsage[tile->PaletteColors] += count;
+	}
+
+	//Fallback palette when no tile of the same bank was seen: the most used background palette, or a gray scale
+	uint32_t defaultPalette = 0x0F001030;
+	uint64_t bestUsage = 0;
+	for(auto& kvp : paletteUsage) {
+		if((kvp.first >> 24) != 0xFF && kvp.second > bestUsage) {
+			bestUsage = kvp.second;
+			defaultPalette = kvp.first;
+		}
+	}
+
+	int32_t tileCount = (int32_t)(_chrRom.size() / 16);
+	uint8_t blankTile[16] = {};
+	for(int32_t i = 0; i < tileCount; i++) {
+		if(knownTiles.find(i) != knownTiles.end() || memcmp(&_chrRom[i * 16], blankTile, 16) == 0) {
+			continue;
+		}
+
+		//Tiles of the same character/object are usually stored next to each other in CHR ROM:
+		//use the palette of the closest tile (in the same 4 KB bank) that was seen during the recording
+		uint32_t palette = defaultPalette;
+		int32_t bankStart = i - (i % 256);
+		for(int32_t d = 1; d < 256; d++) {
+			if(i - d >= bankStart) {
+				auto result = knownTiles.find(i - d);
+				if(result != knownTiles.end()) {
+					palette = result->second;
+					break;
+				}
+			}
+			if(i + d < bankStart + 256 && i + d < tileCount) {
+				auto result = knownTiles.find(i + d);
+				if(result != knownTiles.end()) {
+					palette = result->second;
+					break;
+				}
+			}
+		}
+
+		HdPackTileInfo* hdTile = new HdPackTileInfo();
+		hdTile->PaletteColors = palette;
+		hdTile->TileIndex = i;
+		hdTile->DefaultTile = false;
+		hdTile->IsChrRamTile = false;
+		hdTile->Brightness = 255;
+		hdTile->ChrBankId = i / 256;
+		hdTile->TransparencyRequired = false;
+		memcpy(hdTile->TileData, &_chrRom[i * 16], 16);
+
+		_hdData.Tiles.push_back(unique_ptr<HdPackTileInfo>(hdTile));
+		AddTile(hdTile, 0);
+		_studioAddedChrTiles++;
+	}
+
+	//Tiles with identical graphics stored at another CHR address reuse the same HD image
+	_hdData.OptionFlags |= (int)HdPackOptions::AutomaticFallbackTiles;
+}
+
 void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 {
 	_studioFrameCount++;
@@ -311,6 +396,7 @@ void HdPackBuilder::SaveHdStudioData()
 	captureFile << "scale=" << _hdData.Scale << std::endl;
 	captureFile << "chrRam=" << (_isChrRam ? 1 : 0) << std::endl;
 	captureFile << "rom=" << _romName << std::endl;
+	captureFile << "addedChrTiles=" << _studioAddedChrTiles << std::endl;
 	captureFile.close();
 
 	vector<std::pair<const string*, HdStudioObjectStats*>> objects;
@@ -428,6 +514,10 @@ void HdPackBuilder::DrawTile(HdPackTileInfo* tile, int tileNumber, uint32_t* png
 void HdPackBuilder::SaveHdPack()
 {
 	FolderUtilities::CreateFolder(_saveFolder);
+
+	if(_options.IncludeAllChrTiles && !_isChrRam && !_chrRom.empty()) {
+		AddUnseenChrTiles();
+	}
 
 	stringstream pngRows;
 	stringstream tileRows;

@@ -24,16 +24,18 @@ namespace Mesen.HdStudio
 		private readonly string _romPath;
 		private readonly string? _moviePath;
 		private readonly List<string> _luaScripts;
+		private readonly bool _useBuiltInExplorer;
 		private readonly string _packFolder;
 		private readonly string _verifyFolder;
 		private readonly List<uint> _checkpoints = new();
 		private readonly Action<string> _log;
 
-		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, string packFolder, int frames, int shots, Action<string> log)
+		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log)
 		{
 			_romPath = romPath;
 			_moviePath = moviePath;
 			_luaScripts = luaScripts;
+			_useBuiltInExplorer = useBuiltInExplorer && luaScripts.Count == 0 && moviePath == null;
 			_packFolder = packFolder;
 			_verifyFolder = Path.Combine(packFolder, HdStudioReport.StudioFolderName, "verify");
 			_log = log;
@@ -113,6 +115,9 @@ namespace Mesen.HdStudio
 					string path = (Path.GetDirectoryName(luaScript) ?? Program.OriginalFolder) + Path.DirectorySeparatorChar;
 					scriptIds.Add(DebugApi.LoadScript(luaScript, path, File.ReadAllText(luaScript)));
 				}
+			} else if(_useBuiltInExplorer) {
+				DebugWorkspaceManager.Load();
+				scriptIds.Add(DebugApi.LoadScript("explore.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, HdStudioCapture.GetBuiltInExplorer()));
 			}
 
 			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
