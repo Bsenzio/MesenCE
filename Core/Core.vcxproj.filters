@@ -3015,6 +3015,9 @@
     <ClInclude Include="Shared\Movies\BizHawkMovie.h">
       <Filter>Shared\Movies</Filter>
     </ClInclude>
+    <ClInclude Include="Shared\Movies\Fm2Movie.h">
+      <Filter>Shared\Movies</Filter>
+    </ClInclude>
     <ClInclude Include="Shared\Video\BlendFilter.h">
       <Filter>Shared\Video</Filter>
     </ClInclude>
@@ -3408,6 +3411,9 @@
       <Filter>WS\Carts</Filter>
     </ClCompile>
     <ClCompile Include="Shared\Movies\BizHawkMovie.cpp">
+      <Filter>Shared\Movies</Filter>
+    </ClCompile>
+    <ClCompile Include="Shared\Movies\Fm2Movie.cpp">
       <Filter>Shared\Movies</Filter>
     </ClCompile>
   </ItemGroup>

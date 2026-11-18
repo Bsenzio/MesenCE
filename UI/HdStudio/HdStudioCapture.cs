@@ -17,7 +17,7 @@ namespace Mesen.HdStudio
 	/// HD Studio, stage 1: headless HD pack capture + analysis report.
 	///
 	/// Usage:
-	///   Mesen --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [options]
+	///   Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [options]
 	///
 	/// Options:
 	///   --scale=N         HD scale (default 4)
@@ -345,7 +345,7 @@ namespace Mesen.HdStudio
 
 				switch(Path.GetExtension(path).ToLowerInvariant()) {
 					case ".lua": opt.LuaScripts.Add(path); break;
-					case ".mmo": case ".bk2": opt.MoviePath = path; break;
+					case ".mmo": case ".bk2": case ".fm2": opt.MoviePath = path; break;
 					default: opt.RomPath = path; break;
 				}
 			}
@@ -379,7 +379,7 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--generate] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--generate] [--reportonly] [--verify [--shots=4]]");
 		}
 
 		private static void Log(string message)

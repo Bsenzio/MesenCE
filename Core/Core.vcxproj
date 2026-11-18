@@ -30,6 +30,7 @@
     <ClInclude Include="NES\Mappers\Unlicensed\Mapper487.h" />
     <ClInclude Include="NES\OpnInterface.h" />
     <ClInclude Include="Shared\Movies\BizHawkMovie.h" />
+    <ClInclude Include="Shared\Movies\Fm2Movie.h" />
     <ClInclude Include="Shared\Utilities\S3511ARtc.h" />
     <ClInclude Include="Shared\Video\BlendFilter.h" />
     <ClInclude Include="Shared\Video\DrawPixelsCommand.h" />
@@ -886,6 +887,7 @@
     <ClCompile Include="NES\Loaders\UnifLoader.cpp" />
     <ClCompile Include="NES\Mappers\Homebrew\Rainbow.cpp" />
     <ClCompile Include="Shared\Movies\BizHawkMovie.cpp" />
+    <ClCompile Include="Shared\Movies\Fm2Movie.cpp" />
     <ClCompile Include="SNES\Input\SnesBlueRetroController.cpp" />
     <ClCompile Include="SNES\Input\SnesNttDataKeypad.cpp" />
     <ClCompile Include="Shared\Utilities\emu2413.cpp">

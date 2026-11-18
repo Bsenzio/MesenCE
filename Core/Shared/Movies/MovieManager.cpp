@@ -6,6 +6,7 @@
 #include "Shared/Movies/MovieManager.h"
 #include "Shared/Movies/MesenMovie.h"
 #include "Shared/Movies/BizHawkMovie.h"
+#include "Shared/Movies/Fm2Movie.h"
 #include "Shared/Movies/MovieRecorder.h"
 
 MovieManager::MovieManager(Emulator* emu)
@@ -40,6 +41,9 @@ void MovieManager::Play(VirtualFile file, bool forTest)
 			} else if(std::find(files.begin(), files.end(), "Input Log.txt") != files.end()) {
 				player.reset(new BizHawkMovie(_emu, false));
 			}
+		} else if(Fm2Movie::IsFm2File(fileData)) {
+			//FCEUX movie (most NES TASes on TASVideos)
+			player.reset(new Fm2Movie(_emu, false));
 		}
 
 		//Stop any active recording/playback before starting playback for this movie

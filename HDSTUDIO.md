@@ -33,7 +33,7 @@ while playing can be captured (a movie of a full playthrough gives the best resu
 ## Capture + report
 
 ```
-hdstudio.cmd game.nes [movie.mmo|movie.bk2] [script.lua] [options]
+hdstudio.cmd game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [options]
 ```
 
 `hdstudio.cmd` (in the repository root) runs `bin\win-x64\Release\Mesen.exe --hdstudio ...` and waits until it
@@ -58,7 +58,9 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 
 How the game is played during the capture:
 
-* **Movie (`.mmo` or BizHawk `.bk2`)**: recommended. The movie is a recording of the controller inputs, so the emulator
+* **Movie (`.mmo`, BizHawk `.bk2` or FCEUX `.fm2`)**: recommended. Most NES TASes published on TASVideos are `.fm2`
+  or `.bk2` files (`.fm2` support was added in this fork). The movie must have been recorded with the same ROM
+  version (compare the SHA-1 in the movie header), otherwise it can desync. The movie is a recording of the controller inputs, so the emulator
   replays the exact same game session (a full playthrough covers the whole game). The capture ends with the movie.
 * **Lua script**: any Mesen Lua script can press buttons, change the game state, etc.
   `UI/HdStudio/Scripts/explore.lua` is a generic explorer: it presses Start/A when nothing moves on screen
@@ -83,7 +85,7 @@ In the pack folder:
 ## Checking that an HD pack works
 
 ```
-Mesen.exe --hdstudio game.nes [movie.mmo|movie.bk2] --verify
+Mesen.exe --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] --verify
 ```
 
 Plays the game twice from power-on (with and without HD packs) and stops both runs on exactly the same frames
