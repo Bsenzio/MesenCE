@@ -130,14 +130,14 @@ namespace Mesen.HdStudio
 				foreach(string luaScript in opt.LuaScripts) {
 					string script = File.ReadAllText(luaScript);
 					string path = (Path.GetDirectoryName(luaScript) ?? Program.OriginalFolder) + Path.DirectorySeparatorChar;
-					DebugApi.LoadScript(luaScript, path, script);
+					_scriptIds.Add(DebugApi.LoadScript(luaScript, path, script));
 					Log($"Lua script loaded: {luaScript}");
 				}
 			} else if(opt.Generate && opt.MoviePath == null) {
-				//Generate mode without a movie/script: the built-in explorer plays the game
+				//Generate mode without a movie/script: the built-in deep explorer plays the whole game with savestates
 				DebugWorkspaceManager.Load();
-				DebugApi.LoadScript("explore.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer());
-				Log("Built-in explorer loaded (plays the game automatically)");
+				_scriptIds.Add(DebugApi.LoadScript("explore_deep.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_deep.lua")));
+				Log("Built-in deep explorer loaded (explores the game automatically with savestates)");
 			}
 
 			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
@@ -172,6 +172,10 @@ namespace Mesen.HdStudio
 				Log("Warning: the movie is not playing (incompatible file?), running for the frame limit instead.");
 			}
 
+			//Count the emulated frames from the differences between two polls: the frame counter goes back
+			//when a savestate is loaded (the deep explorer does it every few seconds)
+			long frames = 0;
+			uint lastFrameCount = startFrame;
 			int lastProgress = -1;
 			while(sw.Elapsed.TotalSeconds < opt.TimeoutSeconds) {
 				Thread.Sleep(50);
@@ -179,7 +183,9 @@ namespace Mesen.HdStudio
 					break;
 				}
 
-				uint frames = GetFrameCount() - startFrame;
+				uint frameCount = GetFrameCount();
+				frames += frameCount >= lastFrameCount ? frameCount - lastFrameCount : 1;
+				lastFrameCount = frameCount;
 				if(movieStarted) {
 					if(!RecordApi.MoviePlaying()) {
 						break;
@@ -192,6 +198,7 @@ namespace Mesen.HdStudio
 				if(progress != lastProgress) {
 					lastProgress = progress;
 					Log($"  {frames:N0} frames captured...");
+					PrintScriptLogs();
 				}
 			}
 
@@ -200,7 +207,8 @@ namespace Mesen.HdStudio
 			}
 
 			EmuApi.Pause();
-			Log($"Capture finished: {GetFrameCount() - startFrame:N0} frames. Saving HD pack...");
+			PrintScriptLogs();
+			Log($"Capture finished: {frames:N0} frames. Saving HD pack...");
 			EmuApi.ExecuteShortcut(new ExecuteShortcutParams() { Shortcut = EmulatorShortcut.StopRecordHdPack });
 
 			if(RecordApi.MoviePlaying()) {
@@ -239,15 +247,32 @@ namespace Mesen.HdStudio
 			}
 		}
 
+		private static readonly List<int> _scriptIds = new();
+		private static readonly Dictionary<int, string> _printedScriptLogs = new();
+
+		/// <summary>Shows the new lines of the Lua scripts' logs (explorer statistics, script errors) in the console</summary>
+		private static void PrintScriptLogs()
+		{
+			foreach(int scriptId in _scriptIds) {
+				string log = DebugApi.GetScriptLog(scriptId);
+				string previous = _printedScriptLogs.GetValueOrDefault(scriptId, "");
+				string newText = log.StartsWith(previous) ? log.Substring(previous.Length) : log;
+				foreach(string line in newText.Split('\n', StringSplitOptions.RemoveEmptyEntries)) {
+					Log("  [lua] " + line.TrimEnd('\r'));
+				}
+				_printedScriptLogs[scriptId] = log;
+			}
+		}
+
 		private static uint GetFrameCount()
 		{
 			return EmuApi.GetTimingInfo(CpuType.Nes).FrameCount;
 		}
 
-		/// <summary>UI/HdStudio/Scripts/explore.lua, embedded in Mesen.exe</summary>
-		public static string GetBuiltInExplorer()
+		/// <summary>Scripts from UI/HdStudio/Scripts, embedded in Mesen.exe (explore.lua or explore_deep.lua)</summary>
+		public static string GetBuiltInExplorer(string name = "explore.lua")
 		{
-			using Stream? stream = typeof(HdStudioCapture).Assembly.GetManifestResourceStream("Mesen.HdStudio.explore.lua");
+			using Stream? stream = typeof(HdStudioCapture).Assembly.GetManifestResourceStream("Mesen.HdStudio." + name);
 			if(stream == null) {
 				throw new Exception("Built-in explorer script not found");
 			}

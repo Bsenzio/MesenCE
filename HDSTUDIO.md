@@ -12,7 +12,11 @@ HD packs are a Mesen feature for **NES games only**.
 .\hdstudio.cmd "D:\ROMs\game.nes" --generate
 ```
 
-Nobody has to play: the built-in explorer plays the game (unless a movie or a Lua script is given), the recorder
+Nobody has to play: the built-in **deep explorer** (`UI/HdStudio/Scripts/explore_deep.lua`, embedded in Mesen.exe)
+explores the game with savestates, unless a movie or a Lua script is given. Every time something new appears (a new
+palette, a new sprite, a new screen layout) it saves the state; it plays in short random episodes and keeps going back
+to the saved states that are least visited and most productive, so dying or getting stuck does not stop the
+exploration. Its progress is shown in the console (`[lua] episode N: ...`). Then the recorder
 captures every tile with its real colors, and then **every tile stored in the cartridge (CHR-ROM)** is added to the
 pack too, including the ones that never appeared on screen. Those get the palette of the closest tile of the same
 bank that was seen (tiles of one character are usually stored together); if that guess is wrong the tile simply never

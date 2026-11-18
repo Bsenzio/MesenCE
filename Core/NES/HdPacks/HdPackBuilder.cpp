@@ -102,17 +102,19 @@ void HdPackBuilder::AddTile(HdPackTileInfo* tile, uint32_t usageCount)
 	_tileUsageCount[tile->GetKey(false)] = usageCount;
 }
 
-void HdPackBuilder::ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpuTileInfo& tile, BaseMapper* mapper, bool isSprite, uint32_t chrBankHash, bool transparencyRequired)
+HdStudioTileHandle HdPackBuilder::ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpuTileInfo& tile, BaseMapper* mapper, bool isSprite, uint32_t chrBankHash, bool transparencyRequired)
 {
+	HdStudioTileHandle handle;
 	if(_options.IgnoreOverscan) {
 		OverscanDimensions overscan = _emu->GetSettings()->GetOverscan();
 		if(x < overscan.Left || y < overscan.Top || (NesConstants::ScreenWidth - x - 1) < overscan.Right || (NesConstants::ScreenHeight - y - 1) < overscan.Bottom) {
 			//Ignore tiles inside overscan
-			return;
+			return handle;
 		}
 	}
 
-	_studioTileUsage[tile.GetKey(false)]++;
+	uint32_t& studioUsage = _studioTileUsage[tile.GetKey(false)];
+	studioUsage++;
 
 	auto result = _tileUsageCount.find(tile.GetKey(false));
 	if(result == _tileUsageCount.end()) {
@@ -135,6 +137,7 @@ void HdPackBuilder::ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpu
 
 		_hdData.Tiles.push_back(unique_ptr<HdPackTileInfo>(hdTile));
 		AddTile(hdTile, 1);
+		result = _tileUsageCount.find(tile.GetKey(false));
 	} else {
 		if(transparencyRequired) {
 			auto existingTile = _tilesByKey.find(tile.GetKey(false));
@@ -148,6 +151,13 @@ void HdPackBuilder::ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpu
 			result->second++;
 		}
 	}
+
+	//Pointers to unordered_map values stay valid when the map grows
+	if(result != _tileUsageCount.end()) {
+		handle.Usage = &result->second;
+		handle.StudioUsage = &studioUsage;
+	}
+	return handle;
 }
 
 string HdPackBuilder::GetStudioTileKey(int32_t tileIndex, uint8_t* tileData)
@@ -277,7 +287,12 @@ void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 		for(size_t j = i + 1; j < count; j++) {
 			HdStudioSprite& a = sprites[i];
 			HdStudioSprite& b = sprites[j];
-			if(a.X <= b.X + 8 && b.X <= a.X + 8 && a.Y <= b.Y + 8 && b.Y <= a.Y + 8) {
+			//Sprites that touch belong to the same object when they use the same palette (an enemy or a shot
+			//touching the player usually has another palette); sprites that overlap are always grouped
+			//(characters drawn with 2 palettes layer one sprite over another)
+			bool touching = a.X <= b.X + 8 && b.X <= a.X + 8 && a.Y <= b.Y + 8 && b.Y <= a.Y + 8;
+			bool overlapping = a.X < b.X + 8 && b.X < a.X + 8 && a.Y < b.Y + 8 && b.Y < a.Y + 8;
+			if(overlapping || (touching && a.PaletteColors == b.PaletteColors)) {
 				parent[findRoot(i)] = findRoot(j);
 			}
 		}

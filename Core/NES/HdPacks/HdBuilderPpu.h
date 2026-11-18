@@ -16,6 +16,37 @@ private:
 	uint32_t _chrRamIndexMask = 0;
 	vector<uint32_t> _bankHashes;
 
+	//HD Studio: the builder used to look up the same tile for each of its 8 pixels on a scanline.
+	//The last tile processed for the background and for sprites is cached and only its counters are increased.
+	//The cache is invalidated by any VRAM/palette write and when a state is loaded.
+	struct TileCache
+	{
+		int32_t Addr = -1;
+		uint16_t Palette = 0;
+		int16_t Scanline = -1;
+		uint32_t Version = 0;
+		bool Valid = false;
+		HdStudioTileHandle Handle;
+	};
+	TileCache _bgCache;
+	TileCache _spriteCache;
+	uint32_t _cacheVersion = 1;
+
+	__forceinline bool IsCached(TileCache& cache, int32_t addr, uint16_t palette)
+	{
+		return cache.Valid && cache.Addr == addr && cache.Palette == palette && cache.Scanline == _scanline && cache.Version == _cacheVersion;
+	}
+
+	__forceinline void UpdateCache(TileCache& cache, int32_t addr, uint16_t palette, HdStudioTileHandle handle, bool allowCache)
+	{
+		cache.Addr = addr;
+		cache.Palette = palette;
+		cache.Scanline = (int16_t)_scanline;
+		cache.Version = _cacheVersion;
+		cache.Handle = handle;
+		cache.Valid = allowCache && handle.Usage != nullptr;
+	}
+
 	NesSpriteInfoEx _exSpriteInfo[64] = {};
 	NesTileInfoEx _previousTileEx = {};
 	NesTileInfoEx _currentTileEx = {};
@@ -163,14 +194,17 @@ public:
 					}
 				}
 
-				if(spriteInfoEx.AbsoluteTileAddr >= 0) {
+				if(spriteInfoEx.AbsoluteTileAddr >= 0 && IsCached(_spriteCache, spriteInfoEx.AbsoluteTileAddr, _lastSprite->PaletteOffset)) {
+					_hdPackBuilder->RepeatTile(_spriteCache.Handle);
+				} else if(spriteInfoEx.AbsoluteTileAddr >= 0) {
 					HdPpuTileInfo sprite = {};
 					sprite.TileIndex = (isChrRam ? (spriteInfoEx.TileAddr & _chrRamIndexMask) : spriteInfoEx.AbsoluteTileAddr) / 16;
 					sprite.PaletteColors = ReadPaletteRam(_lastSprite->PaletteOffset + 3) | (ReadPaletteRam(_lastSprite->PaletteOffset + 2) << 8) | (ReadPaletteRam(_lastSprite->PaletteOffset + 1) << 16) | 0xFF000000;
 					sprite.IsChrRamTile = isChrRam;
 					mapper->CopyChrTile(spriteInfoEx.AbsoluteTileAddr & 0xFFFFFFF0, sprite.TileData);
 
-					_hdPackBuilder->ProcessTile(_cycle - 1, _scanline, spriteInfoEx.AbsoluteTileAddr, sprite, mapper, false, _bankHashes[spriteInfoEx.TileAddr / _chrRamBankSize], false);
+					HdStudioTileHandle handle = _hdPackBuilder->ProcessTile(_cycle - 1, _scanline, spriteInfoEx.AbsoluteTileAddr, sprite, mapper, false, _bankHashes[spriteInfoEx.TileAddr / _chrRamBankSize], false);
+					UpdateCache(_spriteCache, spriteInfoEx.AbsoluteTileAddr, _lastSprite->PaletteOffset, handle, true);
 				}
 			}
 
@@ -179,14 +213,18 @@ public:
 				uint8_t tilePalette = usePrev ? _previousTilePalette : _currentTilePalette;
 				NesTileInfoEx& lastTileEx = usePrev ? _previousTileEx : _currentTileEx;
 				//TileInfo* lastTile = &((_xScroll + ((_cycle - 1) & 0x07) < 8) ? _previousTile : _currentTile);
-				if(lastTileEx.AbsoluteTileAddr >= 0) {
+				if(lastTileEx.AbsoluteTileAddr >= 0 && !hasBgSprite && IsCached(_bgCache, lastTileEx.AbsoluteTileAddr, tilePalette)) {
+					_hdPackBuilder->RepeatTile(_bgCache.Handle);
+				} else if(lastTileEx.AbsoluteTileAddr >= 0) {
 					HdPpuTileInfo tile = {};
 					tile.TileIndex = (isChrRam ? (lastTileEx.TileAddr & _chrRamIndexMask) : lastTileEx.AbsoluteTileAddr) / 16;
 					tile.PaletteColors = ReadPaletteRam(tilePalette + 3) | (ReadPaletteRam(tilePalette + 2) << 8) | (ReadPaletteRam(tilePalette + 1) << 16) | (ReadPaletteRam(0) << 24);
 					tile.IsChrRamTile = isChrRam;
 					mapper->CopyChrTile(lastTileEx.AbsoluteTileAddr & 0xFFFFFFF0, tile.TileData);
 
-					_hdPackBuilder->ProcessTile(_cycle - 1, _scanline, lastTileEx.AbsoluteTileAddr, tile, mapper, false, _bankHashes[lastTileEx.TileAddr / _chrRamBankSize], hasBgSprite);
+					HdStudioTileHandle handle = _hdPackBuilder->ProcessTile(_cycle - 1, _scanline, lastTileEx.AbsoluteTileAddr, tile, mapper, false, _bankHashes[lastTileEx.TileAddr / _chrRamBankSize], hasBgSprite);
+					//Pixels where transparency is required update the tile flags: never cache them
+					UpdateCache(_bgCache, lastTileEx.AbsoluteTileAddr, tilePalette, handle, !hasBgSprite);
 				}
 			}
 		} else {
@@ -201,6 +239,8 @@ public:
 			if(_videoRamAddr < 0x2000) {
 				_needChrHash = true;
 			}
+			//CHR RAM or palette contents may change: invalidate the tile caches
+			_cacheVersion++;
 		}
 		NesPpu::WriteRam(addr, value);
 	}
@@ -210,6 +250,7 @@ public:
 		NesPpu::Serialize(s);
 		if(!s.IsSaving()) {
 			_needChrHash = true;
+			_cacheVersion++;
 		}
 	}
 

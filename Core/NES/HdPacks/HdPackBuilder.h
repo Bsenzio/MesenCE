@@ -36,6 +36,14 @@ struct HdStudioSprite
 	bool VerticalMirror;
 };
 
+//HD Studio: direct access to the usage counters of the last processed tile, so the PPU can count the
+//next pixels of the same tile without looking it up again (the lookup was done for each of the 8 pixels)
+struct HdStudioTileHandle
+{
+	uint32_t* Usage = nullptr;
+	uint32_t* StudioUsage = nullptr;
+};
+
 //HD Studio: statistics for a group of sprites drawn touching each other (a "metasprite")
 struct HdStudioObjectStats
 {
@@ -86,7 +94,15 @@ public:
 	HdPackBuilder(Emulator* emu, PpuModel ppuModel, bool isChrRam, HdPackBuilderOptions options);
 	~HdPackBuilder();
 
-	void ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpuTileInfo& tile, BaseMapper* mapper, bool isSprite, uint32_t chrBankHash, bool transparencyRequired);
+	HdStudioTileHandle ProcessTile(uint32_t x, uint32_t y, uint16_t tileAddr, HdPpuTileInfo& tile, BaseMapper* mapper, bool isSprite, uint32_t chrBankHash, bool transparencyRequired);
+
+	__forceinline void RepeatTile(HdStudioTileHandle& handle)
+	{
+		if(*handle.Usage < 0x7FFFFFFF) {
+			(*handle.Usage)++;
+		}
+		(*handle.StudioUsage)++;
+	}
 	void ProcessSpriteFrame(vector<HdStudioSprite>& sprites);
 	void SetChrRom(BaseMapper* mapper);
 	void SaveHdPack();
