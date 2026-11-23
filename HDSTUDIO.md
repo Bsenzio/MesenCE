@@ -1,5 +1,10 @@
 # Mesen HD Studio
 
+> **Project documentation, measured results and source snapshot:**
+> <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio>
+> The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
+> and the complete `master..hdstudio` patch.
+
 HD Studio is an addition to this fork of MesenCE that automates the first steps of making an HD pack for an NES game:
 it plays the game without a window, records every tile that is drawn, detects the objects on screen (metasprites)
 and writes a report saying which PNG images to draw and at what size.

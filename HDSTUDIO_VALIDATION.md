@@ -1,5 +1,8 @@
 # HD Studio workflow validation (2026-11-23)
 
+> Project documentation and this matrix with commentary:
+> <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/validation.md>
+
 Method: 25 ROMs from `D:\NesFlasher\ROMs`, each one with
 `Mesen.exe --hdstudio ROM --generate --frames=300 --timeout=300`.
 The full `hdstudio_workflow.cmd` (capture + maps + merge + report + verify) was also run
