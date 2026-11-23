@@ -6,7 +6,8 @@
 Method: 25 ROMs from `D:\NesFlasher\ROMs`, each one with
 `Mesen.exe --hdstudio ROM --generate --frames=300 --timeout=300`.
 The full `hdstudio_workflow.cmd` (capture + maps + merge + report + verify) was also run
-end-to-end on SMB3, Batman ROTJ, Guardian Legend (CHR-RAM) and the test ROM.
+end-to-end on SMB3, Batman ROTJ, Guardian Legend (CHR-RAM) and the test ROM. The SMB3 run also
+captured all **8 player forms / 96 poses** with **578/578 exact combinations** in the pack.
 
 | ROM | CHR | Tiles in pack | Seen | Pack % | Objects detected | Status |
 |---|---|---:|---:|---:|---:|---|

@@ -152,19 +152,42 @@ hang. The images are rendered with CHR + the exact sprite palette into `HdStudio
 `atlas.json`; the report shows an **Object atlas (named sprites)** table with all 196 IDs, names and the
 captured images. IDs that need a special state (doors, controllers, some bosses’ phases) show “no visible
 sprite in the forced state” instead of a wrong image. Measured on SMB3: **149 of 196 object types** produced
-sprites (3,370 sprite entries, **339 exact pattern+palette combinations** added to the pack; all 339 present).
-The 47 without sprites are 7 world-map objects, invisible objects (hidden whistle, door, lift, currents), and
-event/cannon controllers that spawn other objects instead of drawing themselves. Player forms (Tanuki, Frog,
-Hammer…) are not object IDs; they still appear as generic player templates in `sheet_objects.png` and remain a
-separate player-form atlas.
+sprites (3,173 visible sprite entries, **339 exact pattern+palette combinations** added to the pack; all 339
+present). SMB3 uses **8×16 sprites**, so the renderer combines each OAM pattern pair; a few forced-state boss
+captures are still partial (Bowser, Boss Bass) because they need their real level/state. The 47 without sprites
+are 7 world-map objects, invisible objects (hidden whistle, door, lift, currents), and event/cannon controllers
+that spawn other objects instead of drawing themselves. Player forms (Tanuki, Frog, Hammer…) are not object IDs;
+they are captured by the separate `--playerforms` atlas (see below).
 
 **What “100 %” does not mean:** it is tile/palette coverage, not a named bestiary. `sheet_objects.png`
 contains the metasprites detected in the recording (for SMB3: 71 groups / 464 variants); the game data
 defines 196 object types. Enemies/forms that never appeared are still replaced in game (their tiles are in
-the pack), but they are not grouped or named in the sheet. Player forms (Small, Super, Fire, Raccoon,
-**Tanuki**, Frog, Hammer, statue) are drawn by the player code, not by object IDs: they appear as generic
-player templates in the top row of `sheet_objects.png`, without individual labels. The full tile atlas is
-`HdStudio/chr_coverage.png`; `report.json` has the 196-object catalog from `game.xml`.
+the pack), but they are not grouped or named in the sheet. Player forms are captured by `--playerforms`. The
+full tile atlas is `HdStudio/chr_coverage.png`; `report.json` has the 196-object catalog from `game.xml`.
+
+### Player-form atlas (`--playerforms`, SMB3 USA)
+
+The player is not an object ID: SMB3 draws it from `Player_Suit`, `Player_Statue` and `Player_Frame`.
+`--playerforms` captures all eight forms (Small, Super, Fire, Raccoon, Frog, **Tanuki**, Hammer and the
+**Tanuki Statue**) in one Mesen process:
+
+```
+.\hdstudio.cmd game.nes --playerforms
+```
+
+1. Load 1-1 through the game's own level loader and clear the object slots.
+2. Queue each suit with `Player_QueueSuit = suit + 1`; `Player_Update` calls `Level_SetPlayerPUpPal`.
+3. For the statue, queue `$0F` and hold **DOWN** at `Player_TanookiStatue` so it is maintained.
+4. Force `Player_Frame` at the `Player_Draw` entry (`$CE9F`) for each named pose, so the game's own drawing
+   code builds the 8×16 OAM sprites.
+5. Capture `Sprite_RAM` + the exact sprite palette, render one PNG per pose and write
+   `HdStudio/playerforms/playerforms_exact.txt`.
+
+Measured on SMB3 (USA): **8/8 forms, 96 named poses, 418 visible sprites, 578/578 exact
+(pattern + palette) combinations in the pack**. The report adds a **Player forms (named sprites)** section
+with every form and pose. The pose set covers walk, run, jump, fall, duck, swim, climb, tail, flutter/fly,
+frog hop/swim, hammer throw and the statue; death/pipe/edge states are intentionally omitted because they need
+a different game state.
 
 ## Checking that an HD pack works
 
@@ -327,7 +350,8 @@ the generated packs.
 
 ## Roadmap
 
-1. **Capture + report** (this stage)
+1. **Capture + report + exact SMB3 data** (done): level maps, backgrounds, object atlas, player forms
 2. Automatic game profile: RAM search (player position, level, lives), OAM tracing to extract the metasprite tables, Code/Data Logger
 3. Import external profiles (RAM maps, disassemblies) and cc65 `.dbg` files for homebrew
 4. Automatic placement of the redrawn PNGs into `hires.txt` and side-by-side original/HD view
+5. Full player animation set (death/pipe/edge states) and better boss object captures

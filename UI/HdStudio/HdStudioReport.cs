@@ -59,6 +59,11 @@ namespace Mesen.HdStudio
 		private List<(int Id, string Label, string Name, string Png, int Width, int Height, int Sprites)> _objectAtlas = new();
 		private HashSet<(string Tile, uint Palette)> _atlasExactTiles = new();
 		private int _atlasExactInPack = 0;
+		private HashSet<(string Tile, uint Palette)> _playerExactTiles = new();
+		private int _playerExactInPack = 0;
+		private List<PlayerForm> _playerForms = new();
+		private int _playerFormPoses = 0;
+		private int _playerFormSprites = 0;
 
 		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log, string? disasmPath = null)
 		{
@@ -90,11 +95,13 @@ namespace Mesen.HdStudio
 			ReadLevelMaps();
 			ReadSpriteSweep();
 			ReadObjectAtlas();
+			ReadPlayerAtlas();
 			ReadHiresFile();
 			_mapExactInPack = _exactLevelTiles.Count(t => _packTiles.Contains(t));
 			_mapExactPatternsInPack = _exactLevelTiles.Where(t => _packTiles.Contains(t)).Select(t => t.Tile).Distinct().Count();
 			_spriteExactInPack = _exactSpriteTiles.Count(t => _packTiles.Contains(t));
 			_atlasExactInPack = _atlasExactTiles.Count(t => _packTiles.Contains(t));
+			_playerExactInPack = _playerExactTiles.Count(t => _packTiles.Contains(t));
 			ReadTileUsage();
 			_seenSpriteCombos = _tileUsage.Keys.Count(k => IsSpritePalette(k.Palette));
 			_seenBackgroundCombos = _tileUsage.Count - _seenSpriteCombos;
@@ -294,6 +301,62 @@ namespace Mesen.HdStudio
 				}
 			} catch(Exception ex) {
 				_log("Object atlas: " + ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// Named player-form atlas: the player is drawn from Player_Suit/Player_Statue/Player_Frame,
+		/// not from an object ID. HD Studio forces each form and pose through Player_Draw.
+		/// </summary>
+		private void ReadPlayerAtlas()
+		{
+			string path = Path.Combine(_studioFolder, "playerforms", "playerforms.json");
+			if(!File.Exists(path)) {
+				return;
+			}
+			try {
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+				if(!doc.RootElement.TryGetProperty("forms", out JsonElement list)) {
+					return;
+				}
+				foreach(JsonElement formElement in list.EnumerateArray()) {
+					PlayerForm form = new() {
+						Id = formElement.TryGetProperty("id", out JsonElement i) ? i.GetInt32() : 0,
+						Name = formElement.TryGetProperty("name", out JsonElement n) ? n.GetString() ?? "" : "",
+						Suit = formElement.TryGetProperty("suit", out JsonElement s) ? s.GetInt32() : 0
+					};
+					if(formElement.TryGetProperty("poses", out JsonElement poses)) {
+						foreach(JsonElement poseElement in poses.EnumerateArray()) {
+							form.Poses.Add(new PlayerPose() {
+								Code = poseElement.TryGetProperty("code", out JsonElement c) ? c.GetInt32() : 0,
+								Name = poseElement.TryGetProperty("name", out JsonElement pn) ? pn.GetString() ?? "" : "",
+								Png = poseElement.TryGetProperty("png", out JsonElement png) ? png.GetString() ?? "" : "",
+								Width = poseElement.TryGetProperty("width", out JsonElement w) ? w.GetInt32() : 0,
+								Height = poseElement.TryGetProperty("height", out JsonElement h) ? h.GetInt32() : 0,
+								Sprites = poseElement.TryGetProperty("sprites", out JsonElement sp) ? sp.GetInt32() : 0
+							});
+						}
+					}
+					_playerForms.Add(form);
+					_playerFormPoses += form.Poses.Count;
+					_playerFormSprites += form.Poses.Sum(p => p.Sprites);
+				}
+				_log($"Player forms: {_playerForms.Count} forms, {_playerFormPoses} poses, {_playerFormSprites} sprites");
+
+				string exactPath = Path.Combine(_studioFolder, "playerforms", "playerforms_exact.txt");
+				if(File.Exists(exactPath)) {
+					foreach(string line in File.ReadAllLines(exactPath)) {
+						if(line.Length == 0 || line[0] == '#') {
+							continue;
+						}
+						string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+						if(parts.Length >= 2 && TryParseHex(parts[1], out uint palette)) {
+							_playerExactTiles.Add((NormalizeTileKey(parts[0]), palette));
+						}
+					}
+				}
+			} catch(Exception ex) {
+				_log("Player forms: " + ex.Message);
 			}
 		}
 
@@ -949,6 +1012,37 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
+			if(_playerForms.Count > 0) {
+				json.WriteStartArray("playerForms");
+				foreach(PlayerForm form in _playerForms) {
+					json.WriteStartObject();
+					json.WriteNumber("id", form.Id);
+					json.WriteString("name", form.Name);
+					json.WriteNumber("suit", form.Suit);
+					json.WriteStartArray("poses");
+					foreach(PlayerPose pose in form.Poses) {
+						json.WriteStartObject();
+						json.WriteNumber("code", pose.Code);
+						json.WriteString("name", pose.Name);
+						json.WriteString("png", pose.Png);
+						json.WriteNumber("width", pose.Width);
+						json.WriteNumber("height", pose.Height);
+						json.WriteNumber("sprites", pose.Sprites);
+						json.WriteEndObject();
+					}
+					json.WriteEndArray();
+					json.WriteEndObject();
+				}
+				json.WriteEndArray();
+				json.WriteStartObject("playerFormsSummary");
+				json.WriteNumber("forms", _playerForms.Count);
+				json.WriteNumber("poses", _playerFormPoses);
+				json.WriteNumber("sprites", _playerFormSprites);
+				json.WriteNumber("exactCombos", _playerExactTiles.Count);
+				json.WriteNumber("exactCombosInPack", _playerExactInPack);
+				json.WriteEndObject();
+			}
+
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
 				json.WriteStartObject();
@@ -1025,6 +1119,9 @@ namespace Mesen.HdStudio
 				int atlasSprites = _objectAtlas.Count(o => o.Sprites > 0);
 				sb.AppendLine($"<div class=\"stat\"><b>{atlasSprites:N0}</b><span>of {_objectAtlas.Count:N0} game object types drawn by the object atlas</span></div>");
 			}
+			if(_playerForms.Count > 0) {
+				sb.AppendLine($"<div class=\"stat\"><b>{_playerForms.Count}</b><span>player forms captured with named poses ({_playerFormPoses} poses, {_playerFormSprites} sprites)</span></div>");
+			}
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
 				sb.AppendLine($"<div class=\"stat\"><b>{coverage:0.0}%</b><span>of the cartridge tiles seen while playing ({seen.Count:N0} of {nonBlank:N0})</span></div>");
@@ -1061,6 +1158,10 @@ namespace Mesen.HdStudio
 			if(_atlasExactTiles.Count > 0) {
 				double atlasPct = 100.0 * _atlasExactInPack / _atlasExactTiles.Count;
 				sb.AppendLine($"<tr><td><b>Object atlas</b> (exact pattern + palette)</td><td class=\"n\">{_atlasExactInPack:N0}</td><td class=\"n\">{_atlasExactTiles.Count:N0}</td><td class=\"n\"><b>{atlasPct:0.0}%</b></td><td>{_objectAtlas.Count(o => o.Sprites > 0):N0} of {_objectAtlas.Count:N0} object types captured with their sprites.</td></tr>");
+			}
+			if(_playerForms.Count > 0) {
+				double playerPct = _playerExactTiles.Count > 0 ? 100.0 * _playerExactInPack / _playerExactTiles.Count : 100.0;
+				sb.AppendLine($"<tr><td><b>Player forms</b> (exact pattern + palette)</td><td class=\"n\">{_playerExactInPack:N0}</td><td class=\"n\">{_playerExactTiles.Count:N0}</td><td class=\"n\"><b>{playerPct:0.0}%</b></td><td>{_playerForms.Count} forms (Small, Super, Fire, Raccoon, Frog, Tanuki, Hammer, Tanuki Statue), {_playerFormPoses} named poses, {_playerFormSprites} sprites drawn by the game's own player code.</td></tr>");
 			}
 			if(_rom.HasChrRom) {
 				int inPack = InPackChrTiles().Count;
@@ -1100,7 +1201,9 @@ namespace Mesen.HdStudio
 				sb.AppendLine($"<p>The pack covers <b>100 % of the CHR tiles</b> and <b>100 % of the exact background combinations</b>, but that is not the same as a complete bestiary. " +
 					$"The game defines <b>{_gameObjects.Count}</b> object types; this recording detected <b>{groups.Count}</b> metasprites (the table above and <code>sheet_objects.png</code>). " +
 					$"Enemies or forms that never appeared in the recording are not in that sheet: their cartridge tiles are still in the pack (with exact or wildcard palette), but HD Studio has not grouped or named them. " +
-					$"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer and the Tanuki Statue — are drawn by the player code, not by an object ID, so they appear in the sheet as generic player templates (top row of <code>sheet_objects.png</code>, 16×16/16×32) without individual “Tanuki”/“Frog” labels. " +
+					(_playerForms.Count > 0
+						? $"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer and the Tanuki Statue — are drawn by the player code, not by an object ID; they are captured with named poses in the <a href=\"#player-forms\">Player forms</a> section below ({_playerForms.Count} forms, {_playerFormPoses} poses, {_playerFormSprites} sprites). "
+						: $"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer and the Tanuki Statue — are drawn by the player code, not by an object ID, so they appear in the sheet as generic player templates (top row of <code>sheet_objects.png</code>, 16×16/16×32) without individual “Tanuki”/“Frog” labels. ") +
 					$"The complete tile atlas, including unseen tiles in red, is <a href=\"chr_coverage.png\"><code>chr_coverage.png</code></a>.</p>");
 				sb.AppendLine($"<details><summary>All {_gameObjects.Count} object types defined by the game data</summary><div class=\"wrap\"><table><thead><tr><th>ID</th><th>Label</th><th>Name</th></tr></thead><tbody>");
 				foreach((int id, string label, string name) in _gameObjects) {
@@ -1125,6 +1228,25 @@ namespace Mesen.HdStudio
 					sb.AppendLine($"<tr><td class=\"n\">${id:X2}</td><td><code>{E(label)}</code></td><td>{E(name)}</td><td>{preview}</td><td class=\"n\">{sprites}</td></tr>");
 				}
 				sb.AppendLine("</tbody></table></div>");
+			}
+
+			//Named player-form atlas: the player is drawn from Player_Suit/Player_Statue/Player_Frame
+			if(_playerForms.Count > 0) {
+				sb.AppendLine("<h2 id=\"player-forms\">Player forms (named sprites)</h2>");
+				sb.AppendLine($"<p>The player is not an object ID: SMB3 draws it from <code>Player_Suit</code>, <code>Player_Statue</code> and <code>Player_Frame</code>. " +
+					$"HD Studio queues each suit through the game's own power-up code, forces the animation frame immediately before <code>Player_Draw</code>, and captures the 8×16 OAM sprites with the exact sprite palette. " +
+					$"<b>{_playerForms.Count}</b> forms, <b>{_playerFormPoses}</b> named poses, <b>{_playerFormSprites}</b> sprites. " +
+					$"Images are in <code>HdStudio/playerforms</code>; the machine-readable list is <a href=\"playerforms/playerforms.json\"><code>playerforms/playerforms.json</code></a>.</p>");
+				foreach(PlayerForm form in _playerForms) {
+					sb.AppendLine($"<h3>{E(form.Name)}</h3>");
+					sb.AppendLine("<div class=\"wrap\" style=\"margin-bottom:12px\">");
+					foreach(PlayerPose pose in form.Poses) {
+						sb.Append($"<figure style=\"display:inline-block;margin:0 12px 12px 0;text-align:center;vertical-align:top\">" +
+							$"<a href=\"playerforms/{E(pose.Png)}\"><img class=\"px\" src=\"playerforms/{E(pose.Png)}\" alt=\"{E(form.Name)} {E(pose.Name)}\" style=\"max-height:128px;max-width:192px\"></a>" +
+							$"<figcaption style=\"font-size:12px;color:var(--muted)\">{E(pose.Name)}</figcaption></figure>");
+					}
+					sb.AppendLine("</div>");
+				}
 			}
 
 			//Background blocks: the scenery to redraw as 16x16 metatiles
@@ -1372,6 +1494,24 @@ namespace Mesen.HdStudio
 			public uint FrameCount;
 			public string TemplateName = "";
 			public List<StudioObject> Variants = new();
+		}
+
+		private class PlayerForm
+		{
+			public int Id;
+			public string Name = "";
+			public int Suit;
+			public List<PlayerPose> Poses = new();
+		}
+
+		private class PlayerPose
+		{
+			public int Code;
+			public string Name = "";
+			public string Png = "";
+			public int Width;
+			public int Height;
+			public int Sprites;
 		}
 	}
 

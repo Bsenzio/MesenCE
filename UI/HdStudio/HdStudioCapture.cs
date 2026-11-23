@@ -33,6 +33,9 @@ namespace Mesen.HdStudio
 	///                     (one run per level, frames per level = --frames, default 900)
 	///   --sweep           With --levels: try to reveal each whole level by moving the player position in RAM
 	///                     (experimental: it works on some games, the level runner is used when it fails)
+	///   --maps            Build full level maps with the game's own loader (needs --disasm; SMB3)
+	///   --playerforms     Capture every SMB3 player form (Small, Super, Fire, Raccoon, Frog, Tanuki,
+	///                     Hammer and Tanuki Statue) with named poses and exact sprite palettes
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
 	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
 	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
@@ -55,6 +58,7 @@ namespace Mesen.HdStudio
 			public bool Levels;
 			public bool Sweep;
 			public bool Maps;
+			public bool PlayerForms;
 			public int SpriteId = -1;
 			public string? DisasmPath;
 			public bool FramesSpecified;
@@ -94,6 +98,11 @@ namespace Mesen.HdStudio
 			if(opt.SpriteId >= 0) {
 				//Internal mode for the sprite atlas: one object per run, no HD recording/report.
 				return HdStudioSpriteAtlas.RunOne(opt.RomPath!, opt.SpriteId, outFolder, Log);
+			}
+
+			if(opt.PlayerForms) {
+				//SMB3-specific: force every player suit and animation frame through the game's drawing code.
+				return HdStudioPlayerAtlas.RunAll(opt.RomPath!, outFolder, ConfigManager.Config.Nes.UserPalette, Log);
 			}
 
 			if(opt.Verify) {
@@ -592,6 +601,7 @@ namespace Mesen.HdStudio
 						case "levels": opt.Levels = true; break;
 						case "sweep": opt.Sweep = true; break;
 						case "maps": opt.Maps = true; break;
+						case "playerforms": opt.PlayerForms = true; break;
 						case "spriteid":
 							if(!int.TryParse(value, out opt.SpriteId) || opt.SpriteId < 0 || opt.SpriteId > 255) {
 								opt.Errors.Add("invalid sprite id (0-255): " + value);
@@ -692,8 +702,9 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--reportonly] [--verify [--shots=4]]");
 			Log("  --maps with --disasm=FOLDER: full level maps as PNG + exact per-level tile usage (uses the game's own level generator).");
+			Log("  --playerforms: SMB3 (USA) only: all eight player forms and their named poses, exact sprite palettes.");
 		}
 
 		private static void Log(string message)

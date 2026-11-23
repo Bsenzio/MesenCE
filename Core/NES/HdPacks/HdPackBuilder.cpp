@@ -436,6 +436,8 @@ void HdPackBuilder::AddKnownLevelTiles()
 	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/maps/sprites_exact.txt"));
 	//Object atlas: exact combinations captured from the sprite RAM of each forced object.
 	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/atlas/atlas_exact.txt"));
+	//Player-form atlas: exact combinations captured by forcing each suit and pose through Player_Draw.
+	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/playerforms/playerforms_exact.txt"));
 }
 
 void HdPackBuilder::AddKnownTileFile(const string& path)
