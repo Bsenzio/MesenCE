@@ -70,6 +70,7 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 | `--log=FILE` | | Also write the messages to a file (needed when the output is redirected: Mesen is a windowed program) |
 | `--generate` | | Fully automatic mode (see above) |
 | `--levels` | | Visit every level using the level select cheats of the cheat database (see below); `--frames` is per level |
+| `--sweep` | | With `--levels`: reveal each whole level by moving the player position in RAM (experimental, see below) |
 | `--reportonly` | | Only regenerate the report from an existing capture |
 | `--verify` | | Check the HD pack instead of capturing (see below) |
 | `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |
@@ -136,6 +137,15 @@ given level ("Start on stage 2-1" = `0400:06` in Batman, "Start on World 3" in S
 `--frames` is **per level** in this mode (default 900). The levels that the database does not know are not visited;
 the sweep keeps the same ROM/pack and can be repeated or combined with a normal `--generate` run (depth in one
 area) because packs are merged. Games without level select codes fall back to the normal exploration.
+
+### Camera sweep (`--sweep`, experimental)
+
+`--levels --sweep` uses `UI/HdStudio/Scripts/explore_sweep.lua` instead of the runner. It looks for the RAM byte
+that holds the player position (the player runs right and then left; only bytes that follow both movements are
+kept), checks the candidate by writing it and looking at the picture, handles 16-bit positions and walks the value
+through the level so the game scrolls and the PPU draws every column. On Batman it currently covers less of the
+cartridge than the runner (5.7 % vs 8.1 %), so it is opt-in; the runner is still the default. The hard part is
+telling the real position from the many copies the games keep in RAM (and from 16-bit fixed-point coordinates).
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)
 
