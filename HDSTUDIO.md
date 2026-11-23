@@ -137,6 +137,22 @@ The 25-ROM validation matrix (18 CHR-ROM + 7 CHR-RAM) is in
 [HDSTUDIO_VALIDATION.md](HDSTUDIO_VALIDATION.md): every CHR-ROM title ended with **100 % of its non-blank CHR
 patterns in the pack**; the CHR-RAM titles honestly report only the tiles that appeared.
 
+## Named object atlas (SMB3, game-specific)
+
+The generic workflow cannot name the objects of an arbitrary game. For SMB3 the disassembly provides `game.xml`
+(196 object IDs) and the RAM addresses of the object slots; `--spriteid=N` (internal, one object per Mesen
+process) loads 1-1, places object N in a free slot at the player's visible position, and captures the sprites
+its own drawing code writes to `Sprite_RAM`. A per-ID timeout isolates objects that need a specific state or
+hang. The images are rendered with CHR + the exact sprite palette into `HdStudio/atlas/` and listed in
+`atlas.json`; the report shows an **Object atlas (named sprites)** table with all 196 IDs, names and the
+captured images. IDs that need a special state (doors, controllers, some bosses’ phases) show “no visible
+sprite in the forced state” instead of a wrong image. Measured on SMB3: **149 of 196 object types** produced
+sprites (3,370 sprite entries, **339 exact pattern+palette combinations** added to the pack; all 339 present).
+The 47 without sprites are 7 world-map objects, invisible objects (hidden whistle, door, lift, currents), and
+event/cannon controllers that spawn other objects instead of drawing themselves. Player forms (Tanuki, Frog,
+Hammer…) are not object IDs; they still appear as generic player templates in `sheet_objects.png` and remain a
+separate player-form atlas.
+
 **What “100 %” does not mean:** it is tile/palette coverage, not a named bestiary. `sheet_objects.png`
 contains the metasprites detected in the recording (for SMB3: 71 groups / 464 variants); the game data
 defines 196 object types. Enemies/forms that never appeared are still replaced in game (their tiles are in

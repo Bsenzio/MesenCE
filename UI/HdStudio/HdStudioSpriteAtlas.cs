@@ -91,7 +91,9 @@ local frame = 0
 local armed = false
 local entered = false
 local combos = {{}}
+local sprites = {{}}
 local comboCount = 0
+local spriteCount = 0
 local forcedFrame = -1
 local wrote = false
 
@@ -109,9 +111,13 @@ end
 
 local function forceObject()
   clearObjects()
+  --Place the object next to the player, inside the visible camera area. A fixed Y=96
+  --can be outside the scroll window and the object then never draws.
+  local px, py = r(0x0090), r(0x00A2)
+  local pxh, pyh = r(0x0075), r(0x0087)
   w(0x0661, 1)
   w(0x0671, OBJECT_ID)
-  w(0x0091, 128); w(0x00A3, 96); w(0x0076, 0); w(0x0088, 0)
+  w(0x0091, (px + 32) % 256); w(0x00A3, py); w(0x0076, pxh); w(0x0088, pyh)
   w(0x0669, 0); w(0x0679, 0)
 end
 
@@ -141,6 +147,11 @@ local function capture()
           comboCount = comboCount + 1
           combos[key] = {{ pattern = pattern, palette = palette }}
         end
+        local skey = key .. ':' .. x .. ':' .. y .. ':' .. attr
+        if not sprites[skey] then
+          spriteCount = spriteCount + 1
+          sprites[skey] = {{ pattern = pattern, palette = palette, x = x, y = y, attr = attr }}
+        end
       end
     end
   end
@@ -155,12 +166,12 @@ local function writeCsv()
   if wrote then return end
   wrote = true
   local b = io.open(OUT, 'w')
-  b:write('objectId,pattern,palette\n')
-  for _, c in pairs(combos) do
-    b:write(string.format('%d,%X,%08X\n', OBJECT_ID, c.pattern, c.palette))
+  b:write('objectId,pattern,palette,x,y,attr\n')
+  for _, s in pairs(sprites) do
+    b:write(string.format('%d,%X,%08X,%d,%d,%d\n', OBJECT_ID, s.pattern, s.palette, s.x, s.y, s.attr))
   end
   b:close()
-  emu.log('atlas id=' .. OBJECT_ID .. ' combos=' .. comboCount)
+  emu.log('atlas id=' .. OBJECT_ID .. ' combos=' .. comboCount .. ' sprites=' .. spriteCount)
   emu.stop()
 end
 

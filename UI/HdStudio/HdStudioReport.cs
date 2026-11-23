@@ -56,6 +56,9 @@ namespace Mesen.HdStudio
 		private List<string> _mapImages = new();
 		private List<(string Name, string Png, int Patterns, int Tileset)> _mapIndex = new();
 		private List<(int Id, string Label, string Name)> _gameObjects = new();
+		private List<(int Id, string Label, string Name, string Png, int Width, int Height, int Sprites)> _objectAtlas = new();
+		private HashSet<(string Tile, uint Palette)> _atlasExactTiles = new();
+		private int _atlasExactInPack = 0;
 
 		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log, string? disasmPath = null)
 		{
@@ -86,10 +89,12 @@ namespace Mesen.HdStudio
 			ReadLevelsVisited();
 			ReadLevelMaps();
 			ReadSpriteSweep();
+			ReadObjectAtlas();
 			ReadHiresFile();
 			_mapExactInPack = _exactLevelTiles.Count(t => _packTiles.Contains(t));
 			_mapExactPatternsInPack = _exactLevelTiles.Where(t => _packTiles.Contains(t)).Select(t => t.Tile).Distinct().Count();
 			_spriteExactInPack = _exactSpriteTiles.Count(t => _packTiles.Contains(t));
+			_atlasExactInPack = _atlasExactTiles.Count(t => _packTiles.Contains(t));
 			ReadTileUsage();
 			_seenSpriteCombos = _tileUsage.Keys.Count(k => IsSpritePalette(k.Palette));
 			_seenBackgroundCombos = _tileUsage.Count - _seenSpriteCombos;
@@ -247,6 +252,48 @@ namespace Mesen.HdStudio
 				if(parts.Length >= 2 && TryParseHex(parts[1], out uint palette)) {
 					_exactSpriteTiles.Add((NormalizeTileKey(parts[0]), palette));
 				}
+			}
+		}
+
+		/// <summary>
+		/// Named object atlas: images captured by forcing each object ID through the game's drawing code.
+		/// </summary>
+		private void ReadObjectAtlas()
+		{
+			string path = Path.Combine(_studioFolder, "atlas", "atlas.json");
+			if(!File.Exists(path)) {
+				return;
+			}
+			try {
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+				if(!doc.RootElement.TryGetProperty("objects", out JsonElement list)) {
+					return;
+				}
+				foreach(JsonElement obj in list.EnumerateArray()) {
+					int id = obj.TryGetProperty("id", out JsonElement i) ? i.GetInt32() : 0;
+					string label = obj.TryGetProperty("label", out JsonElement l) ? l.GetString() ?? "" : "";
+					string name = obj.TryGetProperty("name", out JsonElement n) ? n.GetString() ?? "" : "";
+					string png = obj.TryGetProperty("png", out JsonElement p) ? p.GetString() ?? "" : "";
+					int width = obj.TryGetProperty("width", out JsonElement w) ? w.GetInt32() : 0;
+					int height = obj.TryGetProperty("height", out JsonElement h) ? h.GetInt32() : 0;
+					int sprites = obj.TryGetProperty("sprites", out JsonElement s) ? s.GetInt32() : 0;
+					_objectAtlas.Add((id, label, name, png, width, height, sprites));
+				}
+
+				string exactPath = Path.Combine(_studioFolder, "atlas", "atlas_exact.txt");
+				if(File.Exists(exactPath)) {
+					foreach(string line in File.ReadAllLines(exactPath)) {
+						if(line.Length == 0 || line[0] == '#') {
+							continue;
+						}
+						string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+						if(parts.Length >= 2 && TryParseHex(parts[1], out uint palette)) {
+							_atlasExactTiles.Add((NormalizeTileKey(parts[0]), palette));
+						}
+					}
+				}
+			} catch(Exception ex) {
+				_log("Object atlas: " + ex.Message);
 			}
 		}
 
@@ -880,6 +927,28 @@ namespace Mesen.HdStudio
 				json.WriteEndArray();
 			}
 
+			if(_objectAtlas.Count > 0) {
+				json.WriteStartArray("objectAtlas");
+				foreach((int id, string label, string name, string png, int width, int height, int sprites) in _objectAtlas) {
+					json.WriteStartObject();
+					json.WriteNumber("id", id);
+					json.WriteString("label", label);
+					json.WriteString("name", name);
+					json.WriteString("png", png);
+					json.WriteNumber("width", width);
+					json.WriteNumber("height", height);
+					json.WriteNumber("sprites", sprites);
+					json.WriteEndObject();
+				}
+				json.WriteEndArray();
+				json.WriteStartObject("objectAtlasSummary");
+				json.WriteNumber("objects", _objectAtlas.Count);
+				json.WriteNumber("objectsWithSprites", _objectAtlas.Count(o => o.Sprites > 0));
+				json.WriteNumber("exactCombos", _atlasExactTiles.Count);
+				json.WriteNumber("exactCombosInPack", _atlasExactInPack);
+				json.WriteEndObject();
+			}
+
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
 				json.WriteStartObject();
@@ -951,7 +1020,11 @@ namespace Mesen.HdStudio
 				double spriteExactPct = 100.0 * _spriteExactInPack / _exactSpriteTiles.Count;
 				sb.AppendLine($"<div class=\"stat\"><b>{spriteExactPct:0.0}%</b><span>of the exact sprite (pattern+palette) sweep is in the pack ({_spriteExactInPack:N0} of {_exactSpriteTiles.Count:N0}, covering all seen sprite patterns with all 42 real sprite palettes)</span></div>");
 			}
-			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objects (metasprites) detected</span></div>");
+			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objects (metasprites) detected while playing</span></div>");
+			if(_objectAtlas.Count > 0) {
+				int atlasSprites = _objectAtlas.Count(o => o.Sprites > 0);
+				sb.AppendLine($"<div class=\"stat\"><b>{atlasSprites:N0}</b><span>of {_objectAtlas.Count:N0} game object types drawn by the object atlas</span></div>");
+			}
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
 				sb.AppendLine($"<div class=\"stat\"><b>{coverage:0.0}%</b><span>of the cartridge tiles seen while playing ({seen.Count:N0} of {nonBlank:N0})</span></div>");
@@ -984,6 +1057,10 @@ namespace Mesen.HdStudio
 				double spPct = 100.0 * _spriteExactInPack / _exactSpriteTiles.Count;
 				sb.AppendLine($"<tr><td><b>Sprites</b> (exact pattern + palette sweep)</td><td class=\"n\">{_spriteExactInPack:N0}</td><td class=\"n\">{_exactSpriteTiles.Count:N0}</td><td class=\"n\"><b>{spPct:0.0}%</b></td><td>Every seen sprite pattern with all 42 real sprite palettes; {_seenSpriteCombos:N0} combinations seen on screen.</td></tr>");
 				sb.AppendLine($"<tr><td><b>Sprites</b> (wildcard fallback)</td><td class=\"n\">{_packDefaultTiles:N0}</td><td class=\"n\">{_packDefaultTiles:N0}</td><td class=\"n\"><b>100.0%</b></td><td>Any remaining sprite palette uses the representative image (all sprites appear in HD).</td></tr>");
+			}
+			if(_atlasExactTiles.Count > 0) {
+				double atlasPct = 100.0 * _atlasExactInPack / _atlasExactTiles.Count;
+				sb.AppendLine($"<tr><td><b>Object atlas</b> (exact pattern + palette)</td><td class=\"n\">{_atlasExactInPack:N0}</td><td class=\"n\">{_atlasExactTiles.Count:N0}</td><td class=\"n\"><b>{atlasPct:0.0}%</b></td><td>{_objectAtlas.Count(o => o.Sprites > 0):N0} of {_objectAtlas.Count:N0} object types captured with their sprites.</td></tr>");
 			}
 			if(_rom.HasChrRom) {
 				int inPack = InPackChrTiles().Count;
@@ -1030,6 +1107,24 @@ namespace Mesen.HdStudio
 					sb.AppendLine($"<tr><td class=\"n\">${id:X2}</td><td><code>{E(label)}</code></td><td>{E(name)}</td></tr>");
 				}
 				sb.AppendLine("</tbody></table></div></details>");
+			}
+
+			//Named object atlas: one row per game object, with the sprite captured by forcing its ID
+			if(_objectAtlas.Count > 0) {
+				int withSprites = _objectAtlas.Count(o => o.Sprites > 0);
+				sb.AppendLine("<h2>Object atlas (named sprites)</h2>");
+				sb.AppendLine($"<p>Each object ID was forced into a free object slot next to the player and drawn by the game's own code. " +
+					$"<b>{withSprites}</b> of <b>{_objectAtlas.Count}</b> object types produced visible sprites; the rest need a specific state/parameter or are not standalone. " +
+					$"The atlas contributed <b>{_atlasExactTiles.Count}</b> exact pattern+palette combinations; <b>{_atlasExactInPack}</b> are in the pack. " +
+					$"Images are in <code>HdStudio/atlas</code>; the machine-readable list is <a href=\"atlas/atlas.json\"><code>atlas/atlas.json</code></a>.</p>");
+				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>ID</th><th>Label</th><th>Name</th><th>Sprite</th><th>Sprites</th></tr></thead><tbody>");
+				foreach((int id, string label, string name, string png, int width, int height, int sprites) in _objectAtlas) {
+					string preview = png.Length > 0
+						? $"<a href=\"atlas/{E(png)}\"><img class=\"px\" src=\"atlas/{E(png)}\" alt=\"{E(name)}\" style=\"max-height:64px;max-width:160px\"></a>"
+						: "<span class=\"muted\">no visible sprite in the forced state</span>";
+					sb.AppendLine($"<tr><td class=\"n\">${id:X2}</td><td><code>{E(label)}</code></td><td>{E(name)}</td><td>{preview}</td><td class=\"n\">{sprites}</td></tr>");
+				}
+				sb.AppendLine("</tbody></table></div>");
 			}
 
 			//Background blocks: the scenery to redraw as 16x16 metatiles

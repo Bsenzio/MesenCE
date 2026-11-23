@@ -434,6 +434,8 @@ void HdPackBuilder::AddKnownLevelTiles()
 	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/maps/tiles_exact.txt"));
 	//Sprite atlas / palette sweep: exact sprite patterns with the palette sets used by the levels.
 	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/maps/sprites_exact.txt"));
+	//Object atlas: exact combinations captured from the sprite RAM of each forced object.
+	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/atlas/atlas_exact.txt"));
 }
 
 void HdPackBuilder::AddKnownTileFile(const string& path)
