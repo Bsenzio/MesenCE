@@ -431,7 +431,13 @@ void HdPackBuilder::AddKnownLevelTiles()
 	//--maps runs the game's own level loader and writes the exact (pattern, palette) pairs that
 	//the levels place. Adding them here means every level background tile has the palette the
 	//game really uses, even if the recording never showed that level (no guessed colors).
-	string path = FolderUtilities::CombinePath(_saveFolder, "HdStudio/maps/tiles_exact.txt");
+	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/maps/tiles_exact.txt"));
+	//Sprite atlas / palette sweep: exact sprite patterns with the palette sets used by the levels.
+	AddKnownTileFile(FolderUtilities::CombinePath(_saveFolder, "HdStudio/maps/sprites_exact.txt"));
+}
+
+void HdPackBuilder::AddKnownTileFile(const string& path)
+{
 	ifstream file(path);
 	if(!file) {
 		return;

@@ -233,10 +233,13 @@ pattern as `<tile>...,Y` (a *DefaultTile*): Mesen registers it under a wildcard 
 exact `(pattern, palette)` entry matches. SMB3 ends with **7,831 wildcard patterns** (all patterns with an image),
 while exact entries always take precedence.
 
-This guarantees that every sprite appears in HD. SMB3 measurement after the update: **4,700 sprite combinations**
-in the pack, **587 seen with their exact palette**, and **7,831 wildcard patterns**; the report has a dedicated
-Sprites section and a cartridge card that now reads **100.0 % of the non-blank CHR tiles in the pack** (7,720),
-with the 6,763 never-seen tiles explicitly marked as using the wildcard colors.
+This guarantees that every sprite appears in HD. SMB3 measurement after the update: **23,361 sprite combinations**
+in the pack, **587 seen with their exact palette**, and **7,873 wildcard patterns**. A **sprite palette sweep**
+takes every sprite pattern seen on screen or in an object template (454 patterns) and adds it with **all 42 real
+sprite palettes** of the 14 tilesets: **19,068 exact combinations, 100 % present in the pack**. The report has a
+dedicated Sprites section and cards that read **100 % of the exact sprite sweep**, **100 % of the exact background
+combinations** (4,505 / 4,505) and **100.0 % of the non-blank CHR tiles in the pack** (7,720); the 6,763
+never-seen tiles are explicitly marked as using the wildcard colors.
 
 The caveat is color: a sprite pattern whose exact palette was never seen uses the representative image, which
 may have the wrong colors. The next step for sprites is the **object atlas**: force every object ID/frame through

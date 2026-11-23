@@ -46,8 +46,10 @@ namespace Mesen.HdStudio
 		private int _mapSeenPatterns = 0;
 		private double _mapCoverage = 0;
 		private HashSet<(string Tile, uint Palette)> _exactLevelTiles = new();
+		private HashSet<(string Tile, uint Palette)> _exactSpriteTiles = new();
 		private int _mapExactInPack = 0;
 		private int _mapExactPatternsInPack = 0;
+		private int _spriteExactInPack = 0;
 		private int _seenSpriteCombos = 0;
 		private int _seenBackgroundCombos = 0;
 		private List<string> _mapImages = new();
@@ -80,9 +82,11 @@ namespace Mesen.HdStudio
 			ReadPrgPalettes();
 			ReadLevelsVisited();
 			ReadLevelMaps();
+			ReadSpriteSweep();
 			ReadHiresFile();
 			_mapExactInPack = _exactLevelTiles.Count(t => _packTiles.Contains(t));
 			_mapExactPatternsInPack = _exactLevelTiles.Where(t => _packTiles.Contains(t)).Select(t => t.Tile).Distinct().Count();
+			_spriteExactInPack = _exactSpriteTiles.Count(t => _packTiles.Contains(t));
 			ReadTileUsage();
 			_seenSpriteCombos = _tileUsage.Keys.Count(k => IsSpritePalette(k.Palette));
 			_seenBackgroundCombos = _tileUsage.Count - _seenSpriteCombos;
@@ -190,6 +194,27 @@ namespace Mesen.HdStudio
 				}
 			} catch(Exception ex) {
 				_log("Level maps: maps.json could not be read: " + ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// Sprite sweep written next to the level maps: every seen sprite pattern with every real
+		/// sprite palette. The pack should contain all of these exact (pattern + palette) keys.
+		/// </summary>
+		private void ReadSpriteSweep()
+		{
+			string path = Path.Combine(_studioFolder, "maps", "sprites_exact.txt");
+			if(!File.Exists(path)) {
+				return;
+			}
+			foreach(string line in File.ReadAllLines(path)) {
+				if(line.Length == 0 || line[0] == '#') {
+					continue;
+				}
+				string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+				if(parts.Length >= 2 && TryParseHex(parts[1], out uint palette)) {
+					_exactSpriteTiles.Add((NormalizeTileKey(parts[0]), palette));
+				}
 			}
 		}
 
@@ -786,6 +811,15 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
+			if(_exactSpriteTiles.Count > 0) {
+				json.WriteStartObject("sprites");
+				json.WriteNumber("exactCombos", _exactSpriteTiles.Count);
+				json.WriteNumber("exactCombosInPack", _spriteExactInPack);
+				json.WriteNumber("seenCombos", _seenSpriteCombos);
+				json.WriteNumber("wildcardPatterns", _packDefaultTiles);
+				json.WriteEndObject();
+			}
+
 			if(_disasm != null && _disasm.Error == null) {
 				int referenced = _disasm.ReferencedTiles.Count;
 				int captured = _disasm.ReferencedTiles.Count(t => seen.Contains(t));
@@ -869,6 +903,10 @@ namespace Mesen.HdStudio
 			if(spriteCombos > 0) {
 				sb.AppendLine($"<div class=\"stat\"><b>{spriteCombos:N0}</b><span>sprite combinations in the pack ({_seenSpriteCombos:N0} seen with their exact palette; every pattern also has a wildcard fallback)</span></div>");
 			}
+			if(_exactSpriteTiles.Count > 0) {
+				double spriteExactPct = 100.0 * _spriteExactInPack / _exactSpriteTiles.Count;
+				sb.AppendLine($"<div class=\"stat\"><b>{spriteExactPct:0.0}%</b><span>of the exact sprite (pattern+palette) sweep is in the pack ({_spriteExactInPack:N0} of {_exactSpriteTiles.Count:N0}, covering all seen sprite patterns with all 42 real sprite palettes)</span></div>");
+			}
 			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objects (metasprites) detected</span></div>");
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
@@ -927,9 +965,10 @@ namespace Mesen.HdStudio
 			//Sprites: exact seen combinations + the wildcard fallback that covers the rest
 			if(spriteCombos > 0) {
 				sb.AppendLine("<h2>Sprites</h2>");
-				sb.AppendLine($"<p>The pack has <b>{spriteCombos:N0}</b> sprite (pattern + palette) entries. <b>{_seenSpriteCombos:N0}</b> were seen on screen with their exact palette; " +
-					$"the remaining sprite patterns are covered by the <b>{_packDefaultTiles:N0}</b> wildcard <code>DefaultTile=Y</code> entries, so every sprite can be replaced even if its exact palette was never captured. " +
-					"The object atlas (forcing every object ID through the game's drawing code) is the next step to turn the wildcard colors into exact colors for the unseen objects.</p>");
+				sb.AppendLine($"<p>The pack has <b>{spriteCombos:N0}</b> sprite (pattern + palette) entries. <b>{_seenSpriteCombos:N0}</b> were seen on screen with their exact palette, and the sprite sweep adds " +
+					$"<b>{_exactSpriteTiles.Count:N0}</b> exact combinations (every seen sprite pattern with all 42 real sprite palettes; <b>{_spriteExactInPack:N0}</b> present in the pack). " +
+					$"The remaining sprite patterns are covered by the <b>{_packDefaultTiles:N0}</b> wildcard <code>DefaultTile=Y</code> entries, so every sprite can be replaced even if its exact palette was never captured. " +
+					"The object atlas (forcing every object ID through the game's drawing code) is the next step for exact colors on sprite patterns that were never seen at all.</p>");
 			}
 
 			//Data-driven check: exact level maps built by the game's own level loader (--maps)
