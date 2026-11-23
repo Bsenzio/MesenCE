@@ -1,20 +1,23 @@
 -- HD Studio camera sweep: reveals a whole level without playing it.
 --
--- 1) Gets into the game (title screen / menus) by pressing Start when the picture is still.
--- 2) Finds the RAM byte that holds the player position: the player runs right and then left, and
---    the byte must go up and then down (that removes counters, pointers and timers).
--- 3) Verifies the candidate by writing it and looking at the picture two frames later. If the game
---    overwrites the value immediately (it was a copy, not the real variable) it is discarded.
--- 4) Teleports the player forward in steps so the game scrolls and loads every column of the level.
---    Every frame the PPU draws is recorded by the HD pack builder.
--- 5) If no usable address is found, it falls back to running right (the level runner).
---
--- Nothing here is game specific: the address is found by observation, so it works on any NES game.
+-- How it works (nothing here is game specific):
+--  1) Gets into the game (title screen / menus) pressing Start when the picture is still.
+--  2) Finds the RAM bytes that hold the player position: the player runs right and then left, and
+--     only the bytes that follow both movements are kept (that removes counters, timers, pointers).
+--  3) Scores every candidate: it moves the value a few steps and counts how many different screens
+--     appear. Copies of the position (OAM shadows, velocities...) score 0; the real position or the
+--     camera variable scores high. Both 8-bit and 16-bit (little endian) positions are tried.
+--  4) Walks the best one through the whole level, so the game scrolls and the PPU draws every column.
+--     Every drawn frame is recorded by the HD pack builder.
+--  5) If nothing works, it falls back to running right (the level runner).
 
 local SAMPLE_STEP = 61          -- sample 1 pixel out of 61 (~1000 pixels) for the screen hash
-local STILL_CHECKS = 6          -- 6 checks x 10 frames = 1 second without movement
+local STILL_CHECKS = 6
 local STILL_THRESHOLD = 0.05
-local MAX_CANDIDATES = 16
+local MAX_CANDIDATES = 5
+local MINI_STEPS = 10
+local MINI_FRAMES = 2
+local MAX_SCAN_CANDIDATES = 12
 
 local frame = 0
 local lastEmuFrame = -1
@@ -23,6 +26,7 @@ local stateFrames = 0
 
 local previousSample = nil
 local stillChecks = 0
+local movingChecks = 0
 local tapButton = nil
 local tapFramesLeft = 0
 local menuCooldown = 0
@@ -31,23 +35,19 @@ local useStartNext = true
 local snapA, snapB, snapC
 local candidates = {}
 local candidateIndex = 1
-local testDeltas = { 1, 2, 4, 8, 16, -1, -2, -4, -8, -16 }
-local testDeltaIndex = 1
-local baseValue = 0
-local bestAddress = nil
-local test16Offsets = { -1, 0 }
-local test16Index = 1
-local test16Base = 0
-local bestAddress16 = nil
-local sweep16Base = 0
-local sweep16Value = 0
-local sweepBase = 0
-local sweepDirection = 1
-local sweepValue = 0
-local lastHash = 0
-local unchangedSteps = 0
-local distinctScreens = 0
-local triedSweeps = 0
+
+local variants = {}             -- { mode = "byte"|"word", addr = n, base = v, direction = +1|-1 }
+local variantIndex = 1
+local bestVariant = nil
+local bestScore = 0
+local miniStep = 0
+local miniDistinct = 0
+local miniBands = nil
+
+local fullStep = 0
+local fullDistinct = 0
+local fullBands = nil
+local fullUnchanged = 0
 
 local function log(msg)
   emu.log("sweep: " .. msg)
@@ -67,15 +67,30 @@ local function readRam(addr)
 end
 
 local function writeRam(addr, value)
-  emu.write(addr, value, emu.memType.nesInternalRam)
+  emu.write(addr, value % 256, emu.memType.nesInternalRam)
 end
 
-local function readRam16(addr)
-  return readRam(addr) | (readRam(addr + 1) << 8)
+local function readValue(v)
+  if v.mode == "word" then
+    return readRam(v.addr) | (readRam(v.addr + 1) << 8)
+  end
+  return readRam(v.addr)
 end
 
-local function writeRam16(addr, value)
-  emu.write16(addr, value % 65536, emu.memType.nesInternalRam)
+local function writeValue(v, value)
+  if v.mode == "word" then
+    emu.write16(v.addr, value % 65536, emu.memType.nesInternalRam)
+  else
+    writeRam(v.addr, value % 256)
+  end
+end
+
+local function variantStride(v)
+  return v.mode == "word" and 192 or 8
+end
+
+local function variantLimit(v)
+  return v.mode == "word" and 64 or 120
 end
 
 local function takeSample()
@@ -85,6 +100,55 @@ local function takeSample()
     sample[#sample + 1] = buffer[i]
   end
   return sample
+end
+
+-- The screen buffer is 256x240 (the NES resolution): three rows are enough to measure a
+-- horizontal scroll. A real scroll keeps the same pixels, shifted; a glitch does not.
+local SCREEN_WIDTH = 256
+local BAND_ROWS = { 100, 120, 140 }
+
+local function readBands()
+  local buffer = emu.getScreenBuffer()
+  local bands = {}
+  for i, y in ipairs(BAND_ROWS) do
+    local row = {}
+    local offset = (y - 1) * SCREEN_WIDTH
+    for x = 1, SCREEN_WIDTH do
+      row[x] = buffer[offset + x]
+    end
+    bands[i] = row
+  end
+  return bands
+end
+
+-- Returns the horizontal shift (in pixels) that best aligns two frames and how well they match
+local function detectScroll(previous, current)
+  local bestShift, bestMatch, total = 0, 0, 0
+  for shift = -12, 12 do
+    local match, compared = 0, 0
+    for _, row in ipairs(BAND_ROWS) do
+      local prevRow = previous[_]
+      local nowRow = current[_]
+      for x = 1, SCREEN_WIDTH do
+        local other = x - shift
+        if other >= 1 and other <= SCREEN_WIDTH then
+          compared = compared + 1
+          if nowRow[x] == prevRow[other] then
+            match = match + 1
+          end
+        end
+      end
+    end
+    if compared > 0 then
+      local ratio = match / compared
+      if ratio > bestMatch then
+        bestMatch = ratio
+        bestShift = shift
+      end
+    end
+    total = total + 1
+  end
+  return bestShift, bestMatch
 end
 
 local previousOam = nil
@@ -115,8 +179,10 @@ local function updateStillness()
     end
     if not moved and changed / #sample < STILL_THRESHOLD then
       stillChecks = stillChecks + 1
+      movingChecks = math.max(0, movingChecks - 1)
     else
       stillChecks = 0
+      movingChecks = movingChecks + 1
     end
   end
   previousSample = sample
@@ -128,15 +194,10 @@ local function resetState()
   snapA, snapB, snapC = nil, nil, nil
   candidates = {}
   candidateIndex = 1
-  baseValue = 0
-  bestAddress = nil
-  sweepBase = 0
-  sweepDirection = 1
-  sweepValue = 0
-  lastHash = 0
-  unchangedSteps = 0
-  distinctScreens = 0
-  triedSweeps = 0
+  variants = {}
+  variantIndex = 1
+  bestVariant = nil
+  bestScore = 0
   stillChecks = 0
   previousSample = nil
   previousOam = nil
@@ -150,7 +211,6 @@ local function snapshot()
   return t
 end
 
--- The player went right (A->B) and then left (B->C): keep the bytes that followed that movement
 local function findCandidates()
   candidates = {}
   for addr = 0, 0x7FF do
@@ -169,8 +229,8 @@ local function findCandidates()
     return x.addr > y.addr
   end)
 
-  if #candidates > MAX_CANDIDATES then
-    for i = #candidates, MAX_CANDIDATES + 1, -1 do
+  if #candidates > MAX_SCAN_CANDIDATES then
+    for i = #candidates, MAX_SCAN_CANDIDATES + 1, -1 do
       table.remove(candidates, i)
     end
   end
@@ -178,60 +238,114 @@ local function findCandidates()
   local parts = {}
   for i, c in ipairs(candidates) do
     parts[#parts + 1] = string.format("$%04X(%d)", c.addr, c.score)
-    if i >= 8 then
+    if i >= 6 then
       break
     end
   end
   log(string.format("%d candidates: %s", #candidates, table.concat(parts, " ")))
 end
 
-local function beginTest()
-  if candidateIndex > #candidates then
-    log("no usable address, falling back to running right")
-    state = "fallback"
-    stateFrames = 0
-    return
+-- Build the variants to score: the byte itself and the 16-bit value it belongs to, both directions
+local function buildVariants()
+  variants = {}
+  for i = 1, math.min(#candidates, MAX_CANDIDATES) do
+    local addr = candidates[i].addr
+    for _, direction in ipairs({ 1, -1 }) do
+      variants[#variants + 1] = { mode = "byte", addr = addr, direction = direction }
+      if addr >= 1 then
+        variants[#variants + 1] = { mode = "word", addr = addr - 1, direction = direction }
+      end
+      variants[#variants + 1] = { mode = "word", addr = addr, direction = direction }
+    end
+  end
+  variantIndex = 1
+  miniStep = 0
+  miniDistinct = 0
+  miniBands = nil
+end
+
+local function describe(v)
+  return string.format("%s $%04X%+d", v.mode, v.addr, v.direction)
+end
+
+-- Scores the current variant: moves it MINI_STEPS times and counts how many times the picture
+-- really scrolled (a shifted copy of the previous frame), not just changed (glitch/corruption)
+local function scoreVariant()
+  local v = variants[variantIndex]
+  if miniStep == 0 then
+    v.base = readValue(v)
+    if v.mode == "word" and v.base > 16384 then
+      -- Too large to be a position in the level: keep it as a candidate but expect 0
+      v.suspicious = true
+    end
+    miniBands = readBands()
+    miniDistinct = 0
+    log(string.format("scoring %s (base %d)", describe(v), v.base))
   end
 
-  local addr = candidates[candidateIndex].addr
-  baseValue = snapB[addr]
-  lastHash = screenHash()
-  testDeltaIndex = 1
-  log(string.format("trying $%04X (value %d)", addr, baseValue))
-  state = "test"
-  stateFrames = 0
+  miniStep = miniStep + 1
+  writeValue(v, v.base + v.direction * miniStep * variantStride(v))
+  local bands = readBands()
+  local shift, match = detectScroll(miniBands, bands)
+  if shift ~= 0 and match >= 0.88 then
+    miniDistinct = miniDistinct + 1
+  end
+  if match >= 0.5 then
+    miniBands = bands
+  end
+
+  if miniStep >= MINI_STEPS then
+    writeValue(v, v.base)
+    local penalty = (v.mode == "word" and v.base > 16384) and 100 or 0
+    log(string.format("  %s -> %d scrolls (base %d)", describe(v), miniDistinct, v.base))
+    if miniDistinct > bestScore and penalty == 0 then
+      bestScore = miniDistinct
+      bestVariant = { mode = v.mode, addr = v.addr, direction = v.direction, base = v.base }
+    end
+    variantIndex = variantIndex + 1
+    miniStep = 0
+    if variantIndex > #variants then
+      if bestVariant == nil or bestScore < 2 then
+        log("no address scrolls the picture, falling back to running right")
+        state = "fallback"
+        stateFrames = 0
+      else
+        -- The game may have moved the value while the other candidates were scored: take it again
+        bestVariant.base = readValue(bestVariant)
+        log(string.format("best: %s (%d screens, base now %d), sweeping the level",
+          describe(bestVariant), bestScore, bestVariant.base))
+        fullStep = 0
+        fullDistinct = 0
+        fullUnchanged = 0
+        fullBands = readBands()
+        state = "full"
+        stateFrames = 0
+      end
+    end
+  end
 end
 
-local function acceptSweep(direction)
-  bestAddress = candidates[candidateIndex].addr
-  sweepBase = baseValue
-  sweepDirection = direction
-  sweepValue = 0
-  distinctScreens = 0
-  unchangedSteps = 0
-  lastHash = screenHash()
-  log(string.format("$%04X works (direction %+d): looking for a 16-bit position", bestAddress, direction))
-
-  -- A 16-bit player position ($xx low byte, $xx+1 high byte) needs to be moved in one piece:
-  -- moving only the low byte wraps every 256 pixels and the level stops scrolling.
-  test16Offsets = { -1, 0 }
-  test16Index = 1
-  state = "test16"
-  stateFrames = 0
+-- Menus: move the cursor to the top option and press Start (the runner does the same: some games
+-- show a password screen if the cursor is left on the second option)
+local queue = {}
+local function push(buttons, frames)
+  queue[#queue + 1] = { b = buttons, f = frames }
 end
 
-local function pushMenuTap()
-  menuCooldown = 40
+local function pushMenuActions()
+  menuCooldown = 60
   stillChecks = 0
-  tapButton = useStartNext and "start" or "a"
-  useStartNext = not useStartNext
-  tapFramesLeft = 6
+  push({ up = true }, 5)
+  push({}, 8)
+  push({ up = true }, 5)
+  push({}, 8)
+  push({ start = true }, 6)
+  push({}, 40)
 end
 
 local function onInputPolled()
   frame = frame + 1
 
-  -- A reset (the level sweep does one per level) restarts the whole search
   local emuFrame = emu.getState().frameCount or 0
   if emuFrame < lastEmuFrame then
     resetState()
@@ -253,13 +367,24 @@ local function onInputPolled()
 
   stateFrames = stateFrames + 1
 
+  if #queue > 0 then
+    local step = queue[1]
+    step.f = step.f - 1
+    if step.f <= 0 then
+      table.remove(queue, 1)
+    end
+    return emu.setInput(step.b, 0)
+  end
+
   if state == "menu" then
     if stillChecks >= STILL_CHECKS and menuCooldown == 0 then
-      pushMenuTap()
+      pushMenuActions()
     else
       emu.setInput({ right = true }, 0)
     end
-    if stateFrames > 900 then
+    -- Start looking for the position only once the game is clearly moving (gameplay, not menus)
+    if movingChecks >= 6 or stateFrames > 1800 then
+      log(string.format("gameplay detected after %d frames (moving=%d)", stateFrames, movingChecks))
       snapA = snapshot()
       state = "probeRight"
       stateFrames = 0
@@ -278,128 +403,44 @@ local function onInputPolled()
     if stateFrames >= 25 then
       snapC = snapshot()
       findCandidates()
-      candidateIndex = 1
-      beginTest()
+      buildVariants()
+      state = "score"
+      stateFrames = 0
     end
 
-  elseif state == "test" then
-    -- Try small moves in both directions: a big jump can be clamped by the game (level bounds)
-    -- or overflow a 16-bit coordinate, and then the picture never changes.
-    local addr = candidates[candidateIndex].addr
-    local delta = testDeltas[testDeltaIndex]
-    if delta == nil then
-      log(string.format("$%04X discarded", addr))
-      writeRam(addr, baseValue)
-      candidateIndex = candidateIndex + 1
-      testDeltaIndex = 1
-      beginTest()
-    elseif stateFrames == 1 then
-      writeRam(addr, (baseValue + delta) % 256)
-      emu.setInput({}, 0)
-    elseif stateFrames == 3 then
-      if screenHash() ~= lastHash then
-        acceptSweep(delta > 0 and 1 or -1)
-      else
-        writeRam(addr, baseValue)
-        testDeltaIndex = testDeltaIndex + 1
-        stateFrames = 0
-      end
-    else
-      emu.setInput({}, 0)
+  elseif state == "score" then
+    -- One write every MINI_FRAMES frames, so the game has time to react
+    if stateFrames % MINI_FRAMES == 1 then
+      scoreVariant()
     end
+    emu.setInput({}, 0)
 
-  elseif state == "test16" then
-    local a = bestAddress + test16Offsets[test16Index]
-    if stateFrames == 1 then
-      test16Base = readRam16(a)
-      writeRam16(a, test16Base + 768)
-      emu.setInput({}, 0)
-    elseif stateFrames == 4 then
-      if screenHash() ~= lastHash then
-        log(string.format("$%04X is a working 16-bit position (base %d): sweeping", a, test16Base))
-        bestAddress16 = a
-        sweep16Base = test16Base
-        sweep16Value = 0
-        distinctScreens = 0
-        unchangedSteps = 0
-        lastHash = screenHash()
-        state = "sweep16"
-        stateFrames = 0
-      else
-        writeRam16(a, test16Base)
-        test16Index = test16Index + 1
-        if test16Index > #test16Offsets then
-          log("no 16-bit position, sweeping the single byte")
-          state = "sweep"
-          stateFrames = 0
-        else
-          stateFrames = 0
-        end
-      end
-    else
-      emu.setInput({}, 0)
-    end
-
-  elseif state == "sweep16" then
-    -- One step is 96 pixels: the game loads the new screen and the PPU draws it
+  elseif state == "full" then
+    local v = bestVariant
     if stateFrames % 3 == 1 then
-      sweep16Value = sweep16Value + 96
-      if sweep16Value > 12000 then
-        log(string.format("16-bit sweep finished: %d screens", distinctScreens))
+      local limit = variantLimit(v)
+      if fullStep >= limit then
+        log(string.format("sweep finished: %d scrolls", fullDistinct))
         state = "done"
         stateFrames = 0
       else
-        writeRam16(bestAddress16, sweep16Base + sweep16Value)
-        local h = screenHash()
-        if h ~= lastHash then
-          distinctScreens = distinctScreens + 1
-          unchangedSteps = 0
-          lastHash = h
+        fullStep = fullStep + 1
+        writeValue(v, v.base + v.direction * fullStep * variantStride(v))
+        local bands = readBands()
+        local shift, match = detectScroll(fullBands, bands)
+        if shift ~= 0 and match >= 0.88 then
+          fullDistinct = fullDistinct + 1
+          fullUnchanged = 0
         else
-          unchangedSteps = unchangedSteps + 1
-          if unchangedSteps > 25 then
-            log(string.format("the level stops at %d pixels (%d screens)", sweep16Value, distinctScreens))
-            state = "done"
-            stateFrames = 0
-          end
+          fullUnchanged = fullUnchanged + 1
         end
-      end
-    end
-    emu.setInput({ right = true }, 0)
-
-  elseif state == "sweep" then
-    if stateFrames % 3 == 1 then
-      sweepValue = sweepValue + 4
-      if sweepValue > 1000 then
-        log(string.format("sweep finished: %d different screens", distinctScreens))
-        if distinctScreens < 4 and triedSweeps < 3 then
-          triedSweeps = triedSweeps + 1
-          candidateIndex = candidateIndex + 1
-          beginTest()
-        else
+        if match >= 0.5 then
+          fullBands = bands
+        end
+        if fullUnchanged > 12 then
+          log(string.format("no more scrolling at step %d (%d scrolls)", fullStep, fullDistinct))
           state = "done"
           stateFrames = 0
-        end
-      else
-        writeRam(bestAddress, (sweepBase + sweepDirection * sweepValue) % 256)
-        local h = screenHash()
-        if h ~= lastHash then
-          distinctScreens = distinctScreens + 1
-          unchangedSteps = 0
-          lastHash = h
-        else
-          unchangedSteps = unchangedSteps + 1
-          if unchangedSteps > 30 then
-            log(string.format("no more scrolling after %d steps (%d screens)", sweepValue, distinctScreens))
-            if distinctScreens < 4 and triedSweeps < 3 then
-              triedSweeps = triedSweeps + 1
-              candidateIndex = candidateIndex + 1
-              beginTest()
-            else
-              state = "done"
-              stateFrames = 0
-            end
-          end
         end
       end
     end
@@ -407,14 +448,14 @@ local function onInputPolled()
 
   elseif state == "done" then
     if stillChecks >= STILL_CHECKS and menuCooldown == 0 then
-      pushMenuTap()
+      pushMenuActions()
     else
       emu.setInput({ right = true }, 0)
     end
 
   else -- fallback
     if stillChecks >= STILL_CHECKS and menuCooldown == 0 then
-      pushMenuTap()
+      pushMenuActions()
     else
       local input = { right = true, b = true }
       if frame % 75 < 13 then
