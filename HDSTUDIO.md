@@ -101,6 +101,22 @@ In the Mesen window you can also check it by hand: open the game and the picture
 a "[HDPack] Loaded with N errors" message when the pack has problems). Uncheck *Enable HD packs* in the NES settings
 and reload the game to compare with the original.
 
+## Where Mesen keeps its files (environment variable `MESEN_HOME`)
+
+Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
+(or next to `Mesen.exe` if a portable `settings.json` is found there). This fork also accepts the environment
+variable **`MESEN_HOME`**, which wins over both and can point anywhere (for example a drive with more free space):
+
+```
+set MESEN_HOME=D:\MesenHighWork\mesen-home
+Mesen.exe game.nes
+```
+
+The folder is created if it does not exist, and the emulator core (`MesenCore.dll`) and the rest of the native
+dependencies are copied into it, exactly like in the other two cases. The HD pack folder used by default by
+`--out` and `--verify` is `%MESEN_HOME%\HdPacks`, so the same launcher that sets the variable also makes Mesen find
+the generated packs.
+
 ## Roadmap
 
 1. **Capture + report** (this stage)

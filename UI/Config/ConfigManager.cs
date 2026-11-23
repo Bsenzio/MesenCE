@@ -57,7 +57,11 @@ namespace Mesen.Config
 		public static void CreateConfig(bool portable)
 		{
 			string homeFolder;
-			if(portable) {
+			//MesenHigh: MESEN_HOME wins over the portable/Documents choice (see HomeFolder)
+			string? envHome = Environment.GetEnvironmentVariable("MESEN_HOME");
+			if(!string.IsNullOrWhiteSpace(envHome)) {
+				homeFolder = envHome;
+			} else if(portable) {
 				homeFolder = DefaultPortableFolder;
 			} else {
 				homeFolder = DefaultDocumentsFolder;
@@ -192,17 +196,24 @@ namespace Mesen.Config
 			get
 			{
 				if(_homeFolder == null) {
-					string portableFolder = DefaultPortableFolder;
-
-					string portableConfig = Path.Combine(portableFolder, "settings.json");
-					if(File.Exists(portableConfig)) {
-						_homeFolder = portableFolder;
+					//MesenHigh: MESEN_HOME overrides every other location, so the data folder
+					//(settings, HdPacks, save states...) can live outside Documents (e.g. on D:)
+					string? envHome = Environment.GetEnvironmentVariable("MESEN_HOME");
+					if(!string.IsNullOrWhiteSpace(envHome)) {
+						_homeFolder = envHome;
 					} else {
-						string documentsFolder = DefaultDocumentsFolder;
-						if(MesenLegacyDocumentsFolder == null || File.Exists(Path.Combine(documentsFolder, "settings.json"))) {
-							_homeFolder = documentsFolder;
+						string portableFolder = DefaultPortableFolder;
+
+						string portableConfig = Path.Combine(portableFolder, "settings.json");
+						if(File.Exists(portableConfig)) {
+							_homeFolder = portableFolder;
 						} else {
-							_homeFolder = MesenLegacyDocumentsFolder;
+							string documentsFolder = DefaultDocumentsFolder;
+							if(MesenLegacyDocumentsFolder == null || File.Exists(Path.Combine(documentsFolder, "settings.json"))) {
+								_homeFolder = documentsFolder;
+							} else {
+								_homeFolder = MesenLegacyDocumentsFolder;
+							}
 						}
 					}
 
