@@ -15,7 +15,7 @@ local SAMPLE_STEP = 61          -- sample 1 pixel out of 61 (~1000 pixels) for t
 local STILL_CHECKS = 6
 local STILL_THRESHOLD = 0.05
 local MAX_CANDIDATES = 5
-local MINI_STEPS = 10
+local MINI_STEPS = 20
 local MINI_FRAMES = 2
 local MAX_SCAN_CANDIDATES = 12
 
@@ -27,6 +27,8 @@ local stateFrames = 0
 local previousSample = nil
 local stillChecks = 0
 local movingChecks = 0
+local scrollPrev = nil
+local scrollChanges = 0
 local tapButton = nil
 local tapFramesLeft = 0
 local menuCooldown = 0
@@ -97,11 +99,15 @@ local function writeValue(v, value)
 end
 
 local function variantStride(v)
-  return v.mode == "word" and 192 or 8
+  return v.mode == "word" and 4 or 1
+end
+
+local function variantFullStride(v)
+  return v.mode == "word" and 16 or 4
 end
 
 local function variantLimit(v)
-  return v.mode == "word" and 64 or 120
+  return v.mode == "word" and 400 or 600
 end
 
 local function takeSample()
@@ -210,6 +216,8 @@ local function resetState()
   bestVariant = nil
   bestScore = 0
   stillChecks = 0
+  scrollPrev = nil
+  scrollChanges = 0
   previousSample = nil
   previousOam = nil
 end
@@ -393,9 +401,16 @@ local function onInputPolled()
     else
       emu.setInput({ right = true }, 0)
     end
-    -- Start looking for the position only once the game is clearly moving (gameplay, not menus)
-    if movingChecks >= 6 or stateFrames > 1800 then
-      log(string.format("gameplay detected after %d frames (moving=%d)", stateFrames, movingChecks))
+
+    -- The level has really started when the camera scrolls while holding right
+    local scrollNow = getScroll()
+    if scrollPrev ~= nil and scrollNow ~= scrollPrev then
+      scrollChanges = scrollChanges + 1
+    end
+    scrollPrev = scrollNow
+
+    if scrollChanges >= 8 or stateFrames > 2400 then
+      log(string.format("gameplay detected after %d frames (%d scroll changes, moving=%d)", stateFrames, scrollChanges, movingChecks))
       snapA = snapshot()
       state = "probeRight"
       stateFrames = 0
@@ -420,37 +435,34 @@ local function onInputPolled()
     end
 
   elseif state == "score" then
-    -- One write every MINI_FRAMES frames, so the game has time to react
-    if stateFrames % MINI_FRAMES == 1 then
-      scoreVariant()
-    end
+    -- The value is written on every frame: the game's physics overwrite it once, but with a write
+    -- every frame the camera follows it, which is what we want to measure
+    scoreVariant()
     emu.setInput({}, 0)
 
   elseif state == "full" then
     local v = bestVariant
-    if stateFrames % 3 == 1 then
-      local limit = variantLimit(v)
-      if fullStep >= limit then
-        log(string.format("sweep finished: %d scroll changes", fullDistinct))
+    local limit = variantLimit(v)
+    if fullStep >= limit then
+      log(string.format("sweep finished: %d scroll changes", fullDistinct))
+      state = "done"
+      stateFrames = 0
+    else
+      local scroll = getScroll()
+      if fullStep > 0 and scroll ~= fullScroll then
+        fullDistinct = fullDistinct + 1
+        fullUnchanged = 0
+      else
+        fullUnchanged = fullUnchanged + 1
+      end
+      fullScroll = scroll
+
+      fullStep = fullStep + 1
+      writeValue(v, v.base + v.direction * fullStep * variantFullStride(v))
+      if fullUnchanged > 40 then
+        log(string.format("no more scrolling at step %d (%d scroll changes)", fullStep, fullDistinct))
         state = "done"
         stateFrames = 0
-      else
-        local scroll = getScroll()
-        if fullStep > 0 and scroll ~= fullScroll then
-          fullDistinct = fullDistinct + 1
-          fullUnchanged = 0
-        else
-          fullUnchanged = fullUnchanged + 1
-        end
-        fullScroll = scroll
-
-        fullStep = fullStep + 1
-        writeValue(v, v.base + v.direction * fullStep * variantStride(v))
-        if fullUnchanged > 12 then
-          log(string.format("no more scrolling at step %d (%d scroll changes)", fullStep, fullDistinct))
-          state = "done"
-          stateFrames = 0
-        end
       end
     end
     emu.setInput({ right = true }, 0)
