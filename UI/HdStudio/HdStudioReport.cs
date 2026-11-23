@@ -7,6 +7,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Mesen.HdStudio
 {
@@ -54,6 +55,7 @@ namespace Mesen.HdStudio
 		private int _seenBackgroundCombos = 0;
 		private List<string> _mapImages = new();
 		private List<(string Name, string Png, int Patterns, int Tileset)> _mapIndex = new();
+		private List<(int Id, string Label, string Name)> _gameObjects = new();
 
 		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log, string? disasmPath = null)
 		{
@@ -74,6 +76,7 @@ namespace Mesen.HdStudio
 				} else {
 					_log($"Disassembly: {_disasm.TilesetsFound} tilesets, {_disasm.LevelsParsed} levels, {_disasm.ReferencedTiles.Count:N0} layout tiles (estimate; use --maps for the exact usage)");
 				}
+				ReadGameObjectCatalog();
 			}
 			Directory.CreateDirectory(_studioFolder);
 
@@ -142,6 +145,35 @@ namespace Mesen.HdStudio
 					name = name.Substring(0, name.Length - "_start".Length);
 				}
 				_levelsVisited.Add(name.Replace('_', ' '));
+			}
+		}
+
+		/// <summary>
+		/// Object types defined by the game's own data (game.xml, used by the level editor).
+		/// This is a catalog of what the game can spawn; it is not the same as the metasprites
+		/// detected during the recording, which only include things that appeared on screen.
+		/// </summary>
+		private void ReadGameObjectCatalog()
+		{
+			try {
+				string? folder = Directory.Exists(_disasmPath) ? _disasmPath : Path.GetDirectoryName(_disasmPath);
+				if(folder == null) {
+					return;
+				}
+				string gameXml = Path.Combine(folder, "game.xml");
+				if(!File.Exists(gameXml)) {
+					return;
+				}
+				Regex regex = new(@"<object\s+id=""0x([0-9A-Fa-f]+)""[^>]*label=""([^""]+)""[^>]*name=""([^""]+)""");
+				foreach(string line in File.ReadLines(gameXml)) {
+					Match m = regex.Match(line);
+					if(m.Success && int.TryParse(m.Groups[1].Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int id)) {
+						_gameObjects.Add((id, m.Groups[2].Value, m.Groups[3].Value));
+					}
+				}
+				_log($"Object catalog: {_gameObjects.Count} object types defined by game.xml");
+			} catch(Exception ex) {
+				_log("Object catalog: " + ex.Message);
 			}
 		}
 
@@ -836,6 +868,18 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
+			if(_gameObjects.Count > 0) {
+				json.WriteStartArray("gameObjects");
+				foreach((int id, string label, string name) in _gameObjects) {
+					json.WriteStartObject();
+					json.WriteNumber("id", id);
+					json.WriteString("label", label);
+					json.WriteString("name", name);
+					json.WriteEndObject();
+				}
+				json.WriteEndArray();
+			}
+
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
 				json.WriteStartObject();
@@ -972,6 +1016,21 @@ namespace Mesen.HdStudio
 				sb.AppendLine("</tr>");
 			}
 			sb.AppendLine("</tbody></table></div>");
+
+			//Clarify the difference between "all tiles" and "all game objects"
+			if(_gameObjects.Count > 0) {
+				sb.AppendLine("<h2>Object catalog: tiles vs. detected metasprites</h2>");
+				sb.AppendLine($"<p>The pack covers <b>100 % of the CHR tiles</b> and <b>100 % of the exact background combinations</b>, but that is not the same as a complete bestiary. " +
+					$"The game defines <b>{_gameObjects.Count}</b> object types; this recording detected <b>{groups.Count}</b> metasprites (the table above and <code>sheet_objects.png</code>). " +
+					$"Enemies or forms that never appeared in the recording are not in that sheet: their cartridge tiles are still in the pack (with exact or wildcard palette), but HD Studio has not grouped or named them. " +
+					$"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer and the Tanuki Statue — are drawn by the player code, not by an object ID, so they appear in the sheet as generic player templates (top row of <code>sheet_objects.png</code>, 16×16/16×32) without individual “Tanuki”/“Frog” labels. " +
+					$"The complete tile atlas, including unseen tiles in red, is <a href=\"chr_coverage.png\"><code>chr_coverage.png</code></a>.</p>");
+				sb.AppendLine($"<details><summary>All {_gameObjects.Count} object types defined by the game data</summary><div class=\"wrap\"><table><thead><tr><th>ID</th><th>Label</th><th>Name</th></tr></thead><tbody>");
+				foreach((int id, string label, string name) in _gameObjects) {
+					sb.AppendLine($"<tr><td class=\"n\">${id:X2}</td><td><code>{E(label)}</code></td><td>{E(name)}</td></tr>");
+				}
+				sb.AppendLine("</tbody></table></div></details>");
+			}
 
 			//Background blocks: the scenery to redraw as 16x16 metatiles
 			if(hasBackgrounds) {
