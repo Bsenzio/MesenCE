@@ -72,6 +72,7 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 | `--levels` | | Visit every level using the level select cheats of the cheat database (see below); `--frames` is per level |
 | `--sweep` | | With `--levels`: reveal each whole level by moving the player position in RAM (experimental, see below) |
 | `--disasm=FOLDER` | | Read a game disassembly (NESASM style `.asm` files) and use the game's own data to know which tiles its levels reference (see below) |
+| `--maps` | | With `--disasm`: build a full PNG map of every level by running the game's own level loader, and count the exact background tiles each level uses (see below) |
 | `--reportonly` | | Only regenerate the report from an existing capture |
 | `--verify` | | Check the HD pack instead of capturing (see below) |
 | `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |
@@ -174,7 +175,46 @@ for another revision), reads `Level_BG_Pages1` (CHR bank per level) and the leve
 
 The report gets a **"Game data (from the disassembly)"** section and `report.json` a `gameData` object with
 `referencedTiles`, `capturedReferencedTiles`, `referencedCoveragePercent`, `levelsParsed` and `tilesetsFound`.
-For SMB3 (USA), that is 3,687 referenced tiles over 361 levels: the honest target for the capture.
+This is only a **layout estimate**: it counts the tile layouts referenced by the level headers, not the tiles the
+generators really place. For SMB3 (USA) it currently reports 2,584 layout tiles over 361 level files.
+
+### Full level maps from the game's generators (`--maps`, SMB3)
+
+```
+.\hdstudio.cmd game.nes --maps --disasm=D:\path\to\smb3-master
+```
+
+This is the exact version of the previous check. Instead of reimplementing the generators, HD Studio **runs the
+game's own level loader** in the emulator:
+
+1. `game.xml` names every level and its tileset; the `.asm` files give the layout bytes. The tool finds each level
+   in the ROM by content (so a different revision is fine) and gets the pointer to its 9-byte header and the
+   `Level_Tileset` from the world context.
+2. A small Lua driver runs at 60 fps, waits for the title screen, then calls the loader (`$897B` in SMB3: switch
+   pages, `LevelLoad_ByTileset`) once per level with NMI and MMC3 IRQ disabled. After the call it dumps the
+   6,480-byte tile memory (`$6000-$794F`, 15 screens of 16×27 tiles) and starts the next level.
+3. The one broken generator in the disassembly (`LoadLevel_LittleCloudSolidRun`, whose `BEQ` should be `BNE` and
+   otherwise drops into a table and hangs) is patched in the emulator's PRG copy. The map then shows what the
+   designer intended; the original game's fallback is not used.
+4. HD Studio paints every 16×16 tile from CHR-ROM using the tileset's `Tile_Layout_TS*` plus the 2 KB background
+   windows (`Level_BG_Pages1` = patterns 0-127, `Level_BG_Pages2` = patterns 128-255) and the level's palette
+   (`Palette_By_Tileset` + `LEVEL2_BGPAL_n`). One PNG per level and a `maps.json`/`maps.txt` index are written to
+   `HdStudio/maps`.
+
+Measured on SMB3 (USA), 2026-11-23:
+
+| Metric | Value |
+|---|---|
+| Levels with a full map | **217** (main stages, fortresses, castles, airships, bonus rooms) |
+| Non-blank background CHR patterns referenced | **1,518** of 7,720 (19.7 % of the cartridge) |
+| Referenced background patterns already in the pack | **86** (5.7 % of the level backgrounds) |
+| Old layout estimate (for comparison) | 2,584; it counted layout patterns, not the real maps |
+| Not mapped | 10 "EMPTY" placeholder levels + 8 Big [?] Block sub-areas + 2 unused W8 Hammer Bro rooms (no standalone header / entered through a pipe) |
+
+The exact number is lower than the old estimate because the previous code mapped every layout pattern with the
+first CHR page (`page1*64 + pattern`). Patterns 128-255 live in the second 2 KB window (`page2`), so the estimate
+was pointing at the wrong cartridge tiles for half of the table. `--maps` uses the real two-window mapping and
+only counts patterns that a level actually places.
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
 (or next to `Mesen.exe` if a portable `settings.json` is found there). This fork also accepts the environment

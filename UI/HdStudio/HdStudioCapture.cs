@@ -54,6 +54,7 @@ namespace Mesen.HdStudio
 			public bool Generate;
 			public bool Levels;
 			public bool Sweep;
+			public bool Maps;
 			public string? DisasmPath;
 			public bool FramesSpecified;
 			public int Shots = 4;
@@ -88,6 +89,30 @@ namespace Mesen.HdStudio
 			if(opt.Verify) {
 				int frames = opt.FramesSpecified ? opt.Frames : 1200;
 				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, opt.Generate, outFolder, frames, opt.Shots, Log).Run();
+			}
+
+			if(opt.Maps) {
+				//Standalone mode: run the game's own level loader for each level, paint the maps and
+				//write the exact tile usage. It does not capture an HD pack, so it can be repeated
+				//without touching the existing pack.
+				if(string.IsNullOrWhiteSpace(opt.DisasmPath)) {
+					Log("Error: --maps needs the game's disassembly, e.g. --disasm=D:\\MesenHighWork\\disasm\\smb3-master");
+					return -1;
+				}
+				uint[] mapPalette = ConfigManager.Config.Nes.UserPalette;
+				int mapResult = HdStudioLevelMaps.Run(opt.RomPath!, opt.DisasmPath!, outFolder, mapPalette, Log);
+				if(mapResult != 0) {
+					return mapResult;
+				}
+				try {
+					HdStudioReport mapsReport = new(outFolder, mapPalette, Log, opt.DisasmPath);
+					string reportPath = mapsReport.Generate(opt.RomPath!);
+					Log("Report: " + reportPath);
+				} catch(Exception ex) {
+					Log("Error while generating the report: " + ex.Message);
+					return -2;
+				}
+				return 0;
 			}
 
 			if(opt.Levels) {
@@ -556,6 +581,7 @@ namespace Mesen.HdStudio
 						case "generate": opt.Generate = true; break;
 						case "levels": opt.Levels = true; break;
 						case "sweep": opt.Sweep = true; break;
+						case "maps": opt.Maps = true; break;
 						case "disasm":
 							opt.DisasmPath = Path.GetFullPath(value, Program.OriginalFolder);
 							break;
@@ -650,7 +676,8 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--reportonly] [--verify [--shots=4]]");
+			Log("  --maps with --disasm=FOLDER: full level maps as PNG + exact per-level tile usage (uses the game's own level generator).");
 		}
 
 		private static void Log(string message)

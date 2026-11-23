@@ -39,6 +39,13 @@ namespace Mesen.HdStudio
 		private int _unseenTilesWithNeighbourPalette = 0;
 		private int _unseenTilesWithDefaultPalette = 0;
 		private List<string> _levelsVisited = new();
+		private int _mapLevels = 0;
+		private int _mapPatterns = 0;
+		private int _mapNonBlankPatterns = 0;
+		private int _mapSeenPatterns = 0;
+		private double _mapCoverage = 0;
+		private List<string> _mapImages = new();
+		private List<(string Name, string Png, int Patterns, int Tileset)> _mapIndex = new();
 
 		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log, string? disasmPath = null)
 		{
@@ -57,7 +64,7 @@ namespace Mesen.HdStudio
 				if(_disasm.Error != null) {
 					_log("Disassembly: " + _disasm.Error);
 				} else {
-					_log($"Disassembly: {_disasm.TilesetsFound} tilesets, {_disasm.LevelsParsed} levels, {_disasm.ReferencedTiles.Count:N0} tiles referenced by the game");
+					_log($"Disassembly: {_disasm.TilesetsFound} tilesets, {_disasm.LevelsParsed} levels, {_disasm.ReferencedTiles.Count:N0} layout tiles (estimate; use --maps for the exact usage)");
 				}
 			}
 			Directory.CreateDirectory(_studioFolder);
@@ -66,6 +73,7 @@ namespace Mesen.HdStudio
 			ReadCaptureInfo();
 			ReadPrgPalettes();
 			ReadLevelsVisited();
+			ReadLevelMaps();
 			ReadHiresFile();
 			ReadTileUsage();
 			ReadObjects();
@@ -120,6 +128,45 @@ namespace Mesen.HdStudio
 					name = name.Substring(0, name.Length - "_start".Length);
 				}
 				_levelsVisited.Add(name.Replace('_', ' '));
+			}
+		}
+
+		/// <summary>
+		/// Level maps written by --maps: HdStudio/maps/maps.json has the exact background patterns
+		/// referenced by each level (the map was built by the game's own level loader).
+		/// </summary>
+		private void ReadLevelMaps()
+		{
+			string folder = Path.Combine(_studioFolder, "maps");
+			string path = Path.Combine(folder, "maps.json");
+			if(!File.Exists(path)) {
+				return;
+			}
+
+			try {
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+				JsonElement root = doc.RootElement;
+				if(root.TryGetProperty("summary", out JsonElement summary)) {
+					_mapLevels = summary.TryGetProperty("levels", out JsonElement levels) ? levels.GetInt32() : 0;
+					_mapPatterns = summary.TryGetProperty("patterns", out JsonElement patterns) ? patterns.GetInt32() : 0;
+					_mapNonBlankPatterns = summary.TryGetProperty("nonBlankPatterns", out JsonElement nonBlank) ? nonBlank.GetInt32() : 0;
+					_mapSeenPatterns = summary.TryGetProperty("seenPatterns", out JsonElement seen) ? seen.GetInt32() : 0;
+					_mapCoverage = summary.TryGetProperty("coveragePercent", out JsonElement coverage) ? coverage.GetDouble() : 0;
+				}
+				if(root.TryGetProperty("levels", out JsonElement list)) {
+					foreach(JsonElement level in list.EnumerateArray()) {
+						string name = level.TryGetProperty("name", out JsonElement n) ? n.GetString() ?? "" : "";
+						string png = level.TryGetProperty("png", out JsonElement p) ? p.GetString() ?? "" : "";
+						int patterns = level.TryGetProperty("patterns", out JsonElement pc) ? pc.GetInt32() : 0;
+						int tileset = level.TryGetProperty("tileset", out JsonElement ts) ? ts.GetInt32() : 0;
+						if(png.Length > 0) {
+							_mapImages.Add("maps/" + png);
+							_mapIndex.Add((name, png, patterns, tileset));
+						}
+					}
+				}
+			} catch(Exception ex) {
+				_log("Level maps: maps.json could not be read: " + ex.Message);
 			}
 		}
 
@@ -697,6 +744,16 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
+			if(_mapLevels > 0) {
+				json.WriteStartObject("levelMaps");
+				json.WriteNumber("levels", _mapLevels);
+				json.WriteNumber("patterns", _mapPatterns);
+				json.WriteNumber("nonBlankPatterns", _mapNonBlankPatterns);
+				json.WriteNumber("seenPatterns", _mapSeenPatterns);
+				json.WriteNumber("coveragePercent", _mapCoverage);
+				json.WriteEndObject();
+			}
+
 			if(_disasm != null && _disasm.Error == null) {
 				int referenced = _disasm.ReferencedTiles.Count;
 				int captured = _disasm.ReferencedTiles.Count(t => seen.Contains(t));
@@ -706,6 +763,10 @@ namespace Mesen.HdStudio
 				json.WriteNumber("referencedCoveragePercent", referenced > 0 ? Math.Round(100.0 * captured / referenced, 1) : 0);
 				json.WriteNumber("levelsParsed", _disasm.LevelsParsed);
 				json.WriteNumber("tilesetsFound", _disasm.TilesetsFound);
+				json.WriteNumber("exactMapLevels", _mapLevels);
+				json.WriteNumber("exactMapNonBlankPatterns", _mapNonBlankPatterns);
+				json.WriteNumber("exactMapSeenPatterns", _mapSeenPatterns);
+				json.WriteNumber("exactMapCoveragePercent", _mapCoverage);
 				json.WriteEndObject();
 			}
 
@@ -786,6 +847,9 @@ namespace Mesen.HdStudio
 			if(_prgPalettes.Count > 0) {
 				sb.AppendLine($"<div class=\"stat\"><b>{_prgPalettes.Count:N0}</b><span>palettes found in the game's code ({_prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes)):N0} used by the pack)</span></div>");
 			}
+			if(_mapLevels > 0) {
+				sb.AppendLine($"<div class=\"stat\"><b>{_mapNonBlankPatterns:N0}</b><span>background tiles used by the {_mapLevels:N0} level maps ({_mapCoverage:0.0}% of them are in the pack)</span></div>");
+			}
 			sb.AppendLine("</div>");
 
 			sb.AppendLine("<h2>What to draw</h2>");
@@ -821,15 +885,39 @@ namespace Mesen.HdStudio
 				sb.AppendLine("<img class=\"px\" src=\"sheet_backgrounds.png\" alt=\"16x16 background blocks\" style=\"max-width:100%;height:auto\">");
 			}
 
-			//Data-driven check: what the game's own level data references
-			if(_disasm != null && _disasm.Error == null) {
+			//Data-driven check: exact level maps built by the game's own level loader (--maps)
+			if(_mapLevels > 0) {
+				sb.AppendLine("<h2>Level maps (exact, from the game's generators)</h2>");
+				sb.AppendLine($"<p>The game's own level loader was executed once per level (the generators that place blocks, pipes, bushes, clouds…), " +
+					$"and the resulting tile memory was painted with the cartridge CHR and each level's palette. <b>{_mapLevels:N0}</b> levels produced a full map. " +
+					$"They reference <b>{_mapNonBlankPatterns:N0}</b> non-blank background tiles ({_mapPatterns:N0} including blank ones); the pack has " +
+					$"<b>{_mapSeenPatterns:N0}</b> of them (<b>{_mapCoverage:0.0} %</b>). This is the exact target list, not a layout estimate." +
+					$" The remaining <b>{Math.Max(0, _mapNonBlankPatterns - _mapSeenPatterns):N0}</b> background tiles are what the next capture has to find.</p>");
+				sb.AppendLine("<p><a href=\"maps/maps.txt\"><code>maps/maps.txt</code></a> lists every level, its tileset/palette and how many background tiles it uses; " +
+					"<a href=\"maps/maps_tiles.txt\"><code>maps/maps_tiles.txt</code></a> has the exact CHR pattern index list of each level; " +
+					"<a href=\"maps/maps.json\"><code>maps/maps.json</code></a> has the machine-readable version.</p>");
+				int shown = 0;
+				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>Level</th><th>Map</th><th>Tileset</th><th>Background tiles</th></tr></thead><tbody>");
+				foreach((string name, string png, int patterns, int tileset) in _mapIndex) {
+					if(shown >= 24) {
+						break;
+					}
+					shown++;
+					sb.AppendLine($"<tr><td>{E(name)}</td><td><a href=\"maps/{E(png)}\"><img class=\"px\" src=\"maps/{E(png)}\" alt=\"{E(name)}\" style=\"max-height:64px;max-width:100%\"></a></td>" +
+						$"<td class=\"n\">{tileset}</td><td class=\"n\">{patterns:N0}</td></tr>");
+				}
+				sb.AppendLine("</tbody></table></div>");
+				if(_mapIndex.Count > shown) {
+					sb.AppendLine($"<p class=\"muted\" style=\"margin-top:8px\">Showing {shown} of {_mapIndex.Count:N0} maps; all PNGs are in <code>HdStudio/maps</code>.</p>");
+				}
+			} else if(_disasm != null && _disasm.Error == null) {
 				int referenced = _disasm.ReferencedTiles.Count;
 				int captured = _disasm.ReferencedTiles.Count(t => seen.Contains(t));
 				double pct = referenced > 0 ? 100.0 * captured / referenced : 0;
-				sb.AppendLine("<h2>Game data (from the disassembly)</h2>");
-				sb.AppendLine($"<p>The game's level data references <b>{referenced:N0}</b> background tiles ({_disasm.LevelsParsed:N0} levels parsed, {_disasm.TilesetsFound:N0} tilesets found in this ROM). " +
-					$"The pack has captured <b>{captured:N0}</b> of them (<b>{pct:0.0} %</b>). This is the exact list of tiles the game uses, not an estimate: the remaining " +
-					$"{referenced - captured:N0} are the target for the next capture.</p>");
+				sb.AppendLine("<h2>Game data (layout estimate)</h2>");
+				sb.AppendLine($"<p>Without <code>--maps</code>, the level layout tables give a rough estimate: <b>{referenced:N0}</b> tile layouts " +
+					$"({_disasm.LevelsParsed:N0} levels parsed). The pack has <b>{captured:N0}</b> of them (<b>{pct:0.0} %</b>). " +
+					$"Run <code>--maps --disasm=FOLDER</code> to load each level in the emulator and replace this estimate with the exact map.</p>");
 			}
 
 			//What is missing: this is what tells the user whether the capture is complete

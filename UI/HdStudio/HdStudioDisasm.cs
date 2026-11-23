@@ -20,6 +20,11 @@ namespace Mesen.HdStudio
 		public string GameName { get; private set; } = "";
 		public string? Error { get; private set; }
 
+		/// <summary>The 1 KB tile layout (four 256-byte quadrants) of each level tileset found in the ROM</summary>
+		internal Dictionary<int, byte[]> LayoutsByTileset { get; } = new();
+		internal byte[] Pages1 { get; private set; } = Array.Empty<byte>();
+		internal byte[] Pages2 { get; private set; } = Array.Empty<byte>();
+
 		private static readonly Regex _labelRegex = new(@"^([A-Za-z_.][\w.]*)\s*:", RegexOptions.Compiled);
 		private static readonly Regex _byteRegex = new(@"(?i)^\.(byte|db)\s+(.*)$", RegexOptions.Compiled);
 
@@ -65,6 +70,7 @@ namespace Mesen.HdStudio
 						foreach(Match ts in Regex.Matches(m.Groups[2].Value, @"TS(\d+)")) {
 							if(int.TryParse(ts.Groups[1].Value, out int tileset)) {
 								layoutByTileset[tileset] = data;
+								result.LayoutsByTileset[tileset] = data;
 							}
 						}
 					}
@@ -82,6 +88,8 @@ namespace Mesen.HdStudio
 					result.Error = "Level_BG_Pages1 not found";
 					return result;
 				}
+				result.Pages1 = pages;
+				result.Pages2 = (prg030 != null ? ParseBytes(prg030, "Level_BG_Pages2", 64) : null) ?? Array.Empty<byte>();
 
 				Regex tilesetRegex = new(@"LEVEL3_TILESET_(\d+)");
 				Regex bankRegex = new(@"LEVEL4_BGBANK_INDEX\((\d+)\)");
@@ -100,7 +108,7 @@ namespace Mesen.HdStudio
 					}
 
 					result.LevelsParsed++;
-					AddLayoutTiles(result.ReferencedTiles, layout, pages[bgBank]);
+					AddLayoutTiles(result.ReferencedTiles, layout, pages[bgBank], result.Pages2.Length > bgBank ? result.Pages2[bgBank] : (byte)0);
 				}
 			} catch(Exception ex) {
 				result.Error = ex.Message;
@@ -108,19 +116,22 @@ namespace Mesen.HdStudio
 			return result;
 		}
 
-		private static void AddLayoutTiles(HashSet<int> referenced, byte[] layout, byte page)
+		private static void AddLayoutTiles(HashSet<int> referenced, byte[] layout, byte page1, byte page2)
 		{
-			int baseTile = page * 64;
+			//The PPU has two 2 KB background windows: pages1 selects $0000 (patterns 0-127)
+			//and pages2 selects $0800 (patterns 128-255). A "page" is a 1 KB CHR page, so
+			//each window covers two consecutive pages (see MMC3_2K_TO_PPU_0000).
 			for(int quadrant = 0; quadrant < 4; quadrant++) {
 				int offset = quadrant * 256;
 				for(int i = 0; i < 256; i++) {
-					referenced.Add(baseTile + layout[offset + i]);
+					int pattern = layout[offset + i];
+					referenced.Add(pattern < 128 ? (page1 * 64 + pattern) : (page2 * 64 + pattern - 128));
 				}
 			}
 		}
 
 		/// <summary>Assembles the .byte/.db data of a label (no 6502 code is needed: the data blocks are plain bytes)</summary>
-		private static byte[]? ParseBytes(string file, string label, int maxBytes)
+		internal static byte[]? ParseBytes(string file, string label, int maxBytes)
 		{
 			string[] lines = File.ReadAllLines(file);
 			int start = -1;
