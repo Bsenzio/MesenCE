@@ -120,6 +120,7 @@ namespace Mesen.HdStudio
 			try {
 				rendered = RenderMaps(levels, rawFolder, mapsFolder, rom, disasmPath, nesPalette, log);
 				WriteManifest(levels, mapsFolder, romPath, log);
+				WriteSpriteSweep(mapsFolder, disasmPath, log);
 			} catch(Exception ex) {
 				log("Level maps: " + ex.Message);
 				return -3;
@@ -304,6 +305,16 @@ namespace Mesen.HdStudio
 				}
 			}
 			return sawWord && data.Count > 0 ? data.ToArray() : null;
+		}
+
+		private static bool TryParseHex(string token, out int value)
+		{
+			return int.TryParse(token.Trim(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
+		}
+
+		private static bool TryParseHex(string token, out uint value)
+		{
+			return uint.TryParse(token.Trim(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value);
 		}
 
 		private static bool TryParseByte(string token, out byte value)
@@ -868,6 +879,84 @@ end, emu.eventType.startFrame)
 				$"({100.0 * usedNonBlank.Count / Math.Max(1, nonBlank):0.0}% of the cartridge); " +
 				$"{seenReferenced:N0} of them are in the pack ({coverage:0.0}%).");
 			log($"Level maps: {usedCombos.Count:N0} exact (pattern + palette) background combinations written to tiles_exact.txt.");
+		}
+
+		/// <summary>
+		/// Sprite palette sweep: every sprite pattern ever seen in tiles.txt/objects.txt, combined
+		/// with all 42 real sprite palettes of the game's 14 tilesets. The pack can then match a
+		/// sprite with any of its possible palettes, even if that exact pair was never captured.
+		/// </summary>
+		private static void WriteSpriteSweep(string mapsFolder, string disasmPath, Action<string> log)
+		{
+			string studio = Path.GetDirectoryName(mapsFolder)!;
+			HashSet<int> patterns = new();
+
+			string tilesTxt = Path.Combine(studio, "tiles.txt");
+			if(File.Exists(tilesTxt)) {
+				foreach(string line in File.ReadLines(tilesTxt)) {
+					if(line.Length == 0 || line[0] == '#') {
+						continue;
+					}
+					string[] parts = line.Split('\t');
+					if(parts.Length >= 2 && TryParseHex(parts[0], out int tile) && TryParseHex(parts[1], out uint palette)) {
+						if((palette >> 24) == 0xFF) {
+							patterns.Add(tile);
+						}
+					}
+				}
+			}
+
+			string objectsTxt = Path.Combine(studio, "objects.txt");
+			if(File.Exists(objectsTxt)) {
+				Regex spriteRegex = new(@"-?\d+,-?\d+,([0-9A-Fa-f]+),([0-9A-Fa-f]+),\d+;");
+				foreach(string line in File.ReadLines(objectsTxt)) {
+					foreach(Match m in spriteRegex.Matches(line)) {
+						if(TryParseHex(m.Groups[1].Value, out int tile) && TryParseHex(m.Groups[2].Value, out uint palette)) {
+							if((palette >> 24) == 0xFF) {
+								patterns.Add(tile);
+							}
+						}
+					}
+				}
+			}
+
+			if(patterns.Count == 0) {
+				return;
+			}
+
+			string[] asmFiles = Directory.GetFiles(disasmPath, "*.asm", SearchOption.AllDirectories);
+			HashSet<uint> palettes = new();
+			foreach(string label in _paletteLabels.Values.Distinct()) {
+				byte[]? data = ParseLabel(asmFiles, label, 192);
+				if(data == null || data.Length < 192) {
+					continue;
+				}
+				//8 BG palettes (128 bytes), then 4 OBJPAL sets x 4 sprite palettes of 4 colors
+				for(int set = 0; set < 4; set++) {
+					for(int group = 0; group < 4; group++) {
+						int offset = 128 + set * 16 + group * 4;
+						uint palette = 0xFF000000
+							| ((uint)data[offset + 1] << 16)
+							| ((uint)data[offset + 2] << 8)
+							| data[offset + 3];
+						palettes.Add(palette);
+					}
+				}
+			}
+			if(palettes.Count == 0) {
+				return;
+			}
+
+			StringBuilder sb = new();
+			sb.AppendLine("# HD Studio sprite combinations: seen sprite patterns x every real sprite palette");
+			sb.AppendLine("# pattern palette (sprite form, FF + 3 NES color indexes)");
+			foreach(int pattern in patterns.OrderBy(p => p)) {
+				foreach(uint palette in palettes.OrderBy(p => p)) {
+					sb.Append(pattern.ToString("X4")).Append(' ').AppendLine(palette.ToString("X8"));
+				}
+			}
+			File.WriteAllText(Path.Combine(mapsFolder, "sprites_exact.txt"), sb.ToString());
+			log($"Level maps: sprite sweep {patterns.Count:N0} patterns x {palettes.Count} real palettes = {patterns.Count * palettes.Count:N0} exact sprite combinations.");
 		}
 
 		private static string SafeName(string name)
