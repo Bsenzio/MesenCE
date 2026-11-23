@@ -67,7 +67,9 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 | `--frames=N` | `18000` | Frames to emulate when no movie is given (60 frames = 1 second) |
 | `--out=FOLDER` | `HdPacks/<rom name>` | Output folder. The default is Mesen's HD pack folder, so the pack is used automatically when the game is opened in Mesen |
 | `--timeout=SEC` | `1800` | Maximum real time for the capture |
+| `--log=FILE` | | Also write the messages to a file (needed when the output is redirected: Mesen is a windowed program) |
 | `--generate` | | Fully automatic mode (see above) |
+| `--levels` | | Visit every level using the level select cheats of the cheat database (see below); `--frames` is per level |
 | `--reportonly` | | Only regenerate the report from an existing capture |
 | `--verify` | | Check the HD pack instead of capturing (see below) |
 | `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |
@@ -113,6 +115,27 @@ The pack must be in Mesen's `HdPacks/<rom name>` folder, which is where Mesen lo
 In the Mesen window you can also check it by hand: open the game and the picture uses the HD tiles (Mesen only shows
 a "[HDPack] Loaded with N errors" message when the pack has problems). Uncheck *Enable HD packs* in the NES settings
 and reload the game to compare with the original.
+
+## Level sweep (visit every level without playing)
+
+```
+.\hdstudio.cmd "D:\ROMs\game.nes" --levels --frames=1500
+```
+
+The built-in cheat database (`UI/Dependencies/Internal/CheatDb.Nes.json`) knows how to start many games on a
+given level ("Start on stage 2-1" = `0400:06` in Batman, "Start on World 3" in SMB3). With `--levels` the studio:
+
+1. finds the game in the database (by ROM hash, or by name with a warning when the dump is different),
+2. collects every level select code,
+3. for each level: applies the code, **resets** the game, plays `--frames` frames with a "runner" script
+   (`UI/HdStudio/Scripts/explore_level.lua`: runs right, shoots, jumps, and presses Start when the picture stops
+   moving, e.g. on the title screen or a death screen),
+4. saves a screenshot of each level in `HdStudio/levels/NN_<level>_start.png` and `..._end.png`,
+5. merges everything into the same pack, with every CHR-ROM tile (as `--generate`).
+
+`--frames` is **per level** in this mode (default 900). The levels that the database does not know are not visited;
+the sweep keeps the same ROM/pack and can be repeated or combined with a normal `--generate` run (depth in one
+area) because packs are merged. Games without level select codes fall back to the normal exploration.
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)
 

@@ -25,9 +25,12 @@ namespace Mesen.HdStudio
 	///   --frames=N        Frames to run when no movie is given (default 18000 = 5 minutes)
 	///   --out=FOLDER      Output folder (default: Mesen's HdPacks folder / ROM name, so the pack is used automatically)
 	///   --timeout=SEC     Maximum real time in seconds (default 1800)
+	///   --log=FILE        Also write the console messages to this file (Mesen is a windowed program)
 	///   --reportonly      Only regenerate the report from an existing capture
 	///   --generate        Fully automatic: plays the game with the built-in explorer (unless a movie/script is given)
 	///                     and adds every CHR-ROM tile of the cartridge to the pack, even the ones never displayed
+	///   --levels          Visit every level of the game using the level select cheats of the built-in cheat database
+	///                     (one run per level, frames per level = --frames, default 900)
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
 	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
 	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
@@ -47,6 +50,7 @@ namespace Mesen.HdStudio
 			public bool ReportOnly;
 			public bool Verify;
 			public bool Generate;
+			public bool Levels;
 			public bool FramesSpecified;
 			public int Shots = 4;
 			public List<string> Errors = new();
@@ -82,8 +86,14 @@ namespace Mesen.HdStudio
 				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, opt.Generate, outFolder, frames, opt.Shots, Log).Run();
 			}
 
+			if(opt.Levels) {
+				//A level sweep always includes every CHR-ROM tile: the levels that could not be visited
+				//still end up in the pack (with the palettes found in the ROM)
+				opt.Generate = true;
+			}
+
 			if(!opt.ReportOnly) {
-				int result = Capture(opt, outFolder);
+				int result = opt.Levels ? CaptureLevels(opt, outFolder) : Capture(opt, outFolder);
 				if(result != 0) {
 					return result;
 				}
@@ -220,8 +230,189 @@ namespace Mesen.HdStudio
 			return 0;
 		}
 
-		private static void StartRecording(string outFolder, Options opt)
+		/// <summary>
+		/// Level sweep: the cheat database says how to start the game on each level (e.g. Batman's
+		/// "Start on stage 2-1" = 0400:06). The game is reset with that cheat active, played for a while,
+		/// and everything is merged into the same HD pack. Without cheats nothing can be done here, so
+		/// the normal exploration runs instead.
+		/// </summary>
+		private static int CaptureLevels(Options opt, string outFolder)
 		{
+			EmuApi.InitDll();
+			ConfigManager.Config.ApplyConfig();
+
+			EmuApi.InitializeEmu(ConfigManager.HomeFolder, IntPtr.Zero, IntPtr.Zero, true, true, true, true);
+			EmuApi.Pause();
+			ConfigApi.SetEmulationFlag(EmulationFlags.ConsoleMode, true);
+
+			Log($"Loading {opt.RomPath}");
+			if(!EmuApi.LoadRom(opt.RomPath!, string.Empty)) {
+				Log("Error: the ROM could not be loaded.");
+				EmuApi.Release();
+				return -1;
+			}
+
+			if(EmuApi.GetRomInfo().ConsoleType != ConsoleType.Nes) {
+				Log("Error: HD packs are only supported for NES games.");
+				EmuApi.Stop();
+				EmuApi.Release();
+				return -1;
+			}
+
+			List<HdStudioCheats.Level> levels = HdStudioCheats.FindLevelCheats(opt.RomPath!, Log);
+			if(levels.Count == 0) {
+				//No level select: explore the game with the deep explorer, in this same emulator instance
+				//(releasing and initializing again a second time crashes)
+				Log("Level sweep: no level select cheats, exploring the game instead.");
+				DebugWorkspaceManager.Load();
+				_scriptIds.Add(DebugApi.LoadScript("explore_deep.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_deep.lua")));
+				ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
+
+				Stopwatch fsw = Stopwatch.StartNew();
+				EmuApi.Resume();
+				while(GetFrameCount() < 2 && fsw.ElapsedMilliseconds < 10000) {
+					Thread.Sleep(5);
+				}
+				PauseAndWait(fsw);
+				StartRecording(outFolder, opt);
+				EmuApi.Resume();
+				Log($"Recording HD pack at {opt.Scale}x ({opt.Filter}) into {outFolder}");
+
+				long explored = RunForFrames(opt.Frames, fsw, opt.TimeoutSeconds);
+				PauseAndWait(fsw);
+				PrintScriptLogs();
+				Log($"Capture finished: {explored:N0} frames. Saving HD pack...");
+				EmuApi.ExecuteShortcut(new ExecuteShortcutParams() { Shortcut = EmulatorShortcut.StopRecordHdPack });
+				EmuApi.Stop();
+				EmuApi.Release();
+				return 0;
+			}
+
+			//The first level always exists, even if the database only lists the ones after it
+			levels.Insert(0, new HdStudioCheats.Level() { Description = "Start of the game (no cheat)" });
+
+			int framesPerLevel = opt.FramesSpecified ? opt.Frames : 900;
+			if(opt.LuaScripts.Count == 0 && opt.MoviePath == null) {
+				//Level runner: runs right, attacks and jumps, so each level is seen as far as possible.
+				//No savestates: they would be invalid after every reset.
+				DebugWorkspaceManager.Load();
+				_scriptIds.Add(DebugApi.LoadScript("explore_level.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_level.lua")));
+				Log("Level runner loaded (runs through each level)");
+			} else if(opt.MoviePath != null) {
+				Log("Note: movies are ignored with --levels (each level restarts the game).");
+			}
+
+			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
+
+			//Start the game once and the recorder at a frame boundary (as in a normal capture)
+			EmuApi.Resume();
+			Stopwatch sw = Stopwatch.StartNew();
+			while(GetFrameCount() < 2 && sw.ElapsedMilliseconds < 10000) {
+				Thread.Sleep(5);
+			}
+			EmuApi.Pause();
+			while(!EmuApi.IsPaused() && sw.ElapsedMilliseconds < 15000) {
+				Thread.Sleep(1);
+			}
+			StartRecording(outFolder, opt);
+			Log($"Recording HD pack at {opt.Scale}x ({opt.Filter}) into {outFolder}");
+			Log($"Level sweep: {levels.Count} levels x {framesPerLevel} frames (use --frames=N to change it)");
+
+			string levelsFolder = Path.Combine(outFolder, HdStudioReport.StudioFolderName, "levels");
+			Directory.CreateDirectory(levelsFolder);
+
+			int captured = 0;
+			long totalFrames = 0;
+			for(int i = 0; i < levels.Count; i++) {
+				if(sw.Elapsed.TotalSeconds >= opt.TimeoutSeconds) {
+					Log("Warning: timeout reached, the remaining levels are skipped (increase --timeout).");
+					break;
+				}
+
+				HdStudioCheats.Level level = levels[i];
+				PauseAndWait(sw);
+
+				//Apply the cheat, then reset: the game reads its level number while starting
+				EmuApi.ClearCheats();
+				if(level.HasCheat) {
+					InteropCheatCode[] codes = HdStudioCheats.ToInteropCodes(level);
+					EmuApi.SetCheats(codes, (uint)codes.Length);
+				}
+				Log($"[{i + 1}/{levels.Count}] {level.Description}" + (level.HasCheat ? $"  ({level.CodesText})" : ""));
+				EmuApi.ExecuteShortcut(new ExecuteShortcutParams() { Shortcut = EmulatorShortcut.Reset });
+				EmuApi.Resume();
+
+				//One screenshot early (the game on that level) and one at the end (how far the runner got)
+				int earlyFrames = Math.Max(120, framesPerLevel / 4);
+				totalFrames += RunForFrames(earlyFrames, sw, opt.TimeoutSeconds);
+				PauseAndWait(sw);
+				PrintScriptLogs();
+				SaveLevelScreenshot(levelsFolder, i, level, "start");
+				EmuApi.Resume();
+
+				totalFrames += RunForFrames(framesPerLevel - earlyFrames, sw, opt.TimeoutSeconds);
+				captured++;
+
+				PauseAndWait(sw);
+				PrintScriptLogs();
+				SaveLevelScreenshot(levelsFolder, i, level, "end");
+			}
+
+			EmuApi.ClearCheats();
+			EmuApi.Pause();
+			PrintScriptLogs();
+			Log($"Level sweep finished: {captured} levels, {totalFrames:N0} frames. Saving HD pack...");
+			EmuApi.ExecuteShortcut(new ExecuteShortcutParams() { Shortcut = EmulatorShortcut.StopRecordHdPack });
+
+			EmuApi.Stop();
+			EmuApi.Release();
+			return 0;
+		}
+
+		/// <summary>Runs the emulator for a given number of frames, counting differences (a reset goes back to 0)</summary>
+		private static long RunForFrames(int frames, Stopwatch sw, int timeoutSeconds)
+		{
+			long counted = 0;
+			uint last = GetFrameCount();
+			while(counted < frames && sw.Elapsed.TotalSeconds < timeoutSeconds) {
+				Thread.Sleep(20);
+				if(!EmuApi.IsRunning()) {
+					break;
+				}
+
+				uint current = GetFrameCount();
+				counted += current >= last ? current - last : 1;
+				last = current;
+			}
+			return counted;
+		}
+
+		private static void PauseAndWait(Stopwatch sw)
+		{
+			EmuApi.Pause();
+			while(!EmuApi.IsPaused() && sw.ElapsedMilliseconds < 15000) {
+				Thread.Sleep(1);
+			}
+		}
+
+		private static void SaveLevelScreenshot(string folder, int index, HdStudioCheats.Level level, string suffix)
+		{
+			try {
+				string name = new string(level.Description.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+				string file = Path.Combine(folder, $"{index:00}_{name}_{suffix}.png");
+				if(HdStudioSaveScreenshot(file)) {
+					Log("  screenshot: " + file);
+				}
+			} catch {
+				//A screenshot is only evidence for the user, never a reason to fail
+			}
+		}
+
+		[DllImport(EmuApi.DllName)]
+		[return: MarshalAs(UnmanagedType.I1)]
+		private static extern bool HdStudioSaveScreenshot([MarshalAs(UnmanagedType.LPUTF8Str)] string filename);
+
+		private static void StartRecording(string outFolder, Options opt)		{
 			bool hasChrRam = EmuApi.GetGameMemorySize(MemoryType.NesChrRam) > 0;
 			HdPackBuilderOptions options = new() {
 				SaveFolder = outFolder,
@@ -348,6 +539,7 @@ namespace Mesen.HdStudio
 						case "reportonly": opt.ReportOnly = true; break;
 						case "verify": opt.Verify = true; break;
 						case "generate": opt.Generate = true; break;
+						case "levels": opt.Levels = true; break;
 						case "shots":
 							if(!int.TryParse(value, out opt.Shots) || opt.Shots < 1 || opt.Shots > 20) {
 								opt.Errors.Add("invalid screenshot count (1-20): " + value);
@@ -382,6 +574,13 @@ namespace Mesen.HdStudio
 							break;
 						case "out":
 							opt.OutFolder = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
+						case "log":
+							//Mesen is a windowed program: when the output is redirected (e.g. to a file or a pipe)
+							//the console messages are lost, so they are also written to this file
+							_logFile = Path.GetFullPath(value, Program.OriginalFolder);
+							Directory.CreateDirectory(Path.GetDirectoryName(_logFile)!);
+							File.WriteAllText(_logFile, "");
 							break;
 						default:
 							opt.Errors.Add("unknown option: " + arg);
@@ -432,13 +631,21 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--generate] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels] [--reportonly] [--verify [--shots=4]]");
 		}
 
 		private static void Log(string message)
 		{
 			Console.WriteLine(message);
+			if(_logFile != null) {
+				try {
+					File.AppendAllText(_logFile, message + Environment.NewLine);
+				} catch {
+				}
+			}
 		}
+
+		private static string? _logFile;
 
 		[DllImport("kernel32.dll")]
 		private static extern bool AttachConsole(int processId);
