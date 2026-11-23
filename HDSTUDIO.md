@@ -140,12 +140,16 @@ area) because packs are merged. Games without level select codes fall back to th
 
 ### Camera sweep (`--sweep`, experimental)
 
-`--levels --sweep` uses `UI/HdStudio/Scripts/explore_sweep.lua` instead of the runner. It looks for the RAM byte
-that holds the player position (the player runs right and then left; only bytes that follow both movements are
-kept), checks the candidate by writing it and looking at the picture, handles 16-bit positions and walks the value
-through the level so the game scrolls and the PPU draws every column. On Batman it currently covers less of the
-cartridge than the runner (5.7 % vs 8.1 %), so it is opt-in; the runner is still the default. The hard part is
-telling the real position from the many copies the games keep in RAM (and from 16-bit fixed-point coordinates).
+`--levels --sweep` uses `UI/HdStudio/Scripts/explore_sweep.lua` instead of the runner. It waits until the game is
+really moving (not the menus), looks for the RAM byte(s) that hold the player position (the player runs right and
+then left; only bytes that follow both movements are kept), and **scores each candidate by correlating three screen
+rows between frames**: a real scroll is a shifted copy of the previous frame, while copies of the position and
+glitches score 0. It tries 8-bit and 16-bit (little endian) positions, both directions, and walks the best one
+through the level so the game scrolls and the PPU draws every column.
+
+Measured on Batman with 1600 frames per level: **6.9 %** of the CHR (the runner gets 8.1 %), 18/18 levels visited.
+The problem is that the write is often overwritten by the game's own physics, and that the camera stops advancing
+after ~9 screens. It stays opt-in; the runner is the default.
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)
 
