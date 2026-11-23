@@ -189,6 +189,19 @@ with every form and pose. The pose set covers walk, run, jump, fall, duck, swim,
 frog hop/swim, hammer throw and the statue; death/pipe/edge states are intentionally omitted because they need
 a different game state.
 
+### Demo GIF (`--demo`, SMB3)
+
+After the pack exists, this records a short real-Mesen GIF with the HD pack active:
+
+```
+.\hdstudio.cmd game.nes --demo --frames=600
+```
+
+The Lua driver loads 1-1, walks Mario a little, clears the object slots and forces a Goomba next to him. The
+recording uses Mesen's GIF codec, so the output is the actual emulator video at the HD resolution. The
+repository's `assets/gifs/hd_goomba_demo.gif` used a temporarily retouched Goomba tile; the pack sheets were
+restored afterwards. The browser preview in `demo/` is a separate visual mockup (no ROM, no emulator).
+
 ## Checking that an HD pack works
 
 ```
@@ -293,6 +306,10 @@ Measured on SMB3 (USA), 2026-11-23:
 | Those combinations in the pack after `--generate` | **4,505 / 4,505 = 100 %** (4,340 were added by the map pass) |
 | Old layout estimate (for comparison) | 2,584; it counted layout patterns, not the real maps |
 | Not mapped | 10 "EMPTY" placeholder levels + 8 Big [?] Block sub-areas + 2 unused W8 Hammer Bro rooms + 12 pipe-junction fragments (alternate layouts entered through a pipe, not standalone levels) |
+
+- **Map tile fix:** the four 8×8 chunks of a 16×16 tile are stored as upper-left, lower-left, upper-right,
+  lower-right. A first renderer placed them row-major and swapped the diagonal quadrants, making pipes/blocks
+  look shifted; the final renderer uses the stored order (World 1-1 compared with the original layout).
 
 The exact number of patterns is lower than the old estimate because the previous code mapped every layout pattern
 with the first CHR page (`page1*64 + pattern`). Patterns 128-255 live in the second 2 KB window (`page2`), so the

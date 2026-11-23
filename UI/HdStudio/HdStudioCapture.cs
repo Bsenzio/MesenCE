@@ -36,6 +36,8 @@ namespace Mesen.HdStudio
 	///   --maps            Build full level maps with the game's own loader (needs --disasm; SMB3)
 	///   --playerforms     Capture every SMB3 player form (Small, Super, Fire, Raccoon, Frog, Tanuki,
 	///                     Hammer and Tanuki Statue) with named poses and exact sprite palettes
+	///   --demo            Record a short real-Mesen GIF with the HD pack active (SMB3; for the
+	///                     repository demo, not a full capture)
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
 	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
 	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
@@ -59,6 +61,7 @@ namespace Mesen.HdStudio
 			public bool Sweep;
 			public bool Maps;
 			public bool PlayerForms;
+			public bool Demo;
 			public int SpriteId = -1;
 			public string? DisasmPath;
 			public bool FramesSpecified;
@@ -103,6 +106,11 @@ namespace Mesen.HdStudio
 			if(opt.PlayerForms) {
 				//SMB3-specific: force every player suit and animation frame through the game's drawing code.
 				return HdStudioPlayerAtlas.RunAll(opt.RomPath!, outFolder, ConfigManager.Config.Nes.UserPalette, Log);
+			}
+
+			if(opt.Demo) {
+				int frames = opt.FramesSpecified ? opt.Frames : 600;
+				return HdStudioDemo.Run(opt.RomPath!, outFolder, frames, null, Log);
 			}
 
 			if(opt.Verify) {
@@ -602,6 +610,7 @@ namespace Mesen.HdStudio
 						case "sweep": opt.Sweep = true; break;
 						case "maps": opt.Maps = true; break;
 						case "playerforms": opt.PlayerForms = true; break;
+						case "demo": opt.Demo = true; break;
 						case "spriteid":
 							if(!int.TryParse(value, out opt.SpriteId) || opt.SpriteId < 0 || opt.SpriteId > 255) {
 								opt.Errors.Add("invalid sprite id (0-255): " + value);
@@ -702,9 +711,10 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--demo] [--reportonly] [--verify [--shots=4]]");
 			Log("  --maps with --disasm=FOLDER: full level maps as PNG + exact per-level tile usage (uses the game's own level generator).");
 			Log("  --playerforms: SMB3 (USA) only: all eight player forms and their named poses, exact sprite palettes.");
+			Log("  --demo: records a short real-Mesen GIF with the HD pack active (SMB3 1-1).");
 		}
 
 		private static void Log(string message)

@@ -726,8 +726,11 @@ end, emu.eventType.startFrame)
 						if(hasPalette) {
 							level.UsedCombos.Add((absolute, packedPalette));
 						}
-						int ox = x * 16 + (q & 1) * 8;
-						int oy = y * 16 + (q >> 1) * 8;
+						//SMB3 stores the four 8x8 chunks as upper-left, lower-left, upper-right,
+						//lower-right (not row-major). The old q&1/q>>1 order swapped the two
+						//diagonal quadrants and made complex 16x16 tiles look shifted.
+						int ox = x * 16 + (q >> 1) * 8;
+						int oy = y * 16 + (q & 1) * 8;
 						for(int py = 0; py < 8; py++) {
 							byte lo = chr[absolute * 16 + py];
 							byte hi = chr[absolute * 16 + 8 + py];
