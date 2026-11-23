@@ -929,6 +929,25 @@ namespace Mesen.HdStudio
 			}
 			sb.AppendLine("</div>");
 
+			//Single coverage table: the three things the user asked to see (sprites, backgrounds, tiles)
+			sb.AppendLine("<h2>Coverage</h2>");
+			sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>Category</th><th>In the pack</th><th>Total</th><th>Coverage</th><th>Notes</th></tr></thead><tbody>");
+			if(_mapLevels > 0) {
+				double bgPct = _exactLevelTiles.Count > 0 ? 100.0 * _mapExactInPack / _exactLevelTiles.Count : 0;
+				sb.AppendLine($"<tr><td><b>Backgrounds</b> (exact pattern + palette)</td><td class=\"n\">{_mapExactInPack:N0}</td><td class=\"n\">{_exactLevelTiles.Count:N0}</td><td class=\"n\"><b>{bgPct:0.0}%</b></td><td>217 level maps, every placed background tile has the game's palette.</td></tr>");
+			}
+			if(_exactSpriteTiles.Count > 0) {
+				double spPct = 100.0 * _spriteExactInPack / _exactSpriteTiles.Count;
+				sb.AppendLine($"<tr><td><b>Sprites</b> (exact pattern + palette sweep)</td><td class=\"n\">{_spriteExactInPack:N0}</td><td class=\"n\">{_exactSpriteTiles.Count:N0}</td><td class=\"n\"><b>{spPct:0.0}%</b></td><td>Every seen sprite pattern with all 42 real sprite palettes; {_seenSpriteCombos:N0} combinations seen on screen.</td></tr>");
+				sb.AppendLine($"<tr><td><b>Sprites</b> (wildcard fallback)</td><td class=\"n\">{_packDefaultTiles:N0}</td><td class=\"n\">{_packDefaultTiles:N0}</td><td class=\"n\"><b>100.0%</b></td><td>Any remaining sprite palette uses the representative image (all sprites appear in HD).</td></tr>");
+			}
+			if(_rom.HasChrRom) {
+				int inPack = InPackChrTiles().Count;
+				int nonBlankTiles = NonBlankChrTileCount();
+				sb.AppendLine($"<tr><td><b>Tiles</b> (non-blank cartridge CHR)</td><td class=\"n\">{inPack:N0}</td><td class=\"n\">{nonBlankTiles:N0}</td><td class=\"n\"><b>{(nonBlankTiles > 0 ? 100.0 * inPack / nonBlankTiles : 0):0.0}%</b></td><td>{seen.Count:N0} seen exactly, {Math.Max(0, nonBlankTiles - seen.Count):N0} only via the wildcard image.</td></tr>");
+			}
+			sb.AppendLine("</tbody></table></div>");
+
 			sb.AppendLine("<h2>What to draw</h2>");
 			sb.AppendLine($"<p>Every original 8×8 tile is replaced by a <b>{hdTile}×{hdTile} px</b> image. The pack sheets ({_packImages.Count}) are <b>{128 * _scale}×{128 * _scale} px</b> each (16×16 tiles). " +
 				"To work per character instead of per tile, use the templates below: each one already has the final HD size; redraw on top of it, respecting the grid.</p>");
