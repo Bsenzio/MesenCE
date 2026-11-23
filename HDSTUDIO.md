@@ -71,6 +71,7 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 | `--generate` | | Fully automatic mode (see above) |
 | `--levels` | | Visit every level using the level select cheats of the cheat database (see below); `--frames` is per level |
 | `--sweep` | | With `--levels`: reveal each whole level by moving the player position in RAM (experimental, see below) |
+| `--disasm=FOLDER` | | Read a game disassembly (NESASM style `.asm` files) and use the game's own data to know which tiles its levels reference (see below) |
 | `--reportonly` | | Only regenerate the report from an existing capture |
 | `--verify` | | Check the HD pack instead of capturing (see below) |
 | `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |
@@ -157,9 +158,25 @@ after ~9 screens. It stays opt-in; the runner is the default.
 Lua scripts get `emu.getScroll()`: the NES horizontal scroll (fine scroll + nametable, 0-511), which is the exact
 signal for a camera sweep (writing a copy of the position does not change it).
 
-## Where Mesen keeps its files (environment variable `MESEN_HOME`)
+### Game data from a disassembly (`--disasm`, SMB3 tested)
 
-Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
+If the game has a disassembly (NESASM / Southbird style `.asm` files), the tool can use the game's **own data** to
+know exactly which tiles its levels use:
+
+```
+.\hdstudio.cmd game.nes --generate --disasm=D:\path\to\disassembly
+```
+
+Nothing is assembled: the tool parses the `Tile_Layout_TS*` tables (256 tiles of 16x16 per tileset, four 8x8
+quadrants each), locates them **inside the ROM** by searching their bytes (so it also works when the disassembly is
+for another revision), reads `Level_BG_Pages1` (CHR bank per level) and the level headers
+(`LEVEL3_TILESET_n`, `LEVEL4_BGBANK_INDEX(n)`), and builds the exact list of background tiles the game references.
+
+The report gets a **"Game data (from the disassembly)"** section and `report.json` a `gameData` object with
+`referencedTiles`, `capturedReferencedTiles`, `referencedCoveragePercent`, `levelsParsed` and `tilesetsFound`.
+For SMB3 (USA), that is 3,687 referenced tiles over 361 levels: the honest target for the capture.
+
+## Where Mesen keeps its files (environment variable `MESEN_HOME`)Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
 (or next to `Mesen.exe` if a portable `settings.json` is found there). This fork also accepts the environment
 variable **`MESEN_HOME`**, which wins over both and can point anywhere (for example a drive with more free space):
 

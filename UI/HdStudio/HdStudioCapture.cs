@@ -54,6 +54,7 @@ namespace Mesen.HdStudio
 			public bool Generate;
 			public bool Levels;
 			public bool Sweep;
+			public string? DisasmPath;
 			public bool FramesSpecified;
 			public int Shots = 4;
 			public List<string> Errors = new();
@@ -104,7 +105,7 @@ namespace Mesen.HdStudio
 
 			try {
 				uint[] palette = ConfigManager.Config.Nes.UserPalette;
-				HdStudioReport report = new(outFolder, palette, Log);
+				HdStudioReport report = new(outFolder, palette, Log, opt.DisasmPath);
 				string reportPath = report.Generate(opt.RomPath);
 				Log("Report: " + reportPath);
 			} catch(Exception ex) {
@@ -555,6 +556,9 @@ namespace Mesen.HdStudio
 						case "generate": opt.Generate = true; break;
 						case "levels": opt.Levels = true; break;
 						case "sweep": opt.Sweep = true; break;
+						case "disasm":
+							opt.DisasmPath = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
 						case "shots":
 							if(!int.TryParse(value, out opt.Shots) || opt.Shots < 1 || opt.Shots > 20) {
 								opt.Errors.Add("invalid screenshot count (1-20): " + value);
@@ -646,7 +650,7 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--reportonly] [--verify [--shots=4]]");
 		}
 
 		private static void Log(string message)

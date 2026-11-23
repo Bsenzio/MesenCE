@@ -23,6 +23,8 @@ namespace Mesen.HdStudio
 		private readonly string _studioFolder;
 		private readonly uint[] _nesPalette;
 		private readonly Action<string> _log;
+		private readonly string? _disasmPath;
+		private HdStudioDisasm? _disasm;
 
 		private NesRomData _rom = new();
 		private int _scale = 1;
@@ -38,17 +40,26 @@ namespace Mesen.HdStudio
 		private int _unseenTilesWithDefaultPalette = 0;
 		private List<string> _levelsVisited = new();
 
-		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log)
+		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log, string? disasmPath = null)
 		{
 			_packFolder = packFolder;
 			_studioFolder = Path.Combine(packFolder, StudioFolderName);
 			_nesPalette = nesPalette;
 			_log = log;
+			_disasmPath = disasmPath;
 		}
 
 		/// <returns>Path to the HTML report</returns>
 		public string Generate(string romPath)
 		{
+			if(!string.IsNullOrWhiteSpace(_disasmPath)) {
+				_disasm = HdStudioDisasm.Load(_disasmPath!, romPath, _nesPalette);
+				if(_disasm.Error != null) {
+					_log("Disassembly: " + _disasm.Error);
+				} else {
+					_log($"Disassembly: {_disasm.TilesetsFound} tilesets, {_disasm.LevelsParsed} levels, {_disasm.ReferencedTiles.Count:N0} tiles referenced by the game");
+				}
+			}
 			Directory.CreateDirectory(_studioFolder);
 
 			_rom = NesRomData.Load(romPath);
@@ -686,6 +697,18 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
+			if(_disasm != null && _disasm.Error == null) {
+				int referenced = _disasm.ReferencedTiles.Count;
+				int captured = _disasm.ReferencedTiles.Count(t => seen.Contains(t));
+				json.WriteStartObject("gameData");
+				json.WriteNumber("referencedTiles", referenced);
+				json.WriteNumber("capturedReferencedTiles", captured);
+				json.WriteNumber("referencedCoveragePercent", referenced > 0 ? Math.Round(100.0 * captured / referenced, 1) : 0);
+				json.WriteNumber("levelsParsed", _disasm.LevelsParsed);
+				json.WriteNumber("tilesetsFound", _disasm.TilesetsFound);
+				json.WriteEndObject();
+			}
+
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
 				json.WriteStartObject();
@@ -796,6 +819,17 @@ namespace Mesen.HdStudio
 				sb.AppendLine("<p><a href=\"sheet_backgrounds.png\"><code>sheet_backgrounds.png</code></a>: <b>16×16</b> blocks (the usual NES metatile) made of 4 consecutive cartridge tiles used with the same palette. " +
 					"These are the walls, floors, bricks, water… of the levels: if you redraw the whole block, the pack replaces the 4 pieces at once. The layout is in <code>sheet_backgrounds.json</code>.</p>");
 				sb.AppendLine("<img class=\"px\" src=\"sheet_backgrounds.png\" alt=\"16x16 background blocks\" style=\"max-width:100%;height:auto\">");
+			}
+
+			//Data-driven check: what the game's own level data references
+			if(_disasm != null && _disasm.Error == null) {
+				int referenced = _disasm.ReferencedTiles.Count;
+				int captured = _disasm.ReferencedTiles.Count(t => seen.Contains(t));
+				double pct = referenced > 0 ? 100.0 * captured / referenced : 0;
+				sb.AppendLine("<h2>Game data (from the disassembly)</h2>");
+				sb.AppendLine($"<p>The game's level data references <b>{referenced:N0}</b> background tiles ({_disasm.LevelsParsed:N0} levels parsed, {_disasm.TilesetsFound:N0} tilesets found in this ROM). " +
+					$"The pack has captured <b>{captured:N0}</b> of them (<b>{pct:0.0} %</b>). This is the exact list of tiles the game uses, not an estimate: the remaining " +
+					$"{referenced - captured:N0} are the target for the next capture.</p>");
 			}
 
 			//What is missing: this is what tells the user whether the capture is complete
