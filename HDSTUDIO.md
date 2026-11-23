@@ -107,6 +107,40 @@ In the pack folder:
 * `HdStudio/palettes.txt`: the palettes found in the game's code (PRG ROM), with their usage count and offset
 * `HdStudio/objects.txt`, `tiles.txt`, `capture.txt`: raw capture data (merged between sessions)
 
+## Complete workflow for any NES game
+
+```
+hdstudio_workflow.cmd "game.nes" [--disasm=FOLDER] [--movie=FILE] [--frames=N]
+```
+
+The script runs each step in its own Mesen process and stops on the first failure:
+
+1. **Capture** with the automatic explorer (or the movie) and `--generate`: records what is played,
+   then adds every CHR-ROM tile with a wildcard fallback.
+2. **Exact data** (optional, requires a disassembly): `--maps` runs the game's level loader, writes
+   the full maps, the exact background combinations and the sprite palette sweep; a second
+   `--generate` merges them into the pack.
+3. **Report**: `HdStudio/report.html` with the Coverage table, sprites, backgrounds, level maps and
+   the complete object catalog from the game data.
+4. **Verify**: plays with and without the pack, checks that the HD pack is active and writes
+   side-by-side screenshots.
+
+What is guaranteed for every NES game:
+
+| Game type | Guarantee |
+|---|---|
+| **CHR-ROM** | 100 % of the non-blank CHR patterns have an HD image (seen exactly or via the wildcard `DefaultTile=Y`); all backgrounds/sprites can be replaced |
+| **CHR-ROM + disassembly** | Same, plus exact level maps, exact background `(pattern+palette)` combinations and the exact sprite palette sweep where the parser knows the game (SMB3 today) |
+| **CHR-RAM** | Only the tiles actually shown during the capture; a 100 % tile guarantee is impossible without the game's code. The report says so |
+
+**What “100 %” does not mean:** it is tile/palette coverage, not a named bestiary. `sheet_objects.png`
+contains the metasprites detected in the recording (for SMB3: 71 groups / 464 variants); the game data
+defines 196 object types. Enemies/forms that never appeared are still replaced in game (their tiles are in
+the pack), but they are not grouped or named in the sheet. Player forms (Small, Super, Fire, Raccoon,
+**Tanuki**, Frog, Hammer, statue) are drawn by the player code, not by object IDs: they appear as generic
+player templates in the top row of `sheet_objects.png`, without individual labels. The full tile atlas is
+`HdStudio/chr_coverage.png`; `report.json` has the 196-object catalog from `game.xml`.
+
 ## Checking that an HD pack works
 
 ```
