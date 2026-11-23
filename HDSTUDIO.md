@@ -99,6 +99,9 @@ In the pack folder:
 * `HdStudio/report.json`: the same data for other tools
 * `HdStudio/templates/obj_NNN_WxH.png`: one template per detected object, already at the final HD size
 * `HdStudio/chr_coverage.png`: every tile of the cartridge (CHR-ROM games), in red the ones that were never displayed
+* `HdStudio/sheet_backgrounds.png`: 16×16 background blocks (4 consecutive cartridge tiles used with the same
+  palette), sorted by usage: the walls, floors, bricks and water of the levels, to redraw as whole pieces
+  (`sheet_backgrounds.json` has the layout and the 4 tiles of each block)
 * `HdStudio/palettes.txt`: the palettes found in the game's code (PRG ROM), with their usage count and offset
 * `HdStudio/objects.txt`, `tiles.txt`, `capture.txt`: raw capture data (merged between sessions)
 
@@ -150,6 +153,9 @@ through the level so the game scrolls and the PPU draws every column.
 Measured on Batman with 1600 frames per level: **6.9 %** of the CHR (the runner gets 8.1 %), 18/18 levels visited.
 The problem is that the write is often overwritten by the game's own physics, and that the camera stops advancing
 after ~9 screens. It stays opt-in; the runner is the default.
+
+Lua scripts get `emu.getScroll()`: the NES horizontal scroll (fine scroll + nametable, 0-511), which is the exact
+signal for a camera sweep (writing a copy of the position does not change it).
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)
 
