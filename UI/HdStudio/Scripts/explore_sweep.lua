@@ -16,6 +16,7 @@ local STILL_CHECKS = 6
 local STILL_THRESHOLD = 0.05
 local MAX_CANDIDATES = 5
 local MINI_STEPS = 20
+local CONTROL_FRAMES = 12
 local MINI_FRAMES = 2
 local MAX_SCAN_CANDIDATES = 12
 
@@ -46,6 +47,10 @@ local miniStep = 0
 local miniDistinct = 0
 local miniBands = nil
 local miniScroll = 0
+local miniBaseline = 0
+local controlStep = 0
+local controlScroll = 0
+local controlChanges = 0
 
 local fullStep = 0
 local fullDistinct = 0
@@ -283,6 +288,17 @@ local function buildVariants()
   miniBands = nil
 end
 
+-- Before testing a variant, the game is observed for a few frames without writing anything:
+-- the scroll may change on its own (intro, menus, animations), and that must not count as a win.
+local function startVariant()
+  controlStep = 0
+  controlChanges = 0
+  controlScroll = getScroll()
+  miniStep = 0
+  miniDistinct = 0
+  state = "control"
+end
+
 local function describe(v)
   return string.format("%s $%04X%+d", v.mode, v.addr, v.direction)
 end
@@ -316,9 +332,10 @@ local function scoreVariant()
   if miniStep >= MINI_STEPS then
     writeValue(v, v.base)
     local penalty = (v.mode == "word" and v.base > 16384) and 100 or 0
-    log(string.format("  %s -> %d scroll changes (last shift %d, match %.2f)", describe(v), miniDistinct, shift, match))
-    if miniDistinct > bestScore and penalty == 0 then
-      bestScore = miniDistinct
+    local net = math.max(0, miniDistinct - miniBaseline)
+    log(string.format("  %s -> %d changes, baseline %d, net %d (last shift %d, match %.2f)", describe(v), miniDistinct, miniBaseline, net, shift, match))
+    if net > bestScore and penalty == 0 then
+      bestScore = net
       bestVariant = { mode = v.mode, addr = v.addr, direction = v.direction, base = v.base }
     end
     variantIndex = variantIndex + 1
@@ -331,7 +348,7 @@ local function scoreVariant()
       else
         -- The game may have moved the value while the other candidates were scored: take it again
         bestVariant.base = readValue(bestVariant)
-        log(string.format("best: %s (%d screens, base now %d), sweeping the level",
+        log(string.format("best: %s (%d net changes, base now %d), sweeping the level",
           describe(bestVariant), bestScore, bestVariant.base))
         fullStep = 0
         fullDistinct = 0
@@ -340,6 +357,8 @@ local function scoreVariant()
         state = "full"
         stateFrames = 0
       end
+    else
+      startVariant()
     end
   end
 end
@@ -430,8 +449,25 @@ local function onInputPolled()
       snapC = snapshot()
       findCandidates()
       buildVariants()
-      state = "score"
+      startVariant()
       stateFrames = 0
+    end
+
+  elseif state == "control" then
+    -- Frames without writing: this is how much the scroll moves on its own
+    controlStep = controlStep + 1
+    local scroll = getScroll()
+    if scroll ~= controlScroll then
+      controlChanges = controlChanges + 1
+    end
+    controlScroll = scroll
+    emu.setInput({}, 0)
+    if controlStep >= CONTROL_FRAMES then
+      miniBaseline = controlChanges
+      miniStep = 0
+      miniDistinct = 0
+      miniScroll = getScroll()
+      state = "score"
     end
 
   elseif state == "score" then

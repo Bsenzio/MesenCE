@@ -242,26 +242,26 @@ namespace Mesen.HdStudio
 		{
 			string E(string s) => WebUtility.HtmlEncode(s);
 			StringBuilder sb = new();
-			sb.AppendLine("<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
-			sb.AppendLine($"<title>HD Studio — verificación</title>");
+			sb.AppendLine("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+			sb.AppendLine($"<title>HD Studio — verification</title>");
 			sb.AppendLine("<style>:root{--bg:#f6f7f5;--card:#fff;--fg:#1d211c;--muted:#5d665a;--line:#dfe3dc;--ok:#2f8f2a;--bad:#b23b2e}");
 			sb.AppendLine("@media (prefers-color-scheme:dark){:root{--bg:#141713;--card:#1d211c;--fg:#e7ebe4;--muted:#9aa595;--line:#2f352d;--ok:#62c45a;--bad:#ef7a6c}}");
 			sb.AppendLine("body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,Segoe UI,sans-serif}main{max-width:1200px;margin:0 auto;padding:24px 16px}");
 			sb.AppendLine(".pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px}");
 			sb.AppendLine("figure img{width:100%;height:auto;display:block;border-radius:4px}figcaption{color:var(--muted);font-size:13px;margin-top:4px}.ok{color:var(--ok)}.bad{color:var(--bad)}");
 			sb.AppendLine("@media (max-width:640px){.pair{grid-template-columns:1fr}}</style></head><body><main>");
-			sb.AppendLine($"<h1>Verificación del HD pack — {E(Path.GetFileName(_romPath))}</h1>");
+			sb.AppendLine($"<h1>HD pack verification — {E(Path.GetFileName(_romPath))}</h1>");
 			sb.AppendLine(hdLoaded
-				? $"<p class=\"ok\"><b>✔ El HD pack está activo.</b> El juego se dibuja a {hdSize.Width}×{hdSize.Height} en lugar de {originalSize.Width}×{originalSize.Height}.</p>"
-				: "<p class=\"bad\"><b>✘ El HD pack no se cargó.</b> El juego se dibujó a la resolución original.</p>");
-			sb.AppendLine("<p>Mismos cuadros del juego, sin el pack (izquierda) y con el pack (derecha). Haz clic en una imagen para verla a tamaño real.</p>");
+				? $"<p class=\"ok\"><b>✔ The HD pack is active.</b> The game is rendered at {hdSize.Width}×{hdSize.Height} instead of {originalSize.Width}×{originalSize.Height}.</p>"
+				: "<p class=\"bad\"><b>✘ The HD pack did not load.</b> The game was rendered at its original resolution.</p>");
+			sb.AppendLine("<p>The same game frames, without the pack (left) and with the pack (right). Click an image to see it at full size.</p>");
 
 			foreach(uint frame in _checkpoints) {
 				string original = $"frame_{frame:00000}_original.png";
 				string hd = $"frame_{frame:00000}_hd.png";
 				sb.AppendLine("<div class=\"pair\">");
-				sb.AppendLine($"<figure><a href=\"{original}\"><img src=\"{original}\" style=\"image-rendering:pixelated\" alt=\"Original, cuadro {frame}\"></a><figcaption>Original · cuadro {frame}</figcaption></figure>");
-				sb.AppendLine($"<figure><a href=\"{hd}\"><img src=\"{hd}\" alt=\"HD, cuadro {frame}\"></a><figcaption>Con HD pack · cuadro {frame}</figcaption></figure>");
+				sb.AppendLine($"<figure><a href=\"{original}\"><img src=\"{original}\" style=\"image-rendering:pixelated\" alt=\"Original, frame {frame}\"></a><figcaption>Original · frame {frame}</figcaption></figure>");
+				sb.AppendLine($"<figure><a href=\"{hd}\"><img src=\"{hd}\" alt=\"HD, frame {frame}\"></a><figcaption>With HD pack · frame {frame}</figcaption></figure>");
 				sb.AppendLine("</div>");
 			}
 			sb.AppendLine("</main></body></html>");

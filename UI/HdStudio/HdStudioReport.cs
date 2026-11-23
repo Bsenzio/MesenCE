@@ -728,7 +728,7 @@ namespace Mesen.HdStudio
 			string E(string s) => WebUtility.HtmlEncode(s);
 
 			StringBuilder sb = new();
-			sb.AppendLine("<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+			sb.AppendLine("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
 			sb.AppendLine($"<title>HD Studio — {E(_rom.FileName)}</title>");
 			sb.AppendLine("<style>");
 			sb.AppendLine(":root{--bg:#f6f7f5;--card:#fff;--fg:#1d211c;--muted:#5d665a;--line:#dfe3dc;--accent:#2f8f2a;--warn:#b23b2e}");
@@ -747,33 +747,33 @@ namespace Mesen.HdStudio
 			sb.AppendLine($"<p class=\"muted\">Mapper {_rom.Mapper} · PRG {_rom.PrgSize / 1024} KB · {(_rom.HasChrRom ? $"CHR-ROM {_rom.ChrSize / 1024} KB" : "CHR-RAM")} · SHA-1 <code>{E(_rom.Sha1)}</code></p>");
 
 			sb.AppendLine("<div class=\"stats\">");
-			sb.AppendLine($"<div class=\"stat\"><b>{_frameCount:N0}</b><span>cuadros analizados</span></div>");
-			sb.AppendLine($"<div class=\"stat\"><b>{_scale}×</b><span>escala · tile HD de {hdTile}×{hdTile} px</span></div>");
-			sb.AppendLine($"<div class=\"stat\"><b>{_packTiles.Count:N0}</b><span>imágenes de tile a dibujar ({spriteCombos:N0} sprites, {bgCombos:N0} fondo)</span></div>");
-			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objetos (metasprites) detectados</span></div>");
+			sb.AppendLine($"<div class=\"stat\"><b>{_frameCount:N0}</b><span>frames analyzed</span></div>");
+			sb.AppendLine($"<div class=\"stat\"><b>{_scale}×</b><span>scale · {hdTile}×{hdTile} px HD tiles</span></div>");
+			sb.AppendLine($"<div class=\"stat\"><b>{_packTiles.Count:N0}</b><span>tile images to draw ({spriteCombos:N0} sprites, {bgCombos:N0} background)</span></div>");
+			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objects (metasprites) detected</span></div>");
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
-				sb.AppendLine($"<div class=\"stat\"><b>{coverage:0.0}%</b><span>de los tiles del cartucho vistos jugando ({seen.Count:N0} de {nonBlank:N0})</span></div>");
+				sb.AppendLine($"<div class=\"stat\"><b>{coverage:0.0}%</b><span>of the cartridge tiles seen while playing ({seen.Count:N0} of {nonBlank:N0})</span></div>");
 				int inPack = InPackChrTiles().Count;
 				if(inPack > seen.Count) {
 					double packCoverage = nonBlank > 0 ? 100.0 * inPack / nonBlank : 0;
-					sb.AppendLine($"<div class=\"stat\"><b>{packCoverage:0.0}%</b><span>de los tiles del cartucho incluidos en el pack ({inPack:N0}); los no vistos llevan una paleta estimada</span></div>");
+					sb.AppendLine($"<div class=\"stat\"><b>{packCoverage:0.0}%</b><span>of the cartridge tiles in the pack ({inPack:N0}); the ones never seen carry a guessed palette</span></div>");
 				}
 			}
 			if(_prgPalettes.Count > 0) {
-				sb.AppendLine($"<div class=\"stat\"><b>{_prgPalettes.Count:N0}</b><span>paletas encontradas en el código del juego ({_prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes)):N0} usadas en el pack)</span></div>");
+				sb.AppendLine($"<div class=\"stat\"><b>{_prgPalettes.Count:N0}</b><span>palettes found in the game's code ({_prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes)):N0} used by the pack)</span></div>");
 			}
 			sb.AppendLine("</div>");
 
-			sb.AppendLine("<h2>Qué PNG dibujar</h2>");
-			sb.AppendLine($"<p>Cada tile original de 8×8 se reemplaza por una imagen de <b>{hdTile}×{hdTile} px</b>. Las hojas del pack ({_packImages.Count}) miden <b>{128 * _scale}×{128 * _scale} px</b> cada una (16×16 tiles). " +
-				"Para trabajar por personaje en vez de por tile, usa las plantillas de abajo: cada una ya tiene el tamaño HD final; redibújala encima respetando la cuadrícula.</p>");
+			sb.AppendLine("<h2>What to draw</h2>");
+			sb.AppendLine($"<p>Every original 8×8 tile is replaced by a <b>{hdTile}×{hdTile} px</b> image. The pack sheets ({_packImages.Count}) are <b>{128 * _scale}×{128 * _scale} px</b> each (16×16 tiles). " +
+				"To work per character instead of per tile, use the templates below: each one already has the final HD size; redraw on top of it, respecting the grid.</p>");
 			if(groups.Count > 0) {
-				sb.AppendLine("<p><b>Hoja de sprites completa:</b> <a href=\"sheet_objects.png\"><code>sheet_objects.png</code></a> reúne todos los objetos de la tabla a tamaño HD " +
-					"(su distribución está en <code>sheet_objects.json</code>). Es la hoja para redibujar y cargar después en HD Studio.</p>");
+				sb.AppendLine("<p><b>Full sprite sheet:</b> <a href=\"sheet_objects.png\"><code>sheet_objects.png</code></a> has every object of the table at HD size " +
+					"(its layout is in <code>sheet_objects.json</code>). This is the sheet to redraw and later load in HD Studio.</p>");
 			}
 
-			sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>#</th><th>Vista</th><th>Plantilla PNG</th><th>Original</th><th>Tamaño HD</th><th>Tiles</th><th>Paletas</th><th>Presencia</th></tr></thead><tbody>");
+			sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>#</th><th>Preview</th><th>PNG template</th><th>Original</th><th>HD size</th><th>Tiles</th><th>Palettes</th><th>Presence</th></tr></thead><tbody>");
 			foreach(ObjectGroup g in groups) {
 				double presence = _frameCount > 0 ? Math.Min(100.0, 100.0 * g.FrameCount / _frameCount) : 0;
 				int previewScale = Math.Max(1, Math.Min(4, 64 / Math.Max(g.Width, g.Height)));
@@ -792,10 +792,10 @@ namespace Mesen.HdStudio
 
 			//Background blocks: the scenery to redraw as 16x16 metatiles
 			if(hasBackgrounds) {
-				sb.AppendLine("<h2>Fondos para redibujar</h2>");
-				sb.AppendLine("<p><a href=\"sheet_backgrounds.png\"><code>sheet_backgrounds.png</code></a>: bloques de <b>16×16</b> (el metatile típico de NES) formados por 4 tiles consecutivos del cartucho que se usan con la misma paleta. " +
-					"Son las paredes, suelos, ladrillos, agua… de los niveles: si redibujas el bloque entero, el pack sustituye las 4 piezas de una vez. La distribución está en <code>sheet_backgrounds.json</code>.</p>");
-				sb.AppendLine("<img class=\"px\" src=\"sheet_backgrounds.png\" alt=\"Bloques de fondo 16x16\" style=\"max-width:100%;height:auto\">");
+				sb.AppendLine("<h2>Backgrounds to redraw</h2>");
+				sb.AppendLine("<p><a href=\"sheet_backgrounds.png\"><code>sheet_backgrounds.png</code></a>: <b>16×16</b> blocks (the usual NES metatile) made of 4 consecutive cartridge tiles used with the same palette. " +
+					"These are the walls, floors, bricks, water… of the levels: if you redraw the whole block, the pack replaces the 4 pieces at once. The layout is in <code>sheet_backgrounds.json</code>.</p>");
+				sb.AppendLine("<img class=\"px\" src=\"sheet_backgrounds.png\" alt=\"16x16 background blocks\" style=\"max-width:100%;height:auto\">");
 			}
 
 			//What is missing: this is what tells the user whether the capture is complete
@@ -803,32 +803,32 @@ namespace Mesen.HdStudio
 				int inPack = InPackChrTiles().Count;
 				int unseen = Math.Max(0, inPack - seen.Count);
 				int missing = Math.Max(0, nonBlank - seen.Count);
-				sb.AppendLine("<h2>Qué falta</h2>");
-				sb.AppendLine($"<p>Se han visto en pantalla <b>{seen.Count:N0}</b> de los <b>{nonBlank:N0}</b> tiles del cartucho " +
-					$"({(nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0):0.0} %). Faltan <b>{missing:N0}</b> " +
-					$"({(nonBlank > 0 ? 100.0 * missing / nonBlank : 0):0.0} %): no aparecieron en ninguna partida.</p>");
+				sb.AppendLine("<h2>What is missing</h2>");
+				sb.AppendLine($"<p><b>{seen.Count:N0}</b> of the <b>{nonBlank:N0}</b> cartridge tiles have been seen on screen " +
+					$"({(nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0):0.0} %). <b>{missing:N0}</b> are missing " +
+					$"({(nonBlank > 0 ? 100.0 * missing / nonBlank : 0):0.0} %): they never appeared in any game session.</p>");
 				if(unseen > 0) {
-					sb.AppendLine("<p>De los tiles que están en el pack sin haberse visto nunca:</p><ul>");
-					sb.AppendLine($"<li>{_unseenTilesWithPrgPalette:N0} llevan una <b>paleta real</b> encontrada en el código del juego.</li>");
-					sb.AppendLine($"<li>{_unseenTilesWithNeighbourPalette:N0} llevan la paleta del <b>tile vecino</b> (probable, no seguro).</li>");
-					sb.AppendLine($"<li>{_unseenTilesWithDefaultPalette:N0} están <b>en gris</b>: de esos no se puede suponer ninguna paleta.</li>");
+					sb.AppendLine("<p>Of the tiles that are in the pack without ever being seen:</p><ul>");
+					sb.AppendLine($"<li>{_unseenTilesWithPrgPalette:N0} use a <b>real palette</b> found in the game's code.</li>");
+					sb.AppendLine($"<li>{_unseenTilesWithNeighbourPalette:N0} use the palette of the <b>neighbour tile</b> (likely, not certain).</li>");
+					sb.AppendLine($"<li>{_unseenTilesWithDefaultPalette:N0} are <b>gray</b>: no palette can be guessed for them.</li>");
 					sb.AppendLine("</ul>");
 				}
-				sb.AppendLine("<p class=\"muted\">Para completar el pack hay que ver esas zonas en pantalla: el mapa de cobertura de abajo marca en rojo los tiles que faltan. " +
-					"Juega o reproduce una partida por los niveles que no se han visitado y vuelve a ejecutar la captura: el pack se completa sin empezar de cero.</p>");
+				sb.AppendLine("<p class=\"muted\">To complete the pack those areas must be seen on screen: the coverage map below marks the missing tiles in red. " +
+					"Play or replay a movie of the levels that have not been visited and run the capture again: the pack is completed without starting over.</p>");
 				if(_levelsVisited.Count > 0) {
-					sb.AppendLine($"<p><b>Niveles visitados en esta captura ({_levelsVisited.Count}):</b> {E(string.Join(" · ", _levelsVisited))}</p>");
+					sb.AppendLine($"<p><b>Levels visited in this capture ({_levelsVisited.Count}):</b> {E(string.Join(" · ", _levelsVisited))}</p>");
 				}
 			}
 
 			if(_prgPalettes.Count > 0) {
 				int inPack = _prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes));
-				sb.AppendLine("<h2>Paletas del juego (encontradas en el código)</h2>");
-				sb.AppendLine($"<p>Tablas de 4 colores encontradas en la PRG-ROM: son las paletas que el juego escribe en la PPU. " +
-					$"Se encontraron <b>{_prgPalettes.Count:N0}</b> y <b>{inPack:N0}</b> ya están en el pack. " +
-					"Cuando un banco entero de CHR no se vio nunca en pantalla, los tiles que se añadieron con <code>--generate</code> llevan una de estas paletas" +
-					(_unseenTilesWithPrgPalette > 0 ? $" ({_unseenTilesWithPrgPalette:N0} tiles)" : "") + " en vez de una escala de grises.</p>");
-				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>#</th><th>Colores</th><th>Veces en la ROM</th><th>Offset PRG</th><th>En el pack</th></tr></thead><tbody>");
+				sb.AppendLine("<h2>Game palettes (found in the code)</h2>");
+				sb.AppendLine($"<p>4-color tables found in the PRG-ROM: these are the palettes the game writes to the PPU. " +
+					$"<b>{_prgPalettes.Count:N0}</b> were found and <b>{inPack:N0}</b> are already used by the pack. " +
+					"When a whole CHR bank was never displayed, the tiles added by <code>--generate</code> use one of these palettes" +
+					(_unseenTilesWithPrgPalette > 0 ? $" ({_unseenTilesWithPrgPalette:N0} tiles)" : "") + " instead of a gray scale.</p>");
+				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>#</th><th>Colors</th><th>Times in ROM</th><th>PRG offset</th><th>In the pack</th></tr></thead><tbody>");
 				int shown = 0;
 				foreach(StudioPrgPalette p in _prgPalettes) {
 					if(shown++ >= 128) {
@@ -840,27 +840,27 @@ namespace Mesen.HdStudio
 					sb.Append($"<td>{PaletteSwatches(p.Colors)}</td>");
 					sb.Append($"<td class=\"n\">{p.Uses:N0}</td>");
 					sb.Append($"<td class=\"n\"><code>${p.Offset:X}</code></td>");
-					sb.Append($"<td class=\"n\">{(used ? "sí" : "—")}</td>");
+					sb.Append($"<td class=\"n\">{(used ? "yes" : "—")}</td>");
 					sb.AppendLine("</tr>");
 				}
 				sb.AppendLine("</tbody></table></div>");
 				if(_prgPalettes.Count > 128) {
-					sb.AppendLine($"<p class=\"muted\">Se muestran las 128 más repetidas; la lista completa está en <code>{StudioFolderName}/palettes.txt</code>.</p>");
+					sb.AppendLine($"<p class=\"muted\">The 128 most repeated are shown; the full list is in <code>{StudioFolderName}/palettes.txt</code>.</p>");
 				}
 			}
 
 			if(hasCoverageImage) {
-				sb.AppendLine("<h2>Cobertura del cartucho</h2>");
-				sb.AppendLine("<p>Todos los tiles del CHR-ROM. En <b style=\"color:var(--warn)\">rojo</b> los que todavía no aparecieron en pantalla: hace falta jugar (o reproducir una partida) por las zonas donde se usan.</p>");
-				sb.AppendLine("<img class=\"px\" src=\"chr_coverage.png\" alt=\"Cobertura de tiles del CHR-ROM\" style=\"max-width:100%;height:auto\">");
+				sb.AppendLine("<h2>Cartridge coverage</h2>");
+				sb.AppendLine("<p>Every CHR-ROM tile. The ones in <b style=\"color:var(--warn)\">red</b> have not appeared on screen yet: those areas must be played (or a movie replayed).</p>");
+				sb.AppendLine("<img class=\"px\" src=\"chr_coverage.png\" alt=\"CHR-ROM tile coverage\" style=\"max-width:100%;height:auto\">");
 			}
 
-			sb.AppendLine("<h2>Uso de pantalla</h2>");
+			sb.AppendLine("<h2>Screen usage</h2>");
 			ulong total = totalSpritePixels + totalBgPixels;
 			if(total > 0) {
-				sb.AppendLine($"<p>Fondo: {100.0 * totalBgPixels / total:0.#}% de los píxeles dibujados · Sprites: {100.0 * totalSpritePixels / total:0.#}%.</p>");
+				sb.AppendLine($"<p>Background: {100.0 * totalBgPixels / total:0.#}% of the drawn pixels · Sprites: {100.0 * totalSpritePixels / total:0.#}%.</p>");
 			}
-			sb.AppendLine($"<p class=\"muted\">Archivos: <code>hires.txt</code> y hojas <code>Chr_*.png</code> en la carpeta del pack; datos crudos en <code>{StudioFolderName}/objects.txt</code>, <code>tiles.txt</code>, <code>palettes.txt</code> y <code>report.json</code>. Generado {DateTime.Now:yyyy-MM-dd HH:mm}.</p>");
+			sb.AppendLine($"<p class=\"muted\">Files: <code>hires.txt</code> and <code>Chr_*.png</code> sheets in the pack folder; raw data in <code>{StudioFolderName}/objects.txt</code>, <code>tiles.txt</code>, <code>palettes.txt</code> and <code>report.json</code>. Generated {DateTime.Now:yyyy-MM-dd HH:mm}.</p>");
 			sb.AppendLine("</main></body></html>");
 
 			string path = Path.Combine(_studioFolder, "report.html");
