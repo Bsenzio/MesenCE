@@ -43,14 +43,25 @@ local bestScore = 0
 local miniStep = 0
 local miniDistinct = 0
 local miniBands = nil
+local miniScroll = 0
 
 local fullStep = 0
 local fullDistinct = 0
-local fullBands = nil
+local fullScroll = 0
 local fullUnchanged = 0
 
 local function log(msg)
   emu.log("sweep: " .. msg)
+end
+
+-- Horizontal scroll of the PPU (0-511). Writing the real camera/player variable changes it;
+-- writing a copy of the position does not, no matter what the picture does.
+local hasScroll = type(emu.getScroll) == "function"
+local function getScroll()
+  if hasScroll then
+    return emu.getScroll()
+  end
+  return 0
 end
 
 local function screenHash()
@@ -268,36 +279,36 @@ local function describe(v)
   return string.format("%s $%04X%+d", v.mode, v.addr, v.direction)
 end
 
--- Scores the current variant: moves it MINI_STEPS times and counts how many times the picture
--- really scrolled (a shifted copy of the previous frame), not just changed (glitch/corruption)
+-- Scores the current variant: moves it MINI_STEPS times and counts how many times the PPU
+-- horizontal scroll really changed (that is the camera moving, not a glitch)
 local function scoreVariant()
   local v = variants[variantIndex]
   if miniStep == 0 then
     v.base = readValue(v)
-    if v.mode == "word" and v.base > 16384 then
-      -- Too large to be a position in the level: keep it as a candidate but expect 0
-      v.suspicious = true
-    end
-    miniBands = readBands()
     miniDistinct = 0
-    log(string.format("scoring %s (base %d)", describe(v), v.base))
+    miniScroll = getScroll()
+    miniBands = readBands()
+    log(string.format("scoring %s (base %d, scroll %d)", describe(v), v.base, miniScroll))
   end
 
-  miniStep = miniStep + 1
-  writeValue(v, v.base + v.direction * miniStep * variantStride(v))
-  local bands = readBands()
-  local shift, match = detectScroll(miniBands, bands)
-  if shift ~= 0 and match >= 0.88 then
+  local scroll = getScroll()
+  if miniStep > 0 and scroll ~= miniScroll then
     miniDistinct = miniDistinct + 1
   end
+  local bands = readBands()
+  local shift, match = detectScroll(miniBands, bands)
   if match >= 0.5 then
     miniBands = bands
   end
+  miniScroll = scroll
+
+  miniStep = miniStep + 1
+  writeValue(v, v.base + v.direction * miniStep * variantStride(v))
 
   if miniStep >= MINI_STEPS then
     writeValue(v, v.base)
     local penalty = (v.mode == "word" and v.base > 16384) and 100 or 0
-    log(string.format("  %s -> %d scrolls (base %d)", describe(v), miniDistinct, v.base))
+    log(string.format("  %s -> %d scroll changes (last shift %d, match %.2f)", describe(v), miniDistinct, shift, match))
     if miniDistinct > bestScore and penalty == 0 then
       bestScore = miniDistinct
       bestVariant = { mode = v.mode, addr = v.addr, direction = v.direction, base = v.base }
@@ -317,7 +328,7 @@ local function scoreVariant()
         fullStep = 0
         fullDistinct = 0
         fullUnchanged = 0
-        fullBands = readBands()
+        fullScroll = getScroll()
         state = "full"
         stateFrames = 0
       end
@@ -420,25 +431,23 @@ local function onInputPolled()
     if stateFrames % 3 == 1 then
       local limit = variantLimit(v)
       if fullStep >= limit then
-        log(string.format("sweep finished: %d scrolls", fullDistinct))
+        log(string.format("sweep finished: %d scroll changes", fullDistinct))
         state = "done"
         stateFrames = 0
       else
-        fullStep = fullStep + 1
-        writeValue(v, v.base + v.direction * fullStep * variantStride(v))
-        local bands = readBands()
-        local shift, match = detectScroll(fullBands, bands)
-        if shift ~= 0 and match >= 0.88 then
+        local scroll = getScroll()
+        if fullStep > 0 and scroll ~= fullScroll then
           fullDistinct = fullDistinct + 1
           fullUnchanged = 0
         else
           fullUnchanged = fullUnchanged + 1
         end
-        if match >= 0.5 then
-          fullBands = bands
-        end
+        fullScroll = scroll
+
+        fullStep = fullStep + 1
+        writeValue(v, v.base + v.direction * fullStep * variantStride(v))
         if fullUnchanged > 12 then
-          log(string.format("no more scrolling at step %d (%d scrolls)", fullStep, fullDistinct))
+          log(string.format("no more scrolling at step %d (%d scroll changes)", fullStep, fullDistinct))
           state = "done"
           stateFrames = 0
         end

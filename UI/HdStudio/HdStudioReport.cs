@@ -63,8 +63,9 @@ namespace Mesen.HdStudio
 			WriteTemplates(groups);
 			WriteObjectSheet(groups);
 			bool hasCoverageImage = WriteChrCoverageImage();
-			WriteJson(groups);
-			string htmlPath = WriteHtml(groups, hasCoverageImage);
+			bool hasBackgrounds = WriteBackgroundSheet();
+			WriteJson(groups, hasBackgrounds);
+			string htmlPath = WriteHtml(groups, hasCoverageImage, hasBackgrounds);
 			return htmlPath;
 		}
 
@@ -472,7 +473,155 @@ namespace Mesen.HdStudio
 			return true;
 		}
 
-		private void WriteJson(List<ObjectGroup> groups)
+		/// <summary>
+		/// Background blocks (16x16, the usual NES metatile): groups of 4 tiles that are consecutive in CHR
+		/// and used with the same palette. Redrawing these blocks instead of single 8x8 tiles is how the
+		/// scenery of a level is re-imagined: walls, floors, bricks, water...
+		/// </summary>
+		private bool WriteBackgroundSheet()
+		{
+			string pngPath = Path.Combine(_studioFolder, "sheet_backgrounds.png");
+			string jsonPath = Path.Combine(_studioFolder, "sheet_backgrounds.json");
+			if(!_rom.HasChrRom) {
+				if(File.Exists(pngPath)) {
+					File.Delete(pngPath);
+				}
+				if(File.Exists(jsonPath)) {
+					File.Delete(jsonPath);
+				}
+				return false;
+			}
+
+			//Tiles of the pack per palette, to find complete 2x2 blocks
+			Dictionary<uint, HashSet<int>> byPalette = new();
+			foreach((string tile, uint palette) in _packTiles) {
+				if(int.TryParse(tile, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index) && index < _rom.ChrTileCount) {
+					if(!byPalette.TryGetValue(palette, out HashSet<int>? set)) {
+						byPalette[palette] = set = new HashSet<int>();
+					}
+					set.Add(index);
+				}
+			}
+
+			List<BackgroundBlock> blocks = new();
+			foreach(var kvp in byPalette) {
+				HashSet<int> tiles = kvp.Value;
+				foreach(int index in tiles) {
+					if(index % 16 == 15) {
+						continue;
+					}
+					if(tiles.Contains(index + 1) && tiles.Contains(index + 16) && tiles.Contains(index + 17)) {
+						blocks.Add(new BackgroundBlock() { Tile = index, Palette = kvp.Key, Usage = BlockUsage(index, kvp.Key) });
+					}
+				}
+			}
+
+			//The most used blocks first: those are the walls and floors of the level, not one-off decorations
+			blocks = blocks
+				.GroupBy(b => (b.Tile, b.Palette))
+				.Select(g => g.OrderByDescending(b => b.Usage).First())
+				.OrderByDescending(b => b.Usage)
+				.Take(400)
+				.ToList();
+
+			if(blocks.Count == 0) {
+				File.Delete(pngPath);
+				File.Delete(jsonPath);
+				_log("Background blocks: none found (no 2x2 blocks share a palette)");
+				return false;
+			}
+
+			//Shelf packing, rendered at the HD size of the pack so the artist can draw over them
+			int size = 16 * _scale;
+			int padding = 2 * _scale;
+			int maxWidth = Math.Max(1024, size + padding * 2);
+			int x = padding, y = padding, shelfHeight = 0, sheetWidth = 0;
+			List<(BackgroundBlock Block, int X, int Y)> placed = new();
+			foreach(BackgroundBlock block in blocks) {
+				if(x + size + padding > maxWidth) {
+					x = padding;
+					y += shelfHeight + padding;
+					shelfHeight = 0;
+				}
+				placed.Add((block, x, y));
+				x += size + padding;
+				shelfHeight = Math.Max(shelfHeight, size);
+				sheetWidth = Math.Max(sheetWidth, x);
+			}
+			int sheetHeight = y + shelfHeight + padding;
+
+			uint[] sheet = new uint[sheetWidth * sheetHeight];
+			foreach(var p in placed) {
+				uint[] pixels = RenderBlock(p.Block);
+				uint[] scaled = HdStudioPng.Upscale(pixels, 16, 16, _scale);
+				int w = 16 * _scale;
+				for(int py = 0; py < w; py++) {
+					Array.Copy(scaled, py * w, sheet, (p.Y + py) * sheetWidth + p.X, w);
+				}
+			}
+			HdStudioPng.Write(pngPath, sheet, sheetWidth, sheetHeight);
+
+			using(FileStream stream = File.Create(jsonPath))
+			using(Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true })) {
+				json.WriteStartObject();
+				json.WriteString("image", "sheet_backgrounds.png");
+				json.WriteNumber("scale", _scale);
+				json.WriteString("blockSize", "16x16");
+				json.WriteStartArray("blocks");
+				foreach(var p in placed) {
+					json.WriteStartObject();
+					json.WriteNumber("x", p.X);
+					json.WriteNumber("y", p.Y);
+					json.WriteNumber("width", 16 * _scale);
+					json.WriteNumber("height", 16 * _scale);
+					json.WriteString("palette", p.Block.Palette.ToString("X8"));
+					json.WriteNumber("uses", p.Block.Usage);
+					json.WriteStartArray("tiles");
+					foreach(int t in new[] { p.Block.Tile, p.Block.Tile + 1, p.Block.Tile + 16, p.Block.Tile + 17 }) {
+						json.WriteStringValue(t.ToString("X"));
+					}
+					json.WriteEndArray();
+					json.WriteEndObject();
+				}
+				json.WriteEndArray();
+				json.WriteEndObject();
+			}
+
+			_log($"Background blocks: {placed.Count} blocks of 16x16 -> {pngPath}");
+			return true;
+		}
+
+		private uint BlockUsage(int tile, uint palette)
+		{
+			ulong total = 0;
+			foreach(int t in new[] { tile, tile + 1, tile + 16, tile + 17 }) {
+				total += _tileUsage.GetValueOrDefault((t.ToString("X"), palette), 0UL);
+			}
+			return (uint)Math.Min(total / 4, uint.MaxValue);
+		}
+
+		private uint[] RenderBlock(BackgroundBlock block)
+		{
+			uint[] pixels = new uint[16 * 16];
+			int[] tiles = { block.Tile, block.Tile + 1, block.Tile + 16, block.Tile + 17 };
+			for(int i = 0; i < 4; i++) {
+				int index = tiles[i];
+				if(index >= _rom.ChrTileCount) {
+					continue;
+				}
+				byte[] data = _rom.GetChrTile(index);
+				int baseX = (i % 2) * 8;
+				int baseY = (i / 2) * 8;
+				for(int y = 0; y < 8; y++) {
+					for(int x = 0; x < 8; x++) {
+						pixels[(baseY + y) * 16 + baseX + x] = PaletteToArgb(block.Palette, GetTilePixel(data, x, y));
+					}
+				}
+			}
+			return pixels;
+		}
+
+		private void WriteJson(List<ObjectGroup> groups, bool hasBackgrounds)
 		{
 			HashSet<int> seen = SeenChrTiles();
 			int nonBlank = NonBlankChrTileCount();
@@ -529,6 +678,14 @@ namespace Mesen.HdStudio
 			}
 			json.WriteEndArray();
 
+			if(hasBackgrounds) {
+				json.WriteStartObject("backgrounds");
+				json.WriteString("image", "sheet_backgrounds.png");
+				json.WriteString("layout", "sheet_backgrounds.json");
+				json.WriteString("blockSize", "16x16");
+				json.WriteEndObject();
+			}
+
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
 				json.WriteStartObject();
@@ -551,7 +708,7 @@ namespace Mesen.HdStudio
 			json.WriteEndObject();
 		}
 
-		private string WriteHtml(List<ObjectGroup> groups, bool hasCoverageImage)
+		private string WriteHtml(List<ObjectGroup> groups, bool hasCoverageImage, bool hasBackgrounds)
 		{
 			HashSet<int> seen = SeenChrTiles();
 			int nonBlank = NonBlankChrTileCount();
@@ -632,6 +789,14 @@ namespace Mesen.HdStudio
 				sb.AppendLine("</tr>");
 			}
 			sb.AppendLine("</tbody></table></div>");
+
+			//Background blocks: the scenery to redraw as 16x16 metatiles
+			if(hasBackgrounds) {
+				sb.AppendLine("<h2>Fondos para redibujar</h2>");
+				sb.AppendLine("<p><a href=\"sheet_backgrounds.png\"><code>sheet_backgrounds.png</code></a>: bloques de <b>16×16</b> (el metatile típico de NES) formados por 4 tiles consecutivos del cartucho que se usan con la misma paleta. " +
+					"Son las paredes, suelos, ladrillos, agua… de los niveles: si redibujas el bloque entero, el pack sustituye las 4 piezas de una vez. La distribución está en <code>sheet_backgrounds.json</code>.</p>");
+				sb.AppendLine("<img class=\"px\" src=\"sheet_backgrounds.png\" alt=\"Bloques de fondo 16x16\" style=\"max-width:100%;height:auto\">");
+			}
 
 			//What is missing: this is what tells the user whether the capture is complete
 			if(_rom.HasChrRom) {
@@ -794,6 +959,14 @@ namespace Mesen.HdStudio
 			public int Width;
 			public int Height;
 			public List<StudioSprite> Sprites = new();
+		}
+
+		/// <summary>A 16x16 background block: 4 consecutive CHR tiles used with the same palette</summary>
+		private class BackgroundBlock
+		{
+			public int Tile;
+			public uint Palette;
+			public uint Usage;
 		}
 
 		/// <summary>A 4-color palette found in the game's code (PRG ROM)</summary>

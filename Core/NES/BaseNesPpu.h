@@ -135,6 +135,14 @@ public:
 	uint32_t GetFrameCount() { return _frameCount; }
 	uint32_t GetCurrentCycle() { return _cycle; }
 	int32_t GetCurrentScanline() { return _scanline; }
+
+	//HD Studio: the horizontal scroll as the game has set it (fine scroll + nametable), so a
+	//script can check whether a RAM write really moved the camera
+	uint32_t GetHorizontalScroll()
+	{
+		uint16_t addr = _tmpVideoRamAddr ? _tmpVideoRamAddr : _videoRamAddr;
+		return (((addr & 0x1F) << 3) | _xScroll | ((addr & 0x400) ? 0x100 : 0)) & 0x1FF;
+	}
 	int32_t GetScanlineCount() { return _vblankEnd + 2; }
 	uint32_t GetFrameCycle() { return ((_scanline + 1) * 341) + _cycle; }
 

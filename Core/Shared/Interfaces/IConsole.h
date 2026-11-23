@@ -92,7 +92,9 @@ public:
 
 	virtual uint32_t GetFrameCount() = 0;
 	virtual PpuFrameInfo GetPpuFrame() = 0;
-
+	//HD Studio: horizontal scroll (fine scroll + nametable), used by the camera sweep to check
+	//whether writing a RAM variable really moved the picture
+	virtual uint32_t GetHorizontalScroll() { return 0; }
 	virtual string GetHash(HashType hashType) { return {}; }
 
 	virtual RomFormat GetRomFormat() = 0;

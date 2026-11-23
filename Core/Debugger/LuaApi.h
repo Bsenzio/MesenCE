@@ -88,6 +88,7 @@ public:
 	static int GetScriptDataFolder(lua_State* lua);
 	static int GetRomInfo(lua_State* lua);
 	static int GetLogWindowLog(lua_State* lua);
+	static int GetHorizontalScroll(lua_State* lua);
 
 	static void GenerateStateTable(Serializer& s, lua_State* lua);
 	static void ReadStateTable(Serializer& s, lua_State* lua);

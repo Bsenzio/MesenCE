@@ -101,6 +101,7 @@ public:
 	double GetFps() override;
 	uint32_t GetFrameCount() override;
 	PpuFrameInfo GetPpuFrame() override;
+	uint32_t GetHorizontalScroll() override;
 	ConsoleRegion GetRegion() override;
 	ConsoleType GetConsoleType() override;
 	vector<CpuType> GetCpuTypes() override;

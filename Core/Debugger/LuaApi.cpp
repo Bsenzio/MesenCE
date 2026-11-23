@@ -149,6 +149,7 @@ int LuaApi::GetLibrary(lua_State* lua)
 
 		{ "addCheat", LuaApi::AddCheat },
 		{ "clearCheats", LuaApi::ClearCheats },
+		{ "getScroll", LuaApi::GetHorizontalScroll },
 
 		{ "createSavestate", LuaApi::CreateSavestate },
 		{ "loadSavestate", LuaApi::LoadSavestate },
@@ -1128,6 +1129,18 @@ int LuaApi::GetLogWindowLog(lua_State* lua)
 	checkparams();
 
 	l.Return(MessageManager::GetLog());
+	return l.ReturnCount();
+}
+
+//HD Studio: horizontal scroll of the PPU (0-511), so a script can tell whether a RAM write
+//really moved the camera
+int LuaApi::GetHorizontalScroll(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	checkparams();
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	l.Return(console ? console->GetHorizontalScroll() : 0);
 	return l.ReturnCount();
 }
 

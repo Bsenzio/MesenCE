@@ -364,6 +364,11 @@ uint32_t NesConsole::GetFrameCount()
 	return _ppu->GetFrameCount();
 }
 
+uint32_t NesConsole::GetHorizontalScroll()
+{
+	return _ppu ? _ppu->GetHorizontalScroll() : 0;
+}
+
 PpuFrameInfo NesConsole::GetPpuFrame()
 {
 	PpuFrameInfo frame;
