@@ -450,8 +450,9 @@ namespace Mesen.HdStudio
 		}
 
 		/// <summary>
-		/// Compares the ROM with the one the movie was recorded with (BizHawk: SHA-1 of the ROM without its header,
-		/// FCEUX: MD5 of the ROM without its header). A different ROM version usually makes the movie desync.
+		/// Compares the ROM with the one the movie was recorded with. BizHawk stores the SHA-1 of the whole file
+		/// (header included) and FCEUX the MD5 of the ROM without its header; both forms are accepted so a good
+		/// dump is never reported as a mismatch. A different ROM version usually makes the movie desync.
 		/// </summary>
 		public static string CheckMovieRom(string romPath, string moviePath)
 		{
@@ -461,7 +462,7 @@ namespace Mesen.HdStudio
 				ReadOnlySpan<byte> romData = rom.AsSpan(headerSize);
 
 				string? expected = null;
-				string actual;
+				string actual, alternate;
 				string ext = Path.GetExtension(moviePath).ToLowerInvariant();
 				if(ext == ".bk2") {
 					using System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(moviePath);
@@ -475,7 +476,9 @@ namespace Mesen.HdStudio
 							}
 						}
 					}
-					actual = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(romData));
+					//BizHawk hashes the whole file; older tools used the headerless ROM
+					actual = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(rom));
+					alternate = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(romData));
 				} else if(ext == ".fm2") {
 					foreach(string line in File.ReadLines(moviePath)) {
 						if(line.StartsWith("|")) {
@@ -486,14 +489,15 @@ namespace Mesen.HdStudio
 						}
 					}
 					actual = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(romData));
+					alternate = Convert.ToHexString(System.Security.Cryptography.MD5.HashData(rom));
 				} else {
 					return "ROM check: not available for this movie format";
 				}
 
-				if(expected == null) {
+				if(expected == null || expected.Trim('0').Length == 0) {
 					return "ROM check: the movie does not say which ROM it was recorded with";
 				}
-				return expected == actual
+				return expected == actual || expected == alternate
 					? "ROM check: OK, this is the ROM the movie was recorded with"
 					: $"WARNING: this ROM is not the one the movie was recorded with (expected {expected}, got {actual}). The movie will probably desync: find the matching ROM version.";
 			} catch(Exception ex) {
