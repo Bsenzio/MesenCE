@@ -481,7 +481,8 @@ local function onInputPolled()
     local limit = variantLimit(v)
     if fullStep >= limit then
       log(string.format("sweep finished: %d scroll changes", fullDistinct))
-      state = "done"
+      -- If the camera did not follow, the level would be wasted: play it like the runner instead
+      state = fullDistinct >= 3 and "done" or "fallback"
       stateFrames = 0
     else
       local scroll = getScroll()
@@ -497,7 +498,7 @@ local function onInputPolled()
       writeValue(v, v.base + v.direction * fullStep * variantFullStride(v))
       if fullUnchanged > 40 then
         log(string.format("no more scrolling at step %d (%d scroll changes)", fullStep, fullDistinct))
-        state = "done"
+        state = fullDistinct >= 3 and "done" or "fallback"
         stateFrames = 0
       end
     end

@@ -95,7 +95,7 @@ so the pack can be completed by several sessions (for example one movie per leve
 In the pack folder:
 
 * `hires.txt` + `Chr_*.png`: a working HD pack (tiles upscaled with the selected filter)
-* `HdStudio/report.html`: the report: what to draw, sizes, objects, cartridge coverage
+* `HdStudio/report.html`: the report (in English): what to draw, sizes, objects, cartridge coverage, what is missing
 * `HdStudio/report.json`: the same data for other tools
 * `HdStudio/templates/obj_NNN_WxH.png`: one template per detected object, already at the final HD size
 * `HdStudio/chr_coverage.png`: every tile of the cartridge (CHR-ROM games), in red the ones that were never displayed
