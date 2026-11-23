@@ -31,6 +31,8 @@ namespace Mesen.HdStudio
 	///                     and adds every CHR-ROM tile of the cartridge to the pack, even the ones never displayed
 	///   --levels          Visit every level of the game using the level select cheats of the built-in cheat database
 	///                     (one run per level, frames per level = --frames, default 900)
+	///   --sweep           With --levels: try to reveal each whole level by moving the player position in RAM
+	///                     (experimental: it works on some games, the level runner is used when it fails)
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
 	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
 	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
@@ -51,6 +53,7 @@ namespace Mesen.HdStudio
 			public bool Verify;
 			public bool Generate;
 			public bool Levels;
+			public bool Sweep;
 			public bool FramesSpecified;
 			public int Shots = 4;
 			public List<string> Errors = new();
@@ -293,11 +296,18 @@ namespace Mesen.HdStudio
 
 			int framesPerLevel = opt.FramesSpecified ? opt.Frames : 900;
 			if(opt.LuaScripts.Count == 0 && opt.MoviePath == null) {
-				//Level runner: runs right, attacks and jumps, so each level is seen as far as possible.
-				//No savestates: they would be invalid after every reset.
 				DebugWorkspaceManager.Load();
-				_scriptIds.Add(DebugApi.LoadScript("explore_level.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_level.lua")));
-				Log("Level runner loaded (runs through each level)");
+				if(opt.Sweep) {
+					//Experimental: find the player position in RAM and walk it through the whole level
+					//so the game scrolls and draws every column (see explore_sweep.lua)
+					_scriptIds.Add(DebugApi.LoadScript("explore_sweep.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_sweep.lua")));
+					Log("Camera sweep loaded (experimental: moves the player in RAM to reveal each level)");
+				} else {
+					//Level runner: runs right, attacks and jumps, so each level is seen as far as possible.
+					//No savestates: they would be invalid after every reset.
+					_scriptIds.Add(DebugApi.LoadScript("explore_level.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_level.lua")));
+					Log("Level runner loaded (runs through each level)");
+				}
 			} else if(opt.MoviePath != null) {
 				Log("Note: movies are ignored with --levels (each level restarts the game).");
 			}
@@ -540,6 +550,7 @@ namespace Mesen.HdStudio
 						case "verify": opt.Verify = true; break;
 						case "generate": opt.Generate = true; break;
 						case "levels": opt.Levels = true; break;
+						case "sweep": opt.Sweep = true; break;
 						case "shots":
 							if(!int.TryParse(value, out opt.Shots) || opt.Shots < 1 || opt.Shots > 20) {
 								opt.Errors.Add("invalid screenshot count (1-20): " + value);
@@ -631,7 +642,7 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--reportonly] [--verify [--shots=4]]");
 		}
 
 		private static void Log(string message)
