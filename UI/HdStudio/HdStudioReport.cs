@@ -1114,7 +1114,7 @@ namespace Mesen.HdStudio
 				int withSprites = _objectAtlas.Count(o => o.Sprites > 0);
 				sb.AppendLine("<h2>Object atlas (named sprites)</h2>");
 				sb.AppendLine($"<p>Each object ID was forced into a free object slot next to the player and drawn by the game's own code. " +
-					$"<b>{withSprites}</b> of <b>{_objectAtlas.Count}</b> object types produced visible sprites; the rest need a specific state/parameter or are not standalone. " +
+					$"<b>{withSprites}</b> of <b>{_objectAtlas.Count}</b> object types produced visible sprites. The ones without an image are the 7 world-map objects, invisible objects (hidden whistle, P-door, invisible lift, water currents), and event/cannon controllers that spawn other objects instead of drawing themselves. " +
 					$"The atlas contributed <b>{_atlasExactTiles.Count}</b> exact pattern+palette combinations; <b>{_atlasExactInPack}</b> are in the pack. " +
 					$"Images are in <code>HdStudio/atlas</code>; the machine-readable list is <a href=\"atlas/atlas.json\"><code>atlas/atlas.json</code></a>.</p>");
 				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>ID</th><th>Label</th><th>Name</th><th>Sprite</th><th>Sprites</th></tr></thead><tbody>");
