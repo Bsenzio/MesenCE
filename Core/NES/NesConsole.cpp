@@ -741,6 +741,8 @@ void NesConsole::StartRecordingHdPack(HdPackBuilderOptions options)
 	if(options.IncludeAllChrTiles && _mapper->HasChrRom()) {
 		_hdPackBuilder->SetChrRom(_mapper.get());
 	}
+	//HD Studio: look for the palette tables in the game's code (also useful for CHR-RAM games)
+	_hdPackBuilder->SetPrgRom(_mapper.get());
 
 	_memoryManager->UnregisterIODevice(_ppu.get());
 	_ppu.reset(new HdBuilderPpu(this, _hdPackBuilder.get(), options.ChrRamBankSize));

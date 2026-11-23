@@ -31,6 +31,18 @@ Results (in addition to the files listed below): a pack with 100% of the cartrid
 `HdStudio/sheet_objects.png` + `sheet_objects.json`, one sprite sheet with every detected character/object at its
 final HD size and the list of original tiles that compose each one (the sheet to redraw and load in HD Studio).
 
+The studio also **reads the game's code** (PRG-ROM) looking for palette tables: groups of 4 color indexes
+(`$00-$3F`) with the same backdrop color repeated every 4 bytes, usually in blocks of 16 or 32 bytes. They are
+listed in `HdStudio/palettes.txt` and in the report (with color swatches, how many times each one appears in the
+ROM and its offset). They are also used to colorize the tiles of a 4 KB CHR bank that was never displayed at all,
+instead of a gray scale. Tiles next to a tile that was seen keep using the palette of their neighbour (usually the
+same character, so the best guess available).
+
+Not every game stores its palettes this way: some compute them at runtime (for example from brightness/fade
+tables), so the scan can find only candidate tables. The report shows which of the found palettes were **actually
+seen** during the capture, which is the quickest way to tell whether the game uses plain palette tables (and then
+the scan is exact, e.g. SMB3) or not (e.g. Batman, which generates its palettes in code).
+
 Games that use CHR-RAM keep their graphics compressed inside the program code: for those only what is displayed
 while playing can be captured (a movie of a full playthrough gives the best result).
 
@@ -84,6 +96,7 @@ In the pack folder:
 * `HdStudio/report.json`: the same data for other tools
 * `HdStudio/templates/obj_NNN_WxH.png`: one template per detected object, already at the final HD size
 * `HdStudio/chr_coverage.png`: every tile of the cartridge (CHR-ROM games), in red the ones that were never displayed
+* `HdStudio/palettes.txt`: the palettes found in the game's code (PRG ROM), with their usage count and offset
 * `HdStudio/objects.txt`, `tiles.txt`, `capture.txt`: raw capture data (merged between sessions)
 
 ## Checking that an HD pack works

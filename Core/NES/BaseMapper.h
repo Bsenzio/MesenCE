@@ -282,6 +282,10 @@ public:
 
 	void CopyChrTile(uint32_t address, uint8_t* dest);
 
+	//HD Studio: the whole PRG ROM (every bank), to analyze the data tables stored in the game's code
+	uint32_t GetPrgRomSize() { return _prgSize; }
+	void CopyPrgRom(uint8_t* dest) { memcpy(dest, _prgRom, _prgSize); }
+
 	//Debugger Helper Functions
 	bool HasChrRam();
 	bool HasChrRom();

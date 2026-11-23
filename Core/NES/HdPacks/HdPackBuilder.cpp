@@ -184,12 +184,148 @@ void HdPackBuilder::SetChrRom(BaseMapper* mapper)
 	}
 }
 
+void HdPackBuilder::SetPrgRom(BaseMapper* mapper)
+{
+	uint32_t size = mapper->GetPrgRomSize();
+	if(size == 0) {
+		return;
+	}
+	_prgRom.resize(size);
+	mapper->CopyPrgRom(_prgRom.data());
+	ScanPrgRomForPalettes();
+}
+
+namespace {
+	bool IsPlausiblePaletteGroup(const uint8_t* group)
+	{
+		//NES color indexes go from $00 to $3F, and $0D ("blacker than black") is never stored in a table
+		for(int i = 0; i < 4; i++) {
+			if(group[i] > 0x3F || group[i] == 0x0D) {
+				return false;
+			}
+		}
+		//A row with 4 identical colors is filler (e.g. an empty/unused palette), not a real palette
+		if(group[0] == group[1] && group[1] == group[2] && group[2] == group[3]) {
+			return false;
+		}
+		//[a,b,a,b] is the pattern of 16-bit little-endian data, not of a palette
+		return !(group[0] == group[2] && group[1] == group[3]);
+	}
+
+	int PaletteScore(uint32_t colors)
+	{
+		//Real NES palettes usually keep the same hue (low nibble) and increase the brightness for the
+		//last 3 colors, e.g. $0F,$01,$11,$21 (black + one blue ramp). Palettes without that structure
+		//are more likely to come from other data in the ROM.
+		uint8_t c1 = (colors >> 16) & 0x3F;
+		uint8_t c2 = (colors >> 8) & 0x3F;
+		uint8_t c3 = colors & 0x3F;
+		int score = 0;
+		if((c1 & 0x0F) == (c2 & 0x0F) && (c2 & 0x0F) == (c3 & 0x0F)) {
+			score += 2;
+		}
+		if(c1 < c2 && c2 < c3) {
+			score++;
+		}
+		if(c1 == c2 || c2 == c3) {
+			score--;
+		}
+		return score;
+	}
+}
+
+void HdPackBuilder::ScanPrgRomForPalettes()
+{
+	if(_prgRom.size() < 16) {
+		return;
+	}
+
+	//Palettes found during this scan: colors -> { uses, first offset }
+	std::map<uint32_t, std::pair<uint32_t, uint32_t>> found;
+	const uint8_t* prg = _prgRom.data();
+	uint32_t size = (uint32_t)_prgRom.size();
+
+	//NES palette tables are stored in the code as groups of 4 bytes (one 4-color palette per group),
+	//usually 16 bytes long (4 background or 4 sprite palettes) or 32 bytes (both), with the same
+	//backdrop color repeated at the start of each group (very often $0F, i.e. black).
+	for(uint32_t pos = 0; pos + 16 <= size; ) {
+		uint32_t groups = 0;
+		while(groups < 8 && pos + (groups + 1) * 4 <= size) {
+			const uint8_t* group = prg + pos + groups * 4;
+			if(!IsPlausiblePaletteGroup(group) || (groups > 0 && group[0] != prg[pos])) {
+				break;
+			}
+			groups++;
+		}
+
+		if(groups >= 4) {
+			//Only whole tables: 16 or 32 bytes
+			groups -= groups % 4;
+			for(uint32_t g = 0; g < groups; g++) {
+				const uint8_t* c = prg + pos + g * 4;
+				uint32_t colors = ((uint32_t)c[0] << 24) | ((uint32_t)c[1] << 16) | ((uint32_t)c[2] << 8) | c[3];
+				auto result = found.find(colors);
+				if(result == found.end()) {
+					found[colors] = { 1, pos + g * 4 };
+				} else {
+					result->second.first++;
+				}
+			}
+			pos += groups * 4;
+		} else {
+			pos++;
+		}
+	}
+
+	//The same ROM always gives the same list, so it is rebuilt from scratch on every session
+	_studioPalettes.clear();
+	_studioPalettes.reserve(found.size());
+	for(auto& kvp : found) {
+		HdStudioPrgPalette palette;
+		palette.Colors = kvp.first;
+		palette.Uses = kvp.second.first;
+		palette.FirstOffset = kvp.second.second;
+		_studioPalettes.push_back(palette);
+	}
+
+	//The most repeated palettes go first: they are the most likely to belong to the game's main areas.
+	//Palettes with a clean color ramp go before palettes with repeated colors (more likely to be data).
+	std::sort(_studioPalettes.begin(), _studioPalettes.end(), [](const HdStudioPrgPalette& a, const HdStudioPrgPalette& b) {
+		int scoreA = PaletteScore(a.Colors);
+		int scoreB = PaletteScore(b.Colors);
+		if(scoreA != scoreB) {
+			return scoreA > scoreB;
+		}
+		if(a.Uses != b.Uses) {
+			return a.Uses > b.Uses;
+		}
+		return a.Colors < b.Colors;
+	});
+}
+
+uint32_t HdPackBuilder::GetPrgPalette(bool spriteForm)
+{
+	if(_studioPalettes.empty()) {
+		return 0;
+	}
+
+	//The list is sorted by how plausible the palette looks, then by usage
+	uint32_t colors = _studioPalettes[0].Colors;
+	if(spriteForm) {
+		//Entry 0 of a sprite palette is transparent: it uses the same "alpha" bit as palette RAM
+		return 0xFF000000 | (colors & 0x00FFFFFF);
+	}
+	return colors;
+}
+
 void HdPackBuilder::AddUnseenChrTiles()
 {
 	//Tiles that are already part of the pack (with any palette)
 	std::map<int32_t, uint32_t> knownTiles; //tile index -> palette of its most used variant
 	std::map<int32_t, uint32_t> knownUsage;
 	std::map<uint32_t, uint64_t> paletteUsage;
+	//Palettes seen in each 4 KB CHR bank, split by form (sprite / background)
+	std::map<int32_t, std::pair<uint32_t, uint32_t>> bankForms; //bank -> { sprites, background }
 	for(unique_ptr<HdPackTileInfo>& tile : _hdData.Tiles) {
 		if(tile->IsChrRamTile || tile->TileIndex < 0) {
 			continue;
@@ -201,6 +337,13 @@ void HdPackBuilder::AddUnseenChrTiles()
 			knownUsage[tile->TileIndex] = count;
 		}
 		paletteUsage[tile->PaletteColors] += count;
+
+		std::pair<uint32_t, uint32_t>& forms = bankForms[tile->TileIndex / 256];
+		if(tile->IsSpriteTile()) {
+			forms.first++;
+		} else {
+			forms.second++;
+		}
 	}
 
 	//Fallback palette when no tile of the same bank was seen: the most used background palette, or a gray scale
@@ -223,12 +366,14 @@ void HdPackBuilder::AddUnseenChrTiles()
 		//Tiles of the same character/object are usually stored next to each other in CHR ROM:
 		//use the palette of the closest tile (in the same 4 KB bank) that was seen during the recording
 		uint32_t palette = defaultPalette;
+		bool neighbourFound = false;
 		int32_t bankStart = i - (i % 256);
 		for(int32_t d = 1; d < 256; d++) {
 			if(i - d >= bankStart) {
 				auto result = knownTiles.find(i - d);
 				if(result != knownTiles.end()) {
 					palette = result->second;
+					neighbourFound = true;
 					break;
 				}
 			}
@@ -236,8 +381,24 @@ void HdPackBuilder::AddUnseenChrTiles()
 				auto result = knownTiles.find(i + d);
 				if(result != knownTiles.end()) {
 					palette = result->second;
+					neighbourFound = true;
 					break;
 				}
+			}
+		}
+
+		if(!neighbourFound) {
+			//Nothing of this bank was ever displayed: use a palette found in the game's code instead of
+			//a gray scale. Sprites and backgrounds are not distinguished in the ROM, so guess the form
+			//from the tiles of the same bank that were seen, or from the usual CHR layout: sprites in the
+			//first 4 KB ($0000) and backgrounds in the second ($1000).
+			int32_t bank = i / 256;
+			auto forms = bankForms.find(bank);
+			bool spriteForm = forms != bankForms.end() ? forms->second.first > forms->second.second : (bank % 2) == 0;
+			uint32_t prgPalette = GetPrgPalette(spriteForm);
+			if(prgPalette != 0) {
+				palette = prgPalette;
+				_studioUnseenTilesWithPrgPalette++;
 			}
 		}
 
@@ -400,7 +561,6 @@ void HdPackBuilder::LoadHdStudioData()
 		}
 	}
 }
-
 void HdPackBuilder::SaveHdStudioData()
 {
 	string studioFolder = FolderUtilities::CombinePath(_saveFolder, "HdStudio");
@@ -412,7 +572,18 @@ void HdPackBuilder::SaveHdStudioData()
 	captureFile << "chrRam=" << (_isChrRam ? 1 : 0) << std::endl;
 	captureFile << "rom=" << _romName << std::endl;
 	captureFile << "addedChrTiles=" << _studioAddedChrTiles << std::endl;
+	captureFile << "prgPalettes=" << _studioPalettes.size() << std::endl;
+	captureFile << "unseenTilesWithPrgPalette=" << _studioUnseenTilesWithPrgPalette << std::endl;
 	captureFile.close();
+
+	//Palettes found in the game's code (PRG ROM), with how many times each one appears
+	ofstream palettesFile(FolderUtilities::CombinePath(studioFolder, "palettes.txt"), ios::out);
+	palettesFile << "#rom=" << _emu->GetRomInfo().RomFile.GetSha1Hash() << std::endl;
+	palettesFile << "#palette\tuses\tfirstOffset" << std::endl;
+	for(HdStudioPrgPalette& palette : _studioPalettes) {
+		palettesFile << HexUtilities::ToHex(palette.Colors, true) << "\t" << palette.Uses << "\t" << HexUtilities::ToHex(palette.FirstOffset) << std::endl;
+	}
+	palettesFile.close();
 
 	vector<std::pair<const string*, HdStudioObjectStats*>> objects;
 	objects.reserve(_studioObjects.size());

@@ -53,6 +53,15 @@ struct HdStudioObjectStats
 	uint16_t Height = 0;
 };
 
+//HD Studio: a 4-color palette found in the game's code (PRG ROM)
+struct HdStudioPrgPalette
+{
+	//Same layout as HdPackTileInfo::PaletteColors, background form: [color0][color1][color2][color3]
+	uint32_t Colors = 0;
+	uint32_t Uses = 0;
+	uint32_t FirstOffset = 0;
+};
+
 class HdPackBuilder
 {
 private:
@@ -79,10 +88,15 @@ private:
 	unordered_map<string, HdStudioObjectStats> _studioObjects;
 	uint32_t _studioFrameCount = 0;
 	vector<uint8_t> _chrRom;
+	vector<uint8_t> _prgRom;
+	vector<HdStudioPrgPalette> _studioPalettes;
 	uint32_t _studioAddedChrTiles = 0;
+	uint32_t _studioUnseenTilesWithPrgPalette = 0;
 
 	string GetStudioTileKey(int32_t tileIndex, uint8_t* tileData);
+	uint32_t GetPrgPalette(bool spriteForm);
 	void AddUnseenChrTiles();
+	void ScanPrgRomForPalettes();
 	void LoadHdStudioData();
 	void SaveHdStudioData();
 
@@ -105,6 +119,8 @@ public:
 	}
 	void ProcessSpriteFrame(vector<HdStudioSprite>& sprites);
 	void SetChrRom(BaseMapper* mapper);
+	//HD Studio: keeps a copy of the PRG ROM and looks for the palette tables used by the game
+	void SetPrgRom(BaseMapper* mapper);
 	void SaveHdPack();
 
 	//static void GetChrBankList(uint32_t *banks);

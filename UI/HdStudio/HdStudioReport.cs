@@ -32,6 +32,8 @@ namespace Mesen.HdStudio
 		private HashSet<(string Tile, uint Palette)> _packTiles = new();
 		private Dictionary<(string Tile, uint Palette), ulong> _tileUsage = new();
 		private List<StudioObject> _objects = new();
+		private List<StudioPrgPalette> _prgPalettes = new();
+		private int _unseenTilesWithPrgPalette = 0;
 
 		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log)
 		{
@@ -48,6 +50,7 @@ namespace Mesen.HdStudio
 
 			_rom = NesRomData.Load(romPath);
 			ReadCaptureInfo();
+			ReadPrgPalettes();
 			ReadHiresFile();
 			ReadTileUsage();
 			ReadObjects();
@@ -78,6 +81,31 @@ namespace Mesen.HdStudio
 				switch(kv[0]) {
 					case "frames": int.TryParse(kv[1], out _frameCount); break;
 					case "chrRam": _isChrRam = kv[1] == "1"; break;
+					case "unseenTilesWithPrgPalette": int.TryParse(kv[1], out _unseenTilesWithPrgPalette); break;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Palettes found in the game's code (PRG ROM): 4-color tables that the game writes to the PPU.
+		/// They are used to colorize the cartridge tiles that were never displayed.
+		/// </summary>
+		private void ReadPrgPalettes()
+		{
+			string path = Path.Combine(_studioFolder, "palettes.txt");
+			if(!File.Exists(path)) {
+				return;
+			}
+
+			foreach(string line in File.ReadAllLines(path)) {
+				if(line.Length == 0 || line.StartsWith("#")) {
+					continue;
+				}
+
+				//palette \t uses \t firstOffset
+				string[] parts = line.Split('\t');
+				if(parts.Length == 3 && TryParseHex(parts[0], out uint colors) && uint.TryParse(parts[1], out uint uses) && TryParseHex(parts[2], out uint offset)) {
+					_prgPalettes.Add(new StudioPrgPalette() { Colors = colors, Uses = uses, Offset = offset });
 				}
 			}
 		}
@@ -448,6 +476,8 @@ namespace Mesen.HdStudio
 			json.WriteNumber("uniqueTilePaletteCombos", _packTiles.Count);
 			json.WriteNumber("spriteCombos", _packTiles.Count(t => IsSpritePalette(t.Palette)));
 			json.WriteNumber("backgroundCombos", _packTiles.Count(t => !IsSpritePalette(t.Palette)));
+			json.WriteNumber("prgPalettes", _prgPalettes.Count);
+			json.WriteNumber("unseenTilesWithPrgPalette", _unseenTilesWithPrgPalette);
 			if(_rom.HasChrRom) {
 				json.WriteNumber("chrTiles", _rom.ChrTileCount);
 				json.WriteNumber("chrTilesNonBlank", nonBlank);
@@ -461,6 +491,18 @@ namespace Mesen.HdStudio
 			}
 			json.WriteEndArray();
 			json.WriteEndObject();
+
+			HashSet<uint> packPalettes = _packTiles.Select(t => t.Palette & 0x00FFFFFF).ToHashSet();
+			json.WriteStartArray("prgPalettes");
+			foreach(StudioPrgPalette p in _prgPalettes) {
+				json.WriteStartObject();
+				json.WriteString("colors", p.Colors.ToString("X8"));
+				json.WriteNumber("uses", p.Uses);
+				json.WriteString("prgOffset", p.Offset.ToString("X"));
+				json.WriteBoolean("inPack", IsPaletteInPack(p.Colors, packPalettes));
+				json.WriteEndObject();
+			}
+			json.WriteEndArray();
 
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
@@ -491,7 +533,7 @@ namespace Mesen.HdStudio
 			int hdTile = 8 * _scale;
 			int spriteCombos = _packTiles.Count(t => IsSpritePalette(t.Palette));
 			int bgCombos = _packTiles.Count - spriteCombos;
-
+			HashSet<uint> packPalettes = _packTiles.Select(t => t.Palette & 0x00FFFFFF).ToHashSet();
 			ulong totalSpritePixels = 0, totalBgPixels = 0;
 			foreach(var kvp in _tileUsage) {
 				if(IsSpritePalette(kvp.Key.Palette)) {
@@ -536,6 +578,9 @@ namespace Mesen.HdStudio
 					sb.AppendLine($"<div class=\"stat\"><b>{packCoverage:0.0}%</b><span>de los tiles del cartucho incluidos en el pack ({inPack:N0}); los no vistos llevan una paleta estimada</span></div>");
 				}
 			}
+			if(_prgPalettes.Count > 0) {
+				sb.AppendLine($"<div class=\"stat\"><b>{_prgPalettes.Count:N0}</b><span>paletas encontradas en el código del juego ({_prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes)):N0} usadas en el pack)</span></div>");
+			}
 			sb.AppendLine("</div>");
 
 			sb.AppendLine("<h2>Qué PNG dibujar</h2>");
@@ -563,6 +608,34 @@ namespace Mesen.HdStudio
 			}
 			sb.AppendLine("</tbody></table></div>");
 
+			if(_prgPalettes.Count > 0) {
+				int inPack = _prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes));
+				sb.AppendLine("<h2>Paletas del juego (encontradas en el código)</h2>");
+				sb.AppendLine($"<p>Tablas de 4 colores encontradas en la PRG-ROM: son las paletas que el juego escribe en la PPU. " +
+					$"Se encontraron <b>{_prgPalettes.Count:N0}</b> y <b>{inPack:N0}</b> ya están en el pack. " +
+					"Cuando un banco entero de CHR no se vio nunca en pantalla, los tiles que se añadieron con <code>--generate</code> llevan una de estas paletas" +
+					(_unseenTilesWithPrgPalette > 0 ? $" ({_unseenTilesWithPrgPalette:N0} tiles)" : "") + " en vez de una escala de grises.</p>");
+				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>#</th><th>Colores</th><th>Veces en la ROM</th><th>Offset PRG</th><th>En el pack</th></tr></thead><tbody>");
+				int shown = 0;
+				foreach(StudioPrgPalette p in _prgPalettes) {
+					if(shown++ >= 128) {
+						break;
+					}
+					bool used = IsPaletteInPack(p.Colors, packPalettes);
+					sb.Append("<tr>");
+					sb.Append($"<td class=\"n\">{shown}</td>");
+					sb.Append($"<td>{PaletteSwatches(p.Colors)}</td>");
+					sb.Append($"<td class=\"n\">{p.Uses:N0}</td>");
+					sb.Append($"<td class=\"n\"><code>${p.Offset:X}</code></td>");
+					sb.Append($"<td class=\"n\">{(used ? "sí" : "—")}</td>");
+					sb.AppendLine("</tr>");
+				}
+				sb.AppendLine("</tbody></table></div>");
+				if(_prgPalettes.Count > 128) {
+					sb.AppendLine($"<p class=\"muted\">Se muestran las 128 más repetidas; la lista completa está en <code>{StudioFolderName}/palettes.txt</code>.</p>");
+				}
+			}
+
 			if(hasCoverageImage) {
 				sb.AppendLine("<h2>Cobertura del cartucho</h2>");
 				sb.AppendLine("<p>Todos los tiles del CHR-ROM. En <b style=\"color:var(--warn)\">rojo</b> los que todavía no aparecieron en pantalla: hace falta jugar (o reproducir una partida) por las zonas donde se usan.</p>");
@@ -574,7 +647,7 @@ namespace Mesen.HdStudio
 			if(total > 0) {
 				sb.AppendLine($"<p>Fondo: {100.0 * totalBgPixels / total:0.#}% de los píxeles dibujados · Sprites: {100.0 * totalSpritePixels / total:0.#}%.</p>");
 			}
-			sb.AppendLine($"<p class=\"muted\">Archivos: <code>hires.txt</code> y hojas <code>Chr_*.png</code> en la carpeta del pack; datos crudos en <code>{StudioFolderName}/objects.txt</code>, <code>tiles.txt</code> y <code>report.json</code>. Generado {DateTime.Now:yyyy-MM-dd HH:mm}.</p>");
+			sb.AppendLine($"<p class=\"muted\">Archivos: <code>hires.txt</code> y hojas <code>Chr_*.png</code> en la carpeta del pack; datos crudos en <code>{StudioFolderName}/objects.txt</code>, <code>tiles.txt</code>, <code>palettes.txt</code> y <code>report.json</code>. Generado {DateTime.Now:yyyy-MM-dd HH:mm}.</p>");
 			sb.AppendLine("</main></body></html>");
 
 			string path = Path.Combine(_studioFolder, "report.html");
@@ -621,6 +694,27 @@ namespace Mesen.HdStudio
 			return (palette >> 24) == 0xFF;
 		}
 
+		/// <summary>
+		/// True when the pack uses this ROM palette. Only the last 3 colors are compared: the game often takes
+		/// the first color (the backdrop) from another table or from a global $3F00 write.
+		/// </summary>
+		private static bool IsPaletteInPack(uint colors, HashSet<uint> packColors)
+		{
+			return packColors.Contains(colors & 0x00FFFFFF);
+		}
+
+		/// <summary>Four colored squares, one per NES color of the palette</summary>
+		private string PaletteSwatches(uint colors)
+		{
+			StringBuilder sb = new("<span style=\"display:inline-flex;gap:2px;vertical-align:middle\">");
+			for(int i = 0; i < 4; i++) {
+				int colorIndex = (int)((colors >> ((3 - i) * 8)) & 0x3F);
+				string hex = (_nesPalette[colorIndex] & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture);
+				sb.Append($"<span title=\"${colorIndex:X2}\" style=\"width:18px;height:18px;background:#{hex};border:1px solid #0003;border-radius:3px\"></span>");
+			}
+			return sb.Append("</span>").ToString();
+		}
+
 		private string NormalizeTileKey(string key)
 		{
 			key = key.Trim();
@@ -652,6 +746,17 @@ namespace Mesen.HdStudio
 			public int Width;
 			public int Height;
 			public List<StudioSprite> Sprites = new();
+		}
+
+		/// <summary>A 4-color palette found in the game's code (PRG ROM)</summary>
+		private class StudioPrgPalette
+		{
+			/// <summary>Background form: [color0][color1][color2][color3], one NES color index per byte</summary>
+			public uint Colors;
+			/// <summary>How many times the table appears in the ROM</summary>
+			public uint Uses;
+			/// <summary>Offset in the PRG ROM of the first occurrence</summary>
+			public uint Offset;
 		}
 
 		private class ObjectGroup
