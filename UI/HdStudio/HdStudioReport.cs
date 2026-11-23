@@ -48,6 +48,8 @@ namespace Mesen.HdStudio
 		private HashSet<(string Tile, uint Palette)> _exactLevelTiles = new();
 		private int _mapExactInPack = 0;
 		private int _mapExactPatternsInPack = 0;
+		private int _seenSpriteCombos = 0;
+		private int _seenBackgroundCombos = 0;
 		private List<string> _mapImages = new();
 		private List<(string Name, string Png, int Patterns, int Tileset)> _mapIndex = new();
 
@@ -82,6 +84,8 @@ namespace Mesen.HdStudio
 			_mapExactInPack = _exactLevelTiles.Count(t => _packTiles.Contains(t));
 			_mapExactPatternsInPack = _exactLevelTiles.Where(t => _packTiles.Contains(t)).Select(t => t.Tile).Distinct().Count();
 			ReadTileUsage();
+			_seenSpriteCombos = _tileUsage.Keys.Count(k => IsSpritePalette(k.Palette));
+			_seenBackgroundCombos = _tileUsage.Count - _seenSpriteCombos;
 			ReadObjects();
 
 			List<ObjectGroup> groups = GroupObjects();
@@ -730,6 +734,8 @@ namespace Mesen.HdStudio
 			json.WriteNumber("uniqueTilePaletteCombos", _packTiles.Count);
 			json.WriteNumber("spriteCombos", _packTiles.Count(t => IsSpritePalette(t.Palette)));
 			json.WriteNumber("backgroundCombos", _packTiles.Count(t => !IsSpritePalette(t.Palette)));
+			json.WriteNumber("seenSpriteCombos", _seenSpriteCombos);
+			json.WriteNumber("seenBackgroundCombos", _seenBackgroundCombos);
 			json.WriteNumber("defaultTiles", _packDefaultTiles);
 			json.WriteNumber("prgPalettes", _prgPalettes.Count);
 			json.WriteNumber("unseenTilesWithPrgPalette", _unseenTilesWithPrgPalette);
@@ -860,6 +866,9 @@ namespace Mesen.HdStudio
 			sb.AppendLine($"<div class=\"stat\"><b>{_frameCount:N0}</b><span>frames analyzed</span></div>");
 			sb.AppendLine($"<div class=\"stat\"><b>{_scale}×</b><span>scale · {hdTile}×{hdTile} px HD tiles</span></div>");
 			sb.AppendLine($"<div class=\"stat\"><b>{_packTiles.Count:N0}</b><span>tile images to draw ({spriteCombos:N0} sprites, {bgCombos:N0} background)</span></div>");
+			if(spriteCombos > 0) {
+				sb.AppendLine($"<div class=\"stat\"><b>{spriteCombos:N0}</b><span>sprite combinations in the pack ({_seenSpriteCombos:N0} seen with their exact palette; every pattern also has a wildcard fallback)</span></div>");
+			}
 			sb.AppendLine($"<div class=\"stat\"><b>{groups.Count:N0}</b><span>objects (metasprites) detected</span></div>");
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
@@ -913,6 +922,14 @@ namespace Mesen.HdStudio
 				sb.AppendLine("<p><a href=\"sheet_backgrounds.png\"><code>sheet_backgrounds.png</code></a>: <b>16×16</b> blocks (the usual NES metatile) made of 4 consecutive cartridge tiles used with the same palette. " +
 					"These are the walls, floors, bricks, water… of the levels: if you redraw the whole block, the pack replaces the 4 pieces at once. The layout is in <code>sheet_backgrounds.json</code>.</p>");
 				sb.AppendLine("<img class=\"px\" src=\"sheet_backgrounds.png\" alt=\"16x16 background blocks\" style=\"max-width:100%;height:auto\">");
+			}
+
+			//Sprites: exact seen combinations + the wildcard fallback that covers the rest
+			if(spriteCombos > 0) {
+				sb.AppendLine("<h2>Sprites</h2>");
+				sb.AppendLine($"<p>The pack has <b>{spriteCombos:N0}</b> sprite (pattern + palette) entries. <b>{_seenSpriteCombos:N0}</b> were seen on screen with their exact palette; " +
+					$"the remaining sprite patterns are covered by the <b>{_packDefaultTiles:N0}</b> wildcard <code>DefaultTile=Y</code> entries, so every sprite can be replaced even if its exact palette was never captured. " +
+					"The object atlas (forcing every object ID through the game's drawing code) is the next step to turn the wildcard colors into exact colors for the unseen objects.</p>");
 			}
 
 			//Data-driven check: exact level maps built by the game's own level loader (--maps)

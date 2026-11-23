@@ -55,6 +55,7 @@ namespace Mesen.HdStudio
 			public bool Levels;
 			public bool Sweep;
 			public bool Maps;
+			public int SpriteId = -1;
 			public string? DisasmPath;
 			public bool FramesSpecified;
 			public int Shots = 4;
@@ -85,6 +86,11 @@ namespace Mesen.HdStudio
 			ConfigManager.DisableSaveSettings = true;
 			string outFolder = opt.OutFolder ?? Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(opt.RomPath));
 			Directory.CreateDirectory(outFolder);
+
+			if(opt.SpriteId >= 0) {
+				//Internal mode for the sprite atlas: one object per run, no HD recording/report.
+				return HdStudioSpriteAtlas.RunOne(opt.RomPath!, opt.SpriteId, outFolder, Log);
+			}
 
 			if(opt.Verify) {
 				int frames = opt.FramesSpecified ? opt.Frames : 1200;
@@ -582,6 +588,12 @@ namespace Mesen.HdStudio
 						case "levels": opt.Levels = true; break;
 						case "sweep": opt.Sweep = true; break;
 						case "maps": opt.Maps = true; break;
+						case "spriteid":
+							if(!int.TryParse(value, out opt.SpriteId) || opt.SpriteId < 0 || opt.SpriteId > 255) {
+								opt.Errors.Add("invalid sprite id (0-255): " + value);
+								opt.SpriteId = -1;
+							}
+							break;
 						case "disasm":
 							opt.DisasmPath = Path.GetFullPath(value, Program.OriginalFolder);
 							break;
