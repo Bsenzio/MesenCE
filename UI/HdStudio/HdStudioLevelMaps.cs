@@ -45,6 +45,7 @@ namespace Mesen.HdStudio
 			public byte[] Header = Array.Empty<byte>();
 			public string Png = "";
 			public HashSet<int> UsedPatterns = new();
+			public HashSet<(int Pattern, uint Palette)> UsedCombos = new();
 		}
 
 		private const int TileMemBytes = 6480;   //$6000-$794F: 15 screens x 432 bytes
@@ -690,12 +691,18 @@ end, emu.eventType.startFrame)
 					int sub = (tile >> 6) & 3;
 					int palOffset = level.BgPalette * 16 + sub * 4;
 					uint[] colors = new uint[4];
-					if(palette.Length >= palOffset + 4) {
+					bool hasPalette = palette.Length >= palOffset + 4;
+					uint packedPalette = 0;
+					if(hasPalette) {
 						for(int i = 0; i < 4; i++) {
 							colors[i] = nesPalette[palette[palOffset + i] & 0x3F] | 0xFF000000;
 						}
 						//Color 0 of every sub-palette is the same backdrop on the NES
 						colors[0] = nesPalette[palette[level.BgPalette * 16] & 0x3F] | 0xFF000000;
+						packedPalette = ((uint)palette[level.BgPalette * 16] << 24)
+							| ((uint)palette[palOffset + 1] << 16)
+							| ((uint)palette[palOffset + 2] << 8)
+							| palette[palOffset + 3];
 					}
 
 					for(int q = 0; q < 4; q++) {
@@ -705,6 +712,9 @@ end, emu.eventType.startFrame)
 							continue;
 						}
 						used.Add(absolute);
+						if(hasPalette) {
+							level.UsedCombos.Add((absolute, packedPalette));
+						}
 						int ox = x * 16 + (q & 1) * 8;
 						int oy = y * 16 + (q >> 1) * 8;
 						for(int py = 0; py < 8; py++) {
@@ -759,12 +769,14 @@ end, emu.eventType.startFrame)
 			}
 
 			HashSet<int> used = new();
+			HashSet<(int Pattern, uint Palette)> usedCombos = new();
 			int levelCount = 0;
 			foreach(Level level in levels) {
 				if(string.IsNullOrEmpty(level.Png)) {
 					continue;
 				}
 				used.UnionWith(level.UsedPatterns);
+				usedCombos.UnionWith(level.UsedCombos);
 				levelCount++;
 			}
 
@@ -795,6 +807,7 @@ end, emu.eventType.startFrame)
 					writer.WriteString("file", level.File);
 					writer.WriteString("png", level.Png);
 					writer.WriteNumber("patterns", level.UsedPatterns.Count);
+					writer.WriteNumber("combos", level.UsedCombos.Count);
 					writer.WriteStartArray("tiles");
 					foreach(int pattern in level.UsedPatterns.OrderBy(p => p)) {
 						writer.WriteNumberValue(pattern);
@@ -807,6 +820,7 @@ end, emu.eventType.startFrame)
 				writer.WriteNumber("levels", levelCount);
 				writer.WriteNumber("patterns", used.Count);
 				writer.WriteNumber("nonBlankPatterns", usedNonBlank.Count);
+				writer.WriteNumber("exactCombos", usedCombos.Count);
 				writer.WriteNumber("seenPatterns", seenReferenced);
 				writer.WriteNumber("coveragePercent", Math.Round(coverage, 1));
 				writer.WriteNumber("chrPatterns", chr.Length / 16);
@@ -817,7 +831,7 @@ end, emu.eventType.startFrame)
 
 			StringBuilder txt = new();
 			txt.AppendLine("# HD Studio level maps");
-			txt.AppendLine($"# levels: {levelCount}, background patterns: {usedNonBlank.Count} non-blank, {seenReferenced} present in the pack ({coverage:0.0}%)");
+			txt.AppendLine($"# levels: {levelCount}, background patterns: {usedNonBlank.Count} non-blank, {seenReferenced} present in the pack ({coverage:0.0}%), exact pattern+palette combinations: {usedCombos.Count}");
 			txt.AppendLine("# level\ttileset\tbgpal\tbgbank\tsize\tvertical\tpng\tpatterns");
 			foreach(Level level in levels) {
 				if(string.IsNullOrEmpty(level.Png)) {
@@ -839,9 +853,21 @@ end, emu.eventType.startFrame)
 			}
 			File.WriteAllText(Path.Combine(mapsFolder, "maps_tiles.txt"), usage.ToString());
 
+			//Exact background combinations (CHR pattern + 4-color palette) used by the maps.
+			//HdPackBuilder reads this file and adds the missing entries to the pack, so every placed
+			//background tile gets the palette the game really uses (not a guessed one).
+			StringBuilder exact = new();
+			exact.AppendLine("# HD Studio exact background combinations: <pattern> <palette>");
+			exact.AppendLine("# palette is the 4 NES color indexes packed as [color0][color1][color2][color3]");
+			foreach((int pattern, uint palette) in usedCombos.OrderBy(c => c.Pattern).ThenBy(c => c.Palette)) {
+				exact.Append(pattern.ToString("X4")).Append(' ').AppendLine(palette.ToString("X8"));
+			}
+			File.WriteAllText(Path.Combine(mapsFolder, "tiles_exact.txt"), exact.ToString());
+
 			log($"Level maps: {usedNonBlank.Count:N0} non-blank background patterns referenced by the levels " +
 				$"({100.0 * usedNonBlank.Count / Math.Max(1, nonBlank):0.0}% of the cartridge); " +
 				$"{seenReferenced:N0} of them are in the pack ({coverage:0.0}%).");
+			log($"Level maps: {usedCombos.Count:N0} exact (pattern + palette) background combinations written to tiles_exact.txt.");
 		}
 
 		private static string SafeName(string name)

@@ -207,14 +207,21 @@ Measured on SMB3 (USA), 2026-11-23:
 |---|---|
 | Levels with a full map | **217** (main stages, fortresses, castles, airships, bonus rooms) |
 | Non-blank background CHR patterns referenced | **1,518** of 7,720 (19.7 % of the cartridge) |
-| Referenced background patterns already in the pack | **86** (5.7 % of the level backgrounds) |
+| Exact (pattern + palette) background combinations | **4,505** |
+| Those combinations in the pack after `--generate` | **4,505 / 4,505 = 100 %** (4,340 were added by the map pass) |
 | Old layout estimate (for comparison) | 2,584; it counted layout patterns, not the real maps |
 | Not mapped | 10 "EMPTY" placeholder levels + 8 Big [?] Block sub-areas + 2 unused W8 Hammer Bro rooms + 12 pipe-junction fragments (alternate layouts entered through a pipe, not standalone levels) |
 
-The exact number is lower than the old estimate because the previous code mapped every layout pattern with the
-first CHR page (`page1*64 + pattern`). Patterns 128-255 live in the second 2 KB window (`page2`), so the estimate
-was pointing at the wrong cartridge tiles for half of the table. `--maps` uses the real two-window mapping and
-only counts patterns that a level actually places.
+The exact number of patterns is lower than the old estimate because the previous code mapped every layout pattern
+with the first CHR page (`page1*64 + pattern`). Patterns 128-255 live in the second 2 KB window (`page2`), so the
+estimate was pointing at the wrong cartridge tiles for half of the table. `--maps` uses the real two-window
+mapping and only counts patterns that a level actually places.
+
+The map pass also writes `HdStudio/maps/tiles_exact.txt`: one line per `(CHR pattern, 4-color palette)` pair
+that a level places. `HdPackBuilder::AddKnownLevelTiles` reads it when saving any pack and adds the missing HD
+tiles using CHR-ROM + the selected filter. This is what turns "the pattern exists with a guessed palette" into
+"the game finds the exact palette it uses": after one short `--generate` run the SMB3 pack has all 4,505
+background combinations (the pack went from 10,962 to 15,302 tile+palette entries).
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
 (or next to `Mesen.exe` if a portable `settings.json` is found there). This fork also accepts the environment

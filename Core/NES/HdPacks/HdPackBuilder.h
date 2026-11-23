@@ -91,6 +91,7 @@ private:
 	vector<uint8_t> _prgRom;
 	vector<HdStudioPrgPalette> _studioPalettes;
 	uint32_t _studioAddedChrTiles = 0;
+	uint32_t _studioAddedLevelTiles = 0;
 	uint32_t _studioUnseenTilesWithPrgPalette = 0;
 	uint32_t _studioUnseenTilesWithNeighbourPalette = 0;
 	uint32_t _studioUnseenTilesWithDefaultPalette = 0;
@@ -98,6 +99,8 @@ private:
 	string GetStudioTileKey(int32_t tileIndex, uint8_t* tileData);
 	uint32_t GetPrgPalette(bool spriteForm);
 	void AddUnseenChrTiles();
+	//HD Studio: adds the exact (CHR pattern, palette) combinations that --maps found in the levels
+	void AddKnownLevelTiles();
 	void ScanPrgRomForPalettes();
 	void LoadHdStudioData();
 	void SaveHdStudioData();

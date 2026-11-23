@@ -44,6 +44,9 @@ namespace Mesen.HdStudio
 		private int _mapNonBlankPatterns = 0;
 		private int _mapSeenPatterns = 0;
 		private double _mapCoverage = 0;
+		private HashSet<(string Tile, uint Palette)> _exactLevelTiles = new();
+		private int _mapExactInPack = 0;
+		private int _mapExactPatternsInPack = 0;
 		private List<string> _mapImages = new();
 		private List<(string Name, string Png, int Patterns, int Tileset)> _mapIndex = new();
 
@@ -75,6 +78,8 @@ namespace Mesen.HdStudio
 			ReadLevelsVisited();
 			ReadLevelMaps();
 			ReadHiresFile();
+			_mapExactInPack = _exactLevelTiles.Count(t => _packTiles.Contains(t));
+			_mapExactPatternsInPack = _exactLevelTiles.Where(t => _packTiles.Contains(t)).Select(t => t.Tile).Distinct().Count();
 			ReadTileUsage();
 			ReadObjects();
 
@@ -162,6 +167,19 @@ namespace Mesen.HdStudio
 						if(png.Length > 0) {
 							_mapImages.Add("maps/" + png);
 							_mapIndex.Add((name, png, patterns, tileset));
+						}
+					}
+				}
+
+				string exactPath = Path.Combine(folder, "tiles_exact.txt");
+				if(File.Exists(exactPath)) {
+					foreach(string line in File.ReadAllLines(exactPath)) {
+						if(line.Length == 0 || line[0] == '#') {
+							continue;
+						}
+						string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+						if(parts.Length >= 2 && TryParseHex(parts[1], out uint palette)) {
+							_exactLevelTiles.Add((NormalizeTileKey(parts[0]), palette));
 						}
 					}
 				}
@@ -749,6 +767,9 @@ namespace Mesen.HdStudio
 				json.WriteNumber("levels", _mapLevels);
 				json.WriteNumber("patterns", _mapPatterns);
 				json.WriteNumber("nonBlankPatterns", _mapNonBlankPatterns);
+				json.WriteNumber("exactCombos", _exactLevelTiles.Count);
+				json.WriteNumber("exactCombosInPack", _mapExactInPack);
+				json.WriteNumber("exactPatternsInPack", _mapExactPatternsInPack);
 				json.WriteNumber("seenPatterns", _mapSeenPatterns);
 				json.WriteNumber("coveragePercent", _mapCoverage);
 				json.WriteEndObject();
@@ -848,7 +869,8 @@ namespace Mesen.HdStudio
 				sb.AppendLine($"<div class=\"stat\"><b>{_prgPalettes.Count:N0}</b><span>palettes found in the game's code ({_prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes)):N0} used by the pack)</span></div>");
 			}
 			if(_mapLevels > 0) {
-				sb.AppendLine($"<div class=\"stat\"><b>{_mapNonBlankPatterns:N0}</b><span>background tiles used by the {_mapLevels:N0} level maps ({_mapCoverage:0.0}% of them are in the pack)</span></div>");
+				double exactPct = _exactLevelTiles.Count > 0 ? 100.0 * _mapExactInPack / _exactLevelTiles.Count : 0;
+				sb.AppendLine($"<div class=\"stat\"><b>{exactPct:0.0}%</b><span>of the exact background (pattern+palette) combinations are in the pack ({_mapExactInPack:N0} of {_exactLevelTiles.Count:N0}, covering {_mapExactPatternsInPack:N0} patterns)</span></div>");
 			}
 			sb.AppendLine("</div>");
 
@@ -891,10 +913,12 @@ namespace Mesen.HdStudio
 				sb.AppendLine($"<p>The game's own level loader was executed once per level (the generators that place blocks, pipes, bushes, clouds…), " +
 					$"and the resulting tile memory was painted with the cartridge CHR and each level's palette. <b>{_mapLevels:N0}</b> levels produced a full map. " +
 					$"They reference <b>{_mapNonBlankPatterns:N0}</b> non-blank background tiles ({_mapPatterns:N0} including blank ones); the pack has " +
-					$"<b>{_mapSeenPatterns:N0}</b> of them (<b>{_mapCoverage:0.0} %</b>). This is the exact target list, not a layout estimate." +
-					$" The remaining <b>{Math.Max(0, _mapNonBlankPatterns - _mapSeenPatterns):N0}</b> background tiles are what the next capture has to find.</p>");
+					$"<b>{_mapSeenPatterns:N0}</b> of them (<b>{_mapCoverage:0.0} %</b>) during the recording. This is the exact target list, not a layout estimate. " +
+					$"At the (pattern + palette) level, the maps use <b>{_exactLevelTiles.Count:N0}</b> exact combinations and the pack now has <b>{_mapExactInPack:N0}</b> " +
+					$"({(_exactLevelTiles.Count > 0 ? 100.0 * _mapExactInPack / _exactLevelTiles.Count : 0):0.0} %), covering <b>{_mapExactPatternsInPack:N0}</b> patterns: every background tile placed by a level has the palette the game really uses, even if the recording never showed that level.</p>");
 				sb.AppendLine("<p><a href=\"maps/maps.txt\"><code>maps/maps.txt</code></a> lists every level, its tileset/palette and how many background tiles it uses; " +
 					"<a href=\"maps/maps_tiles.txt\"><code>maps/maps_tiles.txt</code></a> has the exact CHR pattern index list of each level; " +
+					"<a href=\"maps/tiles_exact.txt\"><code>maps/tiles_exact.txt</code></a> has the exact pattern+palette combinations; " +
 					"<a href=\"maps/maps.json\"><code>maps/maps.json</code></a> has the machine-readable version.</p>");
 				int shown = 0;
 				sb.AppendLine("<div class=\"wrap\"><table><thead><tr><th>Level</th><th>Map</th><th>Tileset</th><th>Background tiles</th></tr></thead><tbody>");
