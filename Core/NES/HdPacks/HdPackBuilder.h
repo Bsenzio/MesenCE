@@ -92,6 +92,8 @@ private:
 	vector<HdStudioPrgPalette> _studioPalettes;
 	uint32_t _studioAddedChrTiles = 0;
 	uint32_t _studioUnseenTilesWithPrgPalette = 0;
+	uint32_t _studioUnseenTilesWithNeighbourPalette = 0;
+	uint32_t _studioUnseenTilesWithDefaultPalette = 0;
 
 	string GetStudioTileKey(int32_t tileIndex, uint8_t* tileData);
 	uint32_t GetPrgPalette(bool spriteForm);

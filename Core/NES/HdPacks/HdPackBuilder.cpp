@@ -387,7 +387,9 @@ void HdPackBuilder::AddUnseenChrTiles()
 			}
 		}
 
-		if(!neighbourFound) {
+		if(neighbourFound) {
+			_studioUnseenTilesWithNeighbourPalette++;
+		} else {
 			//Nothing of this bank was ever displayed: use a palette found in the game's code instead of
 			//a gray scale. Sprites and backgrounds are not distinguished in the ROM, so guess the form
 			//from the tiles of the same bank that were seen, or from the usual CHR layout: sprites in the
@@ -399,6 +401,9 @@ void HdPackBuilder::AddUnseenChrTiles()
 			if(prgPalette != 0) {
 				palette = prgPalette;
 				_studioUnseenTilesWithPrgPalette++;
+			} else {
+				//No palette could be guessed: the tile keeps the gray scale default
+				_studioUnseenTilesWithDefaultPalette++;
 			}
 		}
 
@@ -560,6 +565,25 @@ void HdPackBuilder::LoadHdStudioData()
 			_studioPreviousTileUsage[line.substr(0, lastTab)] += std::stoull(line.substr(lastTab + 1));
 		}
 	}
+
+	//How the palettes of the tiles that were added without being seen were guessed (cumulative,
+	//because the tiles stay in the pack and are never added again)
+	ifstream unseenFile(FolderUtilities::CombinePath(studioFolder, "unseen.txt"));
+	while(std::getline(unseenFile, line)) {
+		size_t eq = line.find('=');
+		if(eq == string::npos) {
+			continue;
+		}
+		uint32_t value = (uint32_t)std::stoul(line.substr(eq + 1));
+		string key = line.substr(0, eq);
+		if(key == "prgPalette") {
+			_studioUnseenTilesWithPrgPalette = value;
+		} else if(key == "neighbourPalette") {
+			_studioUnseenTilesWithNeighbourPalette = value;
+		} else if(key == "defaultPalette") {
+			_studioUnseenTilesWithDefaultPalette = value;
+		}
+	}
 }
 void HdPackBuilder::SaveHdStudioData()
 {
@@ -574,7 +598,15 @@ void HdPackBuilder::SaveHdStudioData()
 	captureFile << "addedChrTiles=" << _studioAddedChrTiles << std::endl;
 	captureFile << "prgPalettes=" << _studioPalettes.size() << std::endl;
 	captureFile << "unseenTilesWithPrgPalette=" << _studioUnseenTilesWithPrgPalette << std::endl;
+	captureFile << "unseenTilesWithNeighbourPalette=" << _studioUnseenTilesWithNeighbourPalette << std::endl;
+	captureFile << "unseenTilesWithDefaultPalette=" << _studioUnseenTilesWithDefaultPalette << std::endl;
 	captureFile.close();
+
+	ofstream unseenFile(FolderUtilities::CombinePath(studioFolder, "unseen.txt"), ios::out);
+	unseenFile << "prgPalette=" << _studioUnseenTilesWithPrgPalette << std::endl;
+	unseenFile << "neighbourPalette=" << _studioUnseenTilesWithNeighbourPalette << std::endl;
+	unseenFile << "defaultPalette=" << _studioUnseenTilesWithDefaultPalette << std::endl;
+	unseenFile.close();
 
 	//Palettes found in the game's code (PRG ROM), with how many times each one appears
 	ofstream palettesFile(FolderUtilities::CombinePath(studioFolder, "palettes.txt"), ios::out);

@@ -34,6 +34,9 @@ namespace Mesen.HdStudio
 		private List<StudioObject> _objects = new();
 		private List<StudioPrgPalette> _prgPalettes = new();
 		private int _unseenTilesWithPrgPalette = 0;
+		private int _unseenTilesWithNeighbourPalette = 0;
+		private int _unseenTilesWithDefaultPalette = 0;
+		private List<string> _levelsVisited = new();
 
 		public HdStudioReport(string packFolder, uint[] nesPalette, Action<string> log)
 		{
@@ -51,6 +54,7 @@ namespace Mesen.HdStudio
 			_rom = NesRomData.Load(romPath);
 			ReadCaptureInfo();
 			ReadPrgPalettes();
+			ReadLevelsVisited();
 			ReadHiresFile();
 			ReadTileUsage();
 			ReadObjects();
@@ -82,7 +86,28 @@ namespace Mesen.HdStudio
 					case "frames": int.TryParse(kv[1], out _frameCount); break;
 					case "chrRam": _isChrRam = kv[1] == "1"; break;
 					case "unseenTilesWithPrgPalette": int.TryParse(kv[1], out _unseenTilesWithPrgPalette); break;
+					case "unseenTilesWithNeighbourPalette": int.TryParse(kv[1], out _unseenTilesWithNeighbourPalette); break;
+					case "unseenTilesWithDefaultPalette": int.TryParse(kv[1], out _unseenTilesWithDefaultPalette); break;
 				}
+			}
+		}
+
+		/// <summary>Levels visited by --levels: one screenshot per level in HdStudio/levels</summary>
+		private void ReadLevelsVisited()
+		{
+			string folder = Path.Combine(_studioFolder, "levels");
+			if(!Directory.Exists(folder)) {
+				return;
+			}
+
+			foreach(string file in Directory.GetFiles(folder, "*_start.png").OrderBy(f => f)) {
+				string name = Path.GetFileNameWithoutExtension(file);
+				int separator = name.IndexOf('_');
+				name = separator > 0 ? name.Substring(separator + 1) : name;
+				if(name.EndsWith("_start")) {
+					name = name.Substring(0, name.Length - "_start".Length);
+				}
+				_levelsVisited.Add(name.Replace('_', ' '));
 			}
 		}
 
@@ -607,6 +632,29 @@ namespace Mesen.HdStudio
 				sb.AppendLine("</tr>");
 			}
 			sb.AppendLine("</tbody></table></div>");
+
+			//What is missing: this is what tells the user whether the capture is complete
+			if(_rom.HasChrRom) {
+				int inPack = InPackChrTiles().Count;
+				int unseen = Math.Max(0, inPack - seen.Count);
+				int missing = Math.Max(0, nonBlank - seen.Count);
+				sb.AppendLine("<h2>Qué falta</h2>");
+				sb.AppendLine($"<p>Se han visto en pantalla <b>{seen.Count:N0}</b> de los <b>{nonBlank:N0}</b> tiles del cartucho " +
+					$"({(nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0):0.0} %). Faltan <b>{missing:N0}</b> " +
+					$"({(nonBlank > 0 ? 100.0 * missing / nonBlank : 0):0.0} %): no aparecieron en ninguna partida.</p>");
+				if(unseen > 0) {
+					sb.AppendLine("<p>De los tiles que están en el pack sin haberse visto nunca:</p><ul>");
+					sb.AppendLine($"<li>{_unseenTilesWithPrgPalette:N0} llevan una <b>paleta real</b> encontrada en el código del juego.</li>");
+					sb.AppendLine($"<li>{_unseenTilesWithNeighbourPalette:N0} llevan la paleta del <b>tile vecino</b> (probable, no seguro).</li>");
+					sb.AppendLine($"<li>{_unseenTilesWithDefaultPalette:N0} están <b>en gris</b>: de esos no se puede suponer ninguna paleta.</li>");
+					sb.AppendLine("</ul>");
+				}
+				sb.AppendLine("<p class=\"muted\">Para completar el pack hay que ver esas zonas en pantalla: el mapa de cobertura de abajo marca en rojo los tiles que faltan. " +
+					"Juega o reproduce una partida por los niveles que no se han visitado y vuelve a ejecutar la captura: el pack se completa sin empezar de cero.</p>");
+				if(_levelsVisited.Count > 0) {
+					sb.AppendLine($"<p><b>Niveles visitados en esta captura ({_levelsVisited.Count}):</b> {E(string.Join(" · ", _levelsVisited))}</p>");
+				}
+			}
 
 			if(_prgPalettes.Count > 0) {
 				int inPack = _prgPalettes.Count(p => IsPaletteInPack(p.Colors, packPalettes));
