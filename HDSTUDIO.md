@@ -133,6 +133,10 @@ What is guaranteed for every NES game:
 | **CHR-ROM + disassembly** | Same, plus exact level maps, exact background `(pattern+palette)` combinations and the exact sprite palette sweep where the parser knows the game (SMB3 today) |
 | **CHR-RAM** | Only the tiles actually shown during the capture; a 100 % tile guarantee is impossible without the game's code. The report says so |
 
+The 25-ROM validation matrix (18 CHR-ROM + 7 CHR-RAM) is in
+[HDSTUDIO_VALIDATION.md](HDSTUDIO_VALIDATION.md): every CHR-ROM title ended with **100 % of its non-blank CHR
+patterns in the pack**; the CHR-RAM titles honestly report only the tiles that appeared.
+
 **What “100 %” does not mean:** it is tile/palette coverage, not a named bestiary. `sheet_objects.png`
 contains the metasprites detected in the recording (for SMB3: 71 groups / 464 variants); the game data
 defines 196 object types. Enemies/forms that never appeared are still replaced in game (their tiles are in

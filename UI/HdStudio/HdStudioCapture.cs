@@ -84,7 +84,11 @@ namespace Mesen.HdStudio
 			}
 
 			ConfigManager.DisableSaveSettings = true;
-			string outFolder = opt.OutFolder ?? Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(opt.RomPath));
+			string packName = Path.GetFileNameWithoutExtension(opt.RomPath).Trim();
+			if(packName.Length == 0) {
+				packName = "HD Studio game";
+			}
+			string outFolder = opt.OutFolder ?? Path.Combine(ConfigManager.HdPackFolder, packName);
 			Directory.CreateDirectory(outFolder);
 
 			if(opt.SpriteId >= 0) {
