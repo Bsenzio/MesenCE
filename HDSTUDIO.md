@@ -233,13 +233,20 @@ pattern as `<tile>...,Y` (a *DefaultTile*): Mesen registers it under a wildcard 
 exact `(pattern, palette)` entry matches. SMB3 ends with **7,831 wildcard patterns** (all patterns with an image),
 while exact entries always take precedence.
 
-This guarantees that every sprite appears in HD. The caveat is color: a sprite pattern whose exact palette was
-never seen uses the representative image, which may have the wrong colors. The next step for sprites is the
-**object atlas**: force every object ID/frame through the game's own drawing code and capture the OAM sprites
-with their exact palettes, as `--maps` does for the level loader. A prototype already loads 1-1 from a hijacked
-NMI, enters the normal level-init path with a clean stack, and forces an object into slot 0; a Goomba (ID `$72`)
-draws its two OAM sprites at the expected position. The remaining work is initializing the more complex objects
-(bosses, platforms, power-ups) and skipping the object IDs that are not standalone.
+This guarantees that every sprite appears in HD. SMB3 measurement after the update: **4,700 sprite combinations**
+in the pack, **587 seen with their exact palette**, and **7,831 wildcard patterns**; the report has a dedicated
+Sprites section and a cartridge card that now reads **100.0 % of the non-blank CHR tiles in the pack** (7,720),
+with the 6,763 never-seen tiles explicitly marked as using the wildcard colors.
+
+The caveat is color: a sprite pattern whose exact palette was never seen uses the representative image, which
+may have the wrong colors. The next step for sprites is the **object atlas**: force every object ID/frame through
+the game's own drawing code and capture the OAM sprites with their exact palettes, as `--maps` does for the level
+loader. A prototype already loads 1-1 from a hijacked NMI, enters the normal level-init path with a clean stack,
+and forces an object into slot 0; a Goomba (ID `$72`) draws its two OAM sprites at the expected position. The
+remaining work is initializing the more complex objects (bosses, platforms, power-ups), reading the local
+`Sprite_RAM` buffer correctly instead of assuming the PPU OAM offset, and skipping the object IDs that are not
+standalone. The experimental `--spriteid=N` mode isolates one object per Mesen run so a bad ID cannot stop the
+sweep.
 
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
 (or next to `Mesen.exe` if a portable `settings.json` is found there). This fork also accepts the environment

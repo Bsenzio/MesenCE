@@ -976,8 +976,9 @@ namespace Mesen.HdStudio
 				int missing = Math.Max(0, nonBlank - seen.Count);
 				sb.AppendLine("<h2>What is missing</h2>");
 				sb.AppendLine($"<p><b>{seen.Count:N0}</b> of the <b>{nonBlank:N0}</b> cartridge tiles have been seen on screen " +
-					$"({(nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0):0.0} %). <b>{missing:N0}</b> are missing " +
-					$"({(nonBlank > 0 ? 100.0 * missing / nonBlank : 0):0.0} %): they never appeared in any game session.</p>");
+					$"({(nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0):0.0} %). <b>{missing:N0}</b> were never captured " +
+					$"({(nonBlank > 0 ? 100.0 * missing / nonBlank : 0):0.0} %), but <b>{_packDefaultTiles:N0}</b> patterns have a wildcard HD image, " +
+					$"so the pack still replaces them (the color may be the representative palette until the exact one is captured).</p>");
 				if(unseen > 0) {
 					sb.AppendLine("<p>Of the tiles that are in the pack without ever being seen:</p><ul>");
 					sb.AppendLine($"<li>{_unseenTilesWithPrgPalette:N0} use a <b>real palette</b> found in the game's code.</li>");
