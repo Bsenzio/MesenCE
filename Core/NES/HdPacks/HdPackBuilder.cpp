@@ -489,6 +489,23 @@ void HdPackBuilder::AddKnownLevelTiles()
 	}
 }
 
+void HdPackBuilder::MarkDefaultTiles()
+{
+	//A DefaultTile is registered under a wildcard palette key: Mesen uses it when no exact
+	//(pattern, palette) entry matches. Keeping one representative image per CHR pattern means
+	//every sprite/UI/background tile can still be replaced in HD even if its exact palette was
+	//never seen; exact entries always win over this fallback.
+	unordered_set<int32_t> marked;
+	for(unique_ptr<HdPackTileInfo>& tile : _hdData.Tiles) {
+		if(tile->IsChrRamTile || tile->TileIndex < 0) {
+			continue;
+		}
+		if(marked.insert(tile->TileIndex).second) {
+			tile->DefaultTile = true;
+		}
+	}
+}
+
 void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 {
 	_studioFrameCount++;
@@ -804,6 +821,9 @@ void HdPackBuilder::SaveHdPack()
 	}
 	if(_options.IncludeAllChrTiles && !_isChrRam && !_chrRom.empty()) {
 		AddUnseenChrTiles();
+	}
+	if(!_isChrRam && !_chrRom.empty()) {
+		MarkDefaultTiles();
 	}
 
 	stringstream pngRows;

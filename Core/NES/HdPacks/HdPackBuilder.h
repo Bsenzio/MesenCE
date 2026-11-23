@@ -101,6 +101,8 @@ private:
 	void AddUnseenChrTiles();
 	//HD Studio: adds the exact (CHR pattern, palette) combinations that --maps found in the levels
 	void AddKnownLevelTiles();
+	//HD Studio: one DefaultTile per CHR pattern, used when the exact palette was never seen
+	void MarkDefaultTiles();
 	void ScanPrgRomForPalettes();
 	void LoadHdStudioData();
 	void SaveHdStudioData();

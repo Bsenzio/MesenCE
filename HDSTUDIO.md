@@ -223,6 +223,24 @@ tiles using CHR-ROM + the selected filter. This is what turns "the pattern exist
 "the game finds the exact palette it uses": after one short `--generate` run the SMB3 pack has all 4,505
 background combinations (the pack went from 10,962 to 15,302 tile+palette entries).
 
+### Sprites, UI and the wildcard fallback
+
+Backgrounds are exact now, but a sprite is drawn from the object code and its palette is selected by the OAM
+attribute at runtime. The pack has all CHR patterns, and the capture has seen **587 exact sprite
+(pattern + palette) combinations (382 patterns)**; the rest of the sprite patterns only had a guessed palette.
+To make sure **no sprite or UI tile is left un-replaced**, the builder now marks one representative entry per CHR
+pattern as `<tile>...,Y` (a *DefaultTile*): Mesen registers it under a wildcard palette key and uses it when no
+exact `(pattern, palette)` entry matches. SMB3 ends with **7,831 wildcard patterns** (all patterns with an image),
+while exact entries always take precedence.
+
+This guarantees that every sprite appears in HD. The caveat is color: a sprite pattern whose exact palette was
+never seen uses the representative image, which may have the wrong colors. The next step for sprites is the
+**object atlas**: force every object ID/frame through the game's own drawing code and capture the OAM sprites
+with their exact palettes, as `--maps` does for the level loader. A prototype already loads 1-1 from a hijacked
+NMI, enters the normal level-init path with a clean stack, and forces an object into slot 0; a Goomba (ID `$72`)
+draws its two OAM sprites at the expected position. The remaining work is initializing the more complex objects
+(bosses, platforms, power-ups) and skipping the object IDs that are not standalone.
+
 ## Where Mesen keeps its files (environment variable `MESEN_HOME`)Mesen normally stores `settings.json`, the HD packs, save states, screenshots, etc. in `Documents\MesenCE`
 (or next to `Mesen.exe` if a portable `settings.json` is found there). This fork also accepts the environment
 variable **`MESEN_HOME`**, which wins over both and can point anywhere (for example a drive with more free space):

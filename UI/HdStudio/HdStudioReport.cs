@@ -32,6 +32,7 @@ namespace Mesen.HdStudio
 		private bool _isChrRam = false;
 		private List<string> _packImages = new();
 		private HashSet<(string Tile, uint Palette)> _packTiles = new();
+		private int _packDefaultTiles = 0;
 		private Dictionary<(string Tile, uint Palette), ulong> _tileUsage = new();
 		private List<StudioObject> _objects = new();
 		private List<StudioPrgPalette> _prgPalettes = new();
@@ -234,6 +235,9 @@ namespace Mesen.HdStudio
 					string[] parts = line.Substring(6).Split(',');
 					if(parts.Length >= 3 && TryParseHex(parts[2], out uint palette)) {
 						_packTiles.Add((NormalizeTileKey(parts[1]), palette));
+					}
+					if(parts.Length >= 7 && parts[6].Trim().Equals("Y", StringComparison.OrdinalIgnoreCase)) {
+						_packDefaultTiles++;
 					}
 				}
 			}
@@ -726,6 +730,7 @@ namespace Mesen.HdStudio
 			json.WriteNumber("uniqueTilePaletteCombos", _packTiles.Count);
 			json.WriteNumber("spriteCombos", _packTiles.Count(t => IsSpritePalette(t.Palette)));
 			json.WriteNumber("backgroundCombos", _packTiles.Count(t => !IsSpritePalette(t.Palette)));
+			json.WriteNumber("defaultTiles", _packDefaultTiles);
 			json.WriteNumber("prgPalettes", _prgPalettes.Count);
 			json.WriteNumber("unseenTilesWithPrgPalette", _unseenTilesWithPrgPalette);
 			if(_rom.HasChrRom) {
@@ -871,6 +876,9 @@ namespace Mesen.HdStudio
 			if(_mapLevels > 0) {
 				double exactPct = _exactLevelTiles.Count > 0 ? 100.0 * _mapExactInPack / _exactLevelTiles.Count : 0;
 				sb.AppendLine($"<div class=\"stat\"><b>{exactPct:0.0}%</b><span>of the exact background (pattern+palette) combinations are in the pack ({_mapExactInPack:N0} of {_exactLevelTiles.Count:N0}, covering {_mapExactPatternsInPack:N0} patterns)</span></div>");
+			}
+			if(_packDefaultTiles > 0) {
+				sb.AppendLine($"<div class=\"stat\"><b>{_packDefaultTiles:N0}</b><span>CHR patterns with a wildcard fallback image (all sprites and UI can be replaced even when their exact palette was never seen)</span></div>");
 			}
 			sb.AppendLine("</div>");
 
