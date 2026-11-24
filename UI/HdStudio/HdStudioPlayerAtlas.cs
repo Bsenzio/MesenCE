@@ -42,22 +42,25 @@ namespace Mesen.HdStudio
 			(0x3E, "walk 1"), (0x3F, "walk 2"),
 			(0x4C, "run 1"), (0x4D, "run 2"),
 			(0x40, "jump"), (0x41, "skid"), (0x42, "kick"),
-			(0x46, "swim"), (0x4A, "climb"),
+			(0x46, "swim"), (0x4A, "climb"), (0x32, "pipe"),
+			(0x2E, "hold 1"), (0x2F, "hold 2"),
 		};
 
 		private static readonly (int Code, string Name)[] _bigPoses = {
 			(0x0C, "walk 1"), (0x0D, "walk 2"), (0x0E, "walk 3"),
 			(0x39, "run 1"), (0x3A, "run 2"), (0x3B, "run 3"),
 			(0x4F, "jump"), (0x06, "fall"), (0x30, "skid"), (0x2D, "kick"),
-			(0x0F, "duck"), (0x3C, "swim"), (0x2C, "climb"),
+			(0x0F, "duck"), (0x3C, "swim"), (0x2C, "climb"), (0x05, "pipe"),
+			(0x29, "hold 1"), (0x2A, "hold 2"), (0x2B, "hold 3"),
 		};
 
 		private static readonly (int Code, string Name)[] _firePoses = {
 			(0x0C, "walk 1"), (0x0D, "walk 2"), (0x0E, "walk 3"),
 			(0x39, "run 1"), (0x3A, "run 2"), (0x3B, "run 3"),
 			(0x4F, "jump"), (0x06, "fall"), (0x30, "skid"), (0x2D, "kick"),
-			(0x0F, "duck"), (0x3C, "swim"), (0x2C, "climb"),
+			(0x0F, "duck"), (0x3C, "swim"), (0x2C, "climb"), (0x05, "pipe"),
 			(0x10, "throw 2"), (0x11, "throw 3"),
+			(0x29, "hold 1"), (0x2A, "hold 2"), (0x2B, "hold 3"),
 		};
 
 		private static readonly (int Code, string Name)[] _raccoonPoses = {
@@ -65,6 +68,7 @@ namespace Mesen.HdStudio
 			(0x03, "tail 1"), (0x04, "tail 2"), (0x05, "tail 3"),
 			(0x07, "duck"), (0x08, "flutter 1"), (0x09, "flutter 2"), (0x0A, "flutter 3"),
 			(0x36, "fly 1"), (0x37, "fly 2"), (0x38, "fly 3"), (0x50, "jump"),
+			(0x29, "hold 1"), (0x2A, "hold 2"), (0x2B, "hold 3"),
 		};
 
 		private static readonly (int Code, string Name)[] _tanukiPoses = {
@@ -72,6 +76,7 @@ namespace Mesen.HdStudio
 			(0x03, "tail 1"), (0x04, "tail 2"), (0x05, "tail 3"),
 			(0x07, "duck"), (0x08, "flutter 1"), (0x09, "flutter 2"), (0x0A, "flutter 3"),
 			(0x36, "fly 1"), (0x37, "fly 2"), (0x38, "fly 3"), (0x50, "jump"),
+			(0x29, "hold 1"), (0x2A, "hold 2"), (0x2B, "hold 3"),
 		};
 
 		private static readonly (int Code, string Name)[] _frogPoses = {
@@ -80,15 +85,17 @@ namespace Mesen.HdStudio
 			(0x1F, "swim idle 1"), (0x20, "swim idle 2"),
 			(0x21, "swim side 1"), (0x22, "swim side 2"), (0x23, "swim side 3"),
 			(0x24, "swim down 1"), (0x25, "swim down 2"), (0x26, "swim down 3"),
-			(0x28, "climb"),
+			(0x28, "climb"), (0x05, "pipe"),
+			(0x29, "hold 1"), (0x2A, "hold 2"), (0x2B, "hold 3"),
 		};
 
 		private static readonly (int Code, string Name)[] _hammerPoses = {
 			(0x0C, "walk 1"), (0x0D, "walk 2"), (0x0E, "walk 3"),
 			(0x39, "run 1"), (0x3A, "run 2"), (0x3B, "run 3"),
 			(0x4F, "jump"), (0x06, "fall"), (0x30, "skid"), (0x2D, "kick"),
-			(0x0F, "duck"), (0x3C, "swim"), (0x2C, "climb"),
+			(0x0F, "duck"), (0x3C, "swim"), (0x2C, "climb"), (0x05, "pipe"),
 			(0x10, "throw 2"), (0x11, "throw 3"),
+			(0x29, "hold 1"), (0x2A, "hold 2"), (0x2B, "hold 3"),
 		};
 
 		private static readonly (int Code, string Name)[] _statuePoses = {
