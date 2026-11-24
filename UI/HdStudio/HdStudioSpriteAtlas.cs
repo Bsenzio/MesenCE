@@ -96,6 +96,7 @@ local comboCount = 0
 local spriteCount = 0
 local forcedFrame = -1
 local wrote = false
+local captured = false
 
 local function w(a, v) emu.write(a, v, emu.memType.nesMemory) end
 local function r(a) return emu.read(a, emu.memType.nesMemory) end
@@ -205,13 +206,14 @@ emu.addEventCallback(function()
     forceObject()
     forcedFrame = frame
   end
-  if frame > forcedFrame and forcedFrame > 0 then
+  if forcedFrame > 0 and frame == forcedFrame + 6 and not captured then
     local sp = r(0x058F)
     dbgLog(string.format('f%d state=%02X id=%02X spr=%02X buf=%02X,%02X,%02X,%02X c=%d',
       frame, r(0x0661), r(0x0671), sp, r(0x0200 + sp), r(0x0201 + sp), r(0x0202 + sp), r(0x0203 + sp), comboCount))
+    --Capture one frame only: accumulating every animation frame made walking objects
+    --look doubled/shifted in the atlas.
     capture()
-  end
-  if frame == 380 then
+    captured = true
     writeCsv()
   end
 end, emu.eventType.startFrame)
