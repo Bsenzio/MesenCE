@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://retroarcdo.example/hdstudio/hdstudio-asset.schema.json",
+  "title": "RetroArcDo HD Studio semantic asset document",
+  "description": "Versioned, game-independent representation of NES graphical assets. Raw hardware observations are kept separate from semantic labels and from user replacements.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedBy", "game", "assets"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "generatedBy": { "type": "string" },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "game": { "$ref": "#/$defs/game" },
+    "assets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "replacementAssets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/replacementAsset" }
+    },
+    "replacementConditions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/replacementCondition" }
+    }
+  },
+  "$defs": {
+    "game": {
+      "type": "object",
+      "required": ["romSha1", "mapper"],
+      "properties": {
+        "romSha1": { "type": "string", "minLength": 40, "maxLength": 40 },
+        "romSha1NoHeader": { "type": "string" },
+        "mapper": { "type": "integer", "minimum": 0 },
+        "chrRomBytes": { "type": "integer", "minimum": 0 },
+        "hasChrRom": { "type": "boolean" },
+        "profileId": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": ["id", "kind", "name", "source", "provenance", "confidence", "validation", "dimensions"],
+      "properties": {
+        "id": { "type": "string", "description": "Stable identifier scoped by ROM hash and provenance." },
+        "kind": {
+          "enum": [
+            "rawPattern",
+            "tileOccurrence",
+            "hardwareSprite",
+            "metasprite",
+            "semanticObject",
+            "animationFrame",
+            "animationSequence",
+            "graphicalVariant",
+            "hdReplacementAsset",
+            "replacementCondition"
+          ]
+        },
+        "name": { "type": "string" },
+        "label": { "type": "string" },
+        "source": { "enum": ["automatic", "gameProfile", "manual"] },
+        "provenance": { "type": "string" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "validation": { "$ref": "#/$defs/validation" },
+        "dimensions": {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 0 },
+            "height": { "type": "integer", "minimum": 0 },
+            "originX": { "type": "integer" },
+            "originY": { "type": "integer" }
+          }
+        },
+        "boundingBox": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "integer" },
+            "y": { "type": "integer" },
+            "width": { "type": "integer" },
+            "height": { "type": "integer" }
+          }
+        },
+        "anchor": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "transparency": {
+          "type": "object",
+          "properties": {
+            "hasTransparency": { "type": "boolean" },
+            "transparentColorIndex": { "type": "integer" }
+          }
+        },
+        "paletteVariants": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[0-9A-Fa-f]{8}$" }
+        },
+        "tiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tile" }
+        },
+        "parentId": { "type": "string" },
+        "frameIndex": { "type": "integer", "minimum": 0 },
+        "animationId": { "type": "string" },
+        "originalImage": { "type": "string" },
+        "replacementIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "tile": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string", "pattern": "^[0-9A-Fa-f]*$" },
+        "tileData": { "type": "string", "pattern": "^[0-9A-Fa-f]{32}$" },
+        "chrAddress": { "type": "integer" },
+        "chrType": { "type": "string" },
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "flipH": { "type": "boolean" },
+        "flipV": { "type": "boolean" },
+        "backgroundPriority": { "type": "boolean" },
+        "palette": { "type": "string", "pattern": "^[0-9A-Fa-f]{8}$" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": [
+            "verified",
+            "verified-chr-ram",
+            "verified-composition",
+            "verified-pattern",
+            "unverified",
+            "ambiguous",
+            "rejected"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "replacementAsset": {
+      "type": "object",
+      "required": ["id", "assetId", "sourceImage", "sheet", "packScale"],
+      "properties": {
+        "id": { "type": "string" },
+        "assetId": { "type": "string" },
+        "sourceImage": { "type": "string" },
+        "sheet": { "type": "string" },
+        "packScale": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "targetWidth": { "type": "integer" },
+        "targetHeight": { "type": "integer" },
+        "approved": { "type": "boolean" },
+        "generatedBy": { "type": "string" },
+        "tiles": { "type": "array", "items": { "$ref": "#/$defs/tile" } }
+      }
+    },
+    "replacementCondition": {
+      "type": "object",
+      "required": ["id", "type", "tileKey", "palette"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "enum": [
+            "standard-hmirror",
+            "standard-vmirror",
+            "standard-sprite-nearby",
+            "standard-tile-nearby",
+            "standard-memory",
+            "extension-metasprite-signature"
+          ]
+        },
+        "tileKey": { "type": "string" },
+        "palette": { "type": "string" },
+        "spriteSignature": { "type": "string" },
+        "verified": { "type": "boolean" }
+      }
+    }
+  }
+}
