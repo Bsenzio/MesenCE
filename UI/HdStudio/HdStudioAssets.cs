@@ -384,6 +384,24 @@ namespace Mesen.HdStudio
 			json.WriteNumber("originY", asset.OriginY);
 			json.WriteEndObject();
 
+			if(asset.Tiles.Count > 0) {
+				int minX = asset.Tiles.Min(t => t.X);
+				int minY = asset.Tiles.Min(t => t.Y);
+				int maxX = asset.Tiles.Max(t => t.X + 8);
+				int maxY = asset.Tiles.Max(t => t.Y + 8);
+				json.WriteStartObject("boundingBox");
+				json.WriteNumber("x", minX);
+				json.WriteNumber("y", minY);
+				json.WriteNumber("width", maxX - minX);
+				json.WriteNumber("height", maxY - minY);
+				json.WriteEndObject();
+
+				json.WriteStartObject("anchor");
+				json.WriteNumber("x", 0);
+				json.WriteNumber("y", 0);
+				json.WriteEndObject();
+			}
+
 			json.WriteStartObject("transparency");
 			json.WriteBoolean("hasTransparency", asset.HasTransparency);
 			json.WriteNumber("transparentColorIndex", 0);
