@@ -115,13 +115,13 @@ namespace Mesen.HdStudio
 			int mismatchedTiles = 0;
 			int missingPatternBytes = 0;
 
-			foreach(int objectId in byObject.Keys.OrderBy(id => id)) {
-				List<AtlasSprite> sprites = byObject[objectId];
+			foreach(int objectId in catalog.Keys.Union(byObject.Keys).OrderBy(id => id)) {
+				List<AtlasSprite> sprites = byObject.TryGetValue(objectId, out List<AtlasSprite>? foundRows) ? foundRows : new List<AtlasSprite>();
 				totalSprites += sprites.Count;
 
 				bool legacy = sprites.Any(s => s.Legacy);
 				bool chrRam = sprites.Any(s => s.ChrType.Contains("ChrRam", StringComparison.OrdinalIgnoreCase));
-				bool verified = !legacy;
+				bool verified = sprites.Count > 0 && !legacy;
 
 				foreach(AtlasSprite sprite in sprites) {
 					byte[]? data = sprite.TileData;
@@ -152,27 +152,36 @@ namespace Mesen.HdStudio
 					}
 				}
 
+				string status;
+				string png = "";
+				int width = 0;
+				int height = 0;
 				if(sprites.Count == 0) {
+					//Keep the catalog entry so the report can honestly list objects that did
+					//not draw in the forced state.
+					status = "no-sprites";
 					noSpriteObjects++;
-					continue;
-				}
+				} else {
+					status = !verified ? "unverified" : (chrRam ? "verified-chr-ram" : "verified");
+					string candidatePng = $"{objectId:000}_{SafeName(GetName(catalog, objectId))}.png";
+					(int Width, int Height) size = DrawObject(Path.Combine(atlasFolder, candidatePng), sprites, rom, nesPalette);
+					if(size.Width > 0) {
+						png = candidatePng;
+						width = size.Width;
+						height = size.Height;
+					} else {
+						//Captured OAM rows existed but every tile was blank; do not publish it
+						//as a verified composition.
+						status = "unverified";
+					}
 
-				string status = !verified ? "unverified" : (chrRam ? "verified-chr-ram" : "verified");
-				if(verified) {
-					if(chrRam) {
+					if(status == "verified") {
+						verifiedObjects++;
+					} else if(status == "verified-chr-ram") {
 						chrRamObjects++;
 					} else {
-						verifiedObjects++;
+						unverifiedObjects++;
 					}
-				} else {
-					unverifiedObjects++;
-				}
-
-				string png = $"{objectId:000}_{SafeName(GetName(catalog, objectId))}.png";
-				(int Width, int Height) size = DrawObject(Path.Combine(atlasFolder, png), sprites, rom, nesPalette);
-				if(size.Width == 0) {
-					status = "unverified";
-					continue;
 				}
 
 				CatalogEntry info = catalog.TryGetValue(objectId, out CatalogEntry? found) ? found : new CatalogEntry();
@@ -181,8 +190,8 @@ namespace Mesen.HdStudio
 					Label = info.Label,
 					Name = GetName(catalog, objectId),
 					Png = png,
-					Width = size.Width,
-					Height = size.Height,
+					Width = width,
+					Height = height,
 					Sprites = sprites.Count,
 					Status = status,
 					CapturePng = File.Exists(Path.Combine(spritesFolder, $"{objectId:000}.csv.png")) ? $"{objectId:000}.csv.png" : "",
@@ -258,7 +267,7 @@ namespace Mesen.HdStudio
 				}
 				json.WriteEndArray();
 				json.WriteStartObject("audit");
-				json.WriteNumber("objectsWithSprites", byObject.Count);
+				json.WriteNumber("objectsWithSprites", entries.Count(e => e.Sprites > 0));
 				json.WriteNumber("verifiedObjects", verifiedObjects);
 				json.WriteNumber("verifiedChrRamObjects", chrRamObjects);
 				json.WriteNumber("unverifiedObjects", unverifiedObjects);
@@ -270,7 +279,7 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
-			log($"Atlas: {byObject.Count} objects, {totalSprites} sprites; verified {verifiedObjects}, CHR-RAM {chrRamObjects}, unverified {unverifiedObjects}, mismatched tiles {mismatchedTiles} -> {atlasFolder}");
+			log($"Atlas: {entries.Count} catalog entries ({entries.Count(e => e.Sprites > 0)} with sprites), {totalSprites} sprites; verified {verifiedObjects}, CHR-RAM {chrRamObjects}, unverified {unverifiedObjects}, no-sprites {noSpriteObjects}, mismatched tiles {mismatchedTiles} -> {atlasFolder}");
 			return mismatchedTiles == 0 ? 0 : 3;
 		}
 
