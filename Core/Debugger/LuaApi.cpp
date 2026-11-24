@@ -17,6 +17,9 @@
 #include "Shared/RewindManager.h"
 #include "Shared/SaveStateManager.h"
 #include "Shared/Emulator.h"
+#include "NES/NesConsole.h"
+#include "NES/BaseMapper.h"
+#include "NES/BaseNesPpu.h"
 #include "Shared/Video/BaseVideoFilter.h"
 #include "Shared/Video/VideoRenderer.h"
 #include "Shared/Video/DrawScreenBufferCommand.h"
@@ -167,6 +170,8 @@ int LuaApi::GetLibrary(lua_State* lua)
 		{ "getScriptDataFolder", LuaApi::GetScriptDataFolder },
 		{ "getRomInfo", LuaApi::GetRomInfo },
 		{ "getLogWindowLog", LuaApi::GetLogWindowLog },
+		{ "getChrTileInfo", LuaApi::GetChrTileInfo },
+		{ "getPpuInfo", LuaApi::GetPpuInfo },
 		{ NULL, NULL }
 	};
 
@@ -1142,6 +1147,99 @@ int LuaApi::GetHorizontalScroll(lua_State* lua)
 	shared_ptr<IConsole> console = _emu->GetConsole();
 	l.Return(console ? console->GetHorizontalScroll() : 0);
 	return l.ReturnCount();
+}
+
+//HD Studio: resolve a PPU address through the mapper and return the exact CHR identity
+//(physical CHR ROM/RAM offset, memory type, and the 16 pattern bytes currently mapped there).
+//This is the same mapping the PPU/HD-pack renderer uses, so 8x16 sprites and CHR banking are
+//captured correctly instead of being approximated from game-specific bank tables.
+int LuaApi::GetChrTileInfo(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	uint32_t ppuAddress = l.ReadInteger();
+	checkparams();
+	errorCond(ppuAddress > 0xFFFF, "PPU address out of range");
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	BaseMapper* mapper = static_cast<NesConsole*>(console.get())->GetMapper();
+	if(!mapper) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	AddressInfo info = mapper->GetPpuAbsoluteAddress(ppuAddress);
+	string typeName = string(magic_enum::enum_name(info.Type));
+	bool hasPattern = info.Address >= 0 && (info.Type == MemoryType::NesChrRom || info.Type == MemoryType::NesChrRam || info.Type == MemoryType::NesMapperRam || info.Type == MemoryType::NesNametableRam);
+
+	uint8_t tileData[16] = {};
+	if(hasPattern) {
+		mapper->CopyChrTile((uint32_t)info.Address & 0xFFFFFFF0, info.Type, tileData);
+	}
+
+	lua_newtable(lua);
+	LuaPushIntValue(lua, "address", info.Address);
+	LuaPushIntValue(lua, "memoryType", (int)info.Type);
+	lua_pushstring(lua, typeName.c_str());
+	lua_setfield(lua, -2, "type");
+	LuaPushIntValue(lua, "mapperId", mapper->GetRomInfo().MapperID);
+	LuaPushIntValue(lua, "ppuAddress", (int)ppuAddress);
+	lua_pushboolean(lua, hasPattern);
+	lua_setfield(lua, -2, "hasPattern");
+
+	if(hasPattern) {
+		string hex;
+		hex.reserve(32);
+		for(int i = 0; i < 16; i++) {
+			hex += HexUtilities::ToHex(tileData[i]);
+		}
+		lua_pushstring(lua, hex.c_str());
+		lua_setfield(lua, -2, "data");
+	}
+
+	return 1;
+}
+
+//HD Studio: the PPU control/mask state needed to interpret OAM correctly (sprite size,
+//pattern table bases) without assuming a specific game's configuration.
+int LuaApi::GetPpuInfo(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	checkparams();
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	NesConsole* nesConsole = static_cast<NesConsole*>(console.get());
+	BaseNesPpu* ppu = nesConsole->GetPpu();
+	BaseMapper* mapper = nesConsole->GetMapper();
+	if(!ppu || !mapper) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	PpuControlFlags control = ppu->GetControlFlags();
+	PpuMaskFlags mask = ppu->GetMaskFlags();
+
+	lua_newtable(lua);
+	lua_pushboolean(lua, control.LargeSprites);
+	lua_setfield(lua, -2, "largeSprites");
+	LuaPushIntValue(lua, "spritePatternAddr", control.SpritePatternAddr);
+	LuaPushIntValue(lua, "backgroundPatternAddr", control.BackgroundPatternAddr);
+	lua_pushboolean(lua, mask.SpritesEnabled);
+	lua_setfield(lua, -2, "spritesEnabled");
+	lua_pushboolean(lua, mask.BackgroundEnabled);
+	lua_setfield(lua, -2, "backgroundEnabled");
+	LuaPushIntValue(lua, "frameCount", (int)ppu->GetFrameCount());
+	LuaPushIntValue(lua, "mapperId", mapper->GetRomInfo().MapperID);
+	return 1;
 }
 
 int LuaApi::AddCheat(lua_State* lua)

@@ -36,6 +36,18 @@ namespace Mesen.HdStudio
 	///   --maps            Build full level maps with the game's own loader (needs --disasm; SMB3)
 	///   --playerforms     Capture every SMB3 player suit plus Death (Small, Super, Fire, Raccoon, Frog, Tanuki,
 	///                     Hammer and Tanuki Statue) with named poses and exact sprite palettes
+	///   --atlasrender     Render/audit the mapper-aware object-atlas CSVs in HdStudio/sprites (offline)
+	///   --assets          Export HdStudio/assets/assets.json (versioned semantic asset schema)
+	///   --import          Import a user image into one selected asset (requires --asset/--image)
+	///   --asset=ID        Semantic asset id, name or atlas id (e.g. 114 for the SMB3 Goomba)
+	///   --image=FILE      Any PNG/JPEG/WebP image used as the new appearance
+	///   --remove-background / --keep-largest / --bg-tolerance=N / --no-crop
+	///   --fit=contain|stretch  --anchor=center|bottom|top|left|right  --padding=N
+	///   --import-scale=N  Output scale (2-6); a different scale needs --minimal
+	///   --mirror-conditions  Add standard hmirror/vmirror conditions when exactly one axis is flipped
+	///   --minimal         Write a standalone minimal pack instead of adding to an existing hires.txt
+	///   --dry-run         Write previews/sheet/manifest without changing hires.txt
+	///   --catalog=FILE    Optional object-id/label/name JSON used by --atlasrender
 	///   --demo            Record a short real-Mesen GIF with the HD pack active (SMB3; for the
 	///                     repository demo, not a full capture)
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
@@ -62,6 +74,24 @@ namespace Mesen.HdStudio
 			public bool Maps;
 			public bool PlayerForms;
 			public bool Demo;
+			public bool AtlasRender;
+			public bool ExportAssets;
+			public bool Import;
+			public string? CatalogPath;
+			public string? ImportAsset;
+			public string? ImportImage;
+			public string? ImportName;
+			public string? ImportFit;
+			public string? ImportAnchor;
+			public int ImportBgTolerance = 40;
+			public int ImportPadding;
+			public int ImportScale;
+			public bool ImportRemoveBg;
+			public bool ImportKeepLargest;
+			public bool ImportCrop = true;
+			public bool ImportMirrorConditions;
+			public bool ImportMinimal;
+			public bool ImportDryRun;
 			public int SpriteId = -1;
 			public string? DisasmPath;
 			public bool FramesSpecified;
@@ -106,6 +136,39 @@ namespace Mesen.HdStudio
 			if(opt.PlayerForms) {
 				//SMB3-specific: force every player suit and animation frame through the game's drawing code.
 				return HdStudioPlayerAtlas.RunAll(opt.RomPath!, outFolder, ConfigManager.Config.Nes.UserPalette, Log);
+			}
+
+			if(opt.AtlasRender) {
+				//Offline: render/audit the mapper-aware CSV captures. This never runs the emulator,
+				//so it can be repeated while reviewing an atlas.
+				return HdStudioAtlas.Render(opt.RomPath!, outFolder, opt.CatalogPath, ConfigManager.Config.Nes.UserPalette, Log);
+			}
+
+			if(opt.ExportAssets) {
+				//Offline: convert the generic metasprites, SMB3 atlas and player forms into the
+				//versioned game-independent asset schema.
+				return HdStudioAssets.Export(opt.RomPath!, outFolder, Log);
+			}
+
+			if(opt.Import) {
+				//Offline: process one whole object image, segment it into its original tile grid
+				//and write standard Mesen HD-pack tile entries.
+				return HdStudioImporter.Run(opt.RomPath!, outFolder, new HdStudioImporter.Options() {
+					AssetId = opt.ImportAsset ?? "",
+					ImagePath = opt.ImportImage ?? "",
+					ImportName = opt.ImportName ?? "",
+					RemoveBackground = opt.ImportRemoveBg,
+					BackgroundTolerance = opt.ImportBgTolerance,
+					KeepLargestComponent = opt.ImportKeepLargest,
+					Crop = opt.ImportCrop,
+					Fit = opt.ImportFit ?? "contain",
+					Anchor = opt.ImportAnchor ?? "center",
+					Padding = opt.ImportPadding,
+					PackScale = opt.ImportScale,
+					MirrorConditions = opt.ImportMirrorConditions,
+					Minimal = opt.ImportMinimal,
+					DryRun = opt.ImportDryRun
+				}, ConfigManager.Config.Nes.UserPalette, Log);
 			}
 
 			if(opt.Demo) {
@@ -610,6 +673,56 @@ namespace Mesen.HdStudio
 						case "sweep": opt.Sweep = true; break;
 						case "maps": opt.Maps = true; break;
 						case "playerforms": opt.PlayerForms = true; break;
+						case "atlasrender": opt.AtlasRender = true; break;
+						case "assets": opt.ExportAssets = true; break;
+						case "import": opt.Import = true; break;
+						case "asset": opt.ImportAsset = value; break;
+						case "image": opt.ImportImage = Path.GetFullPath(value, Program.OriginalFolder); break;
+						case "import-name": opt.ImportName = value; break;
+						case "remove-background": opt.ImportRemoveBg = true; break;
+						case "keep-largest": opt.ImportKeepLargest = true; break;
+						case "no-crop": opt.ImportCrop = false; break;
+						case "fit":
+							if(value == "contain" || value == "stretch") {
+								opt.ImportFit = value;
+							} else {
+								opt.Errors.Add("invalid fit (contain|stretch): " + value);
+							}
+							break;
+						case "anchor":
+							if(new[] { "center", "bottom", "top", "left", "right" }.Contains(value)) {
+								opt.ImportAnchor = value;
+							} else {
+								opt.Errors.Add("invalid anchor: " + value);
+							}
+							break;
+						case "padding":
+							if(int.TryParse(value, out opt.ImportPadding) && opt.ImportPadding >= 0) {
+								//valid
+							} else {
+								opt.Errors.Add("invalid padding: " + value);
+							}
+							break;
+						case "bg-tolerance":
+							if(int.TryParse(value, out opt.ImportBgTolerance) && opt.ImportBgTolerance >= 0 && opt.ImportBgTolerance <= 441) {
+								//valid
+							} else {
+								opt.Errors.Add("invalid background tolerance (0-441): " + value);
+							}
+							break;
+						case "import-scale":
+							if(int.TryParse(value, out opt.ImportScale) && opt.ImportScale >= 2 && opt.ImportScale <= 6) {
+								//valid
+							} else {
+								opt.Errors.Add("invalid import scale (2-6): " + value);
+							}
+							break;
+						case "mirror-conditions": opt.ImportMirrorConditions = true; break;
+						case "minimal": opt.ImportMinimal = true; break;
+						case "dry-run": opt.ImportDryRun = true; break;
+						case "catalog":
+							opt.CatalogPath = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
 						case "demo": opt.Demo = true; break;
 						case "spriteid":
 							if(!int.TryParse(value, out opt.SpriteId) || opt.SpriteId < 0 || opt.SpriteId > 255) {
@@ -714,6 +827,8 @@ namespace Mesen.HdStudio
 			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--demo] [--reportonly] [--verify [--shots=4]]");
 			Log("  --maps with --disasm=FOLDER: full level maps as PNG + exact per-level tile usage (uses the game's own level generator).");
 			Log("  --playerforms: SMB3 (USA) only: all eight player suits plus Death and their named poses, exact sprite palettes.");
+			Log("  --atlasrender: render the mapper-aware object-atlas CSV captures in HdStudio/sprites (does not run the game).");
+			Log("  --assets: export the versioned asset schema to HdStudio/assets/assets.json.");
 			Log("  --demo: records a short real-Mesen GIF with the HD pack active (SMB3 1-1).");
 		}
 

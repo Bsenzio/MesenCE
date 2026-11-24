@@ -1034,6 +1034,40 @@ void BaseMapper::CopyChrTile(uint32_t address, uint8_t* dest)
 	}
 }
 
+void BaseMapper::CopyChrTile(uint32_t address, MemoryType type, uint8_t* dest)
+{
+	switch(type) {
+		case MemoryType::NesChrRam:
+			if(_chrRamSize > 0 && address <= _chrRamSize - 16) {
+				memcpy(dest, _chrRam + address, 16);
+			}
+			break;
+
+		case MemoryType::NesChrRom:
+			if(_chrRomSize > 0 && address <= _chrRomSize - 16) {
+				memcpy(dest, _chrRom + address, 16);
+			}
+			break;
+
+		case MemoryType::NesMapperRam:
+			if(_mapperRamSize > 0 && address <= _mapperRamSize - 16) {
+				memcpy(dest, _mapperRam + address, 16);
+			}
+			break;
+
+		case MemoryType::NesNametableRam:
+			if(_ntRamSize > 0 && address <= _ntRamSize - 16) {
+				memcpy(dest, _nametableRam + address, 16);
+			}
+			break;
+
+		default:
+			//Fall back to the legacy behavior for unusual mappings
+			CopyChrTile(address, dest);
+			break;
+	}
+}
+
 AddressInfo BaseMapper::GetAbsoluteAddress(uint16_t relativeAddr)
 {
 	AddressInfo info;

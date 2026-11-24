@@ -281,6 +281,9 @@ public:
 	uint8_t DebugReadVram(uint16_t addr, bool disableSideEffects = true);
 
 	void CopyChrTile(uint32_t address, uint8_t* dest);
+	//HD Studio: copy using the memory type reported by GetPpuAbsoluteAddress, so a mapper with
+	//both CHR ROM and CHR RAM cannot read the wrong buffer.
+	void CopyChrTile(uint32_t address, MemoryType type, uint8_t* dest);
 
 	//HD Studio: the whole PRG ROM (every bank), to analyze the data tables stored in the game's code
 	uint32_t GetPrgRomSize() { return _prgSize; }

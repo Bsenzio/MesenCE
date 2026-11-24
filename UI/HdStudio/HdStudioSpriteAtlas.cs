@@ -122,7 +122,31 @@ local function forceObject()
   w(0x0669, 0); w(0x0679, 0)
 end
 
+local ppuInfo = nil
+local function info()
+  if not ppuInfo then ppuInfo = emu.getPpuInfo() end
+  return ppuInfo
+end
+
+--Resolve the exact PPU pattern address for one OAM entry. For 8x16 sprites the PPU
+--uses (tile & 0xFE) << 4 plus the pattern-table bit; the mapper resolves that PPU
+--address to a physical CHR ROM/RAM offset. No game-specific CHR bank table is used.
+local function resolvePattern(tile, part)
+  local p = info()
+  local addr
+  if p and p.largeSprites then
+    local even = tile - (tile % 2)
+    addr = (tile % 2) * 0x1000 + even * 16 + part * 16
+  else
+    addr = ((p and p.spritePatternAddr) or 0) + tile * 16
+  end
+  return addr, emu.getChrTileInfo(addr)
+end
+
 local function capture()
+  --Read the PPU state at capture time: the sprite size/pattern base can change between
+  --frames, and the mapper mapping must be the one used to render this frame.
+  ppuInfo = nil
   --Object_SprRAM[0] is the OAM byte offset the object's drawing code used.
   local spr = r(0x058F)
   if spr == 0 then
@@ -130,28 +154,44 @@ local function capture()
   end
   local pal = {{}}
   for i = 0, 31 do pal[i] = emu.read(i, emu.memType.nesPaletteRam) end
-  local banks = {{}}
-  for i = 0, 3 do banks[i] = r(0x071B + i) end
+  local p = info()
+  local large = p and p.largeSprites or false
+  local mapperId = p and p.mapperId or -1
   --The object drawing code writes to Sprite_RAM ($0200) at Object_SprRAM[0],
   --not directly to PPU OAM; OAM is DMA'ed from this buffer later.
   local base = 0x0200 + spr
-  for j = 0, 3 do
-    local p = base + j * 4
-    if p + 3 <= 0x02FF then
-      local y = r(p); local tile = r(p + 1); local attr = r(p + 2); local x = r(p + 3)
+  for j = 0, 7 do
+    local oamBase = base + j * 4
+    if oamBase + 3 <= 0x02FF then
+      local y = r(oamBase); local tile = r(oamBase + 1); local attr = r(oamBase + 2); local x = r(oamBase + 3)
       if y < 0xEF and tile ~= 0xFF then
-        local pattern = (banks[tile // 64] or 0) * 64 + (tile % 64)
-        local pi = 16 + (attr % 4) * 4
-        local palette = 0xFF000000 | (pal[pi + 1] << 16) | (pal[pi + 2] << 8) | pal[pi + 3]
-        local key = pattern .. ':' .. palette
-        if not combos[key] then
-          comboCount = comboCount + 1
-          combos[key] = {{ pattern = pattern, palette = palette }}
-        end
-        local skey = key .. ':' .. x .. ':' .. y .. ':' .. attr
-        if not sprites[skey] then
-          spriteCount = spriteCount + 1
-          sprites[skey] = {{ pattern = pattern, palette = palette, x = x, y = y, attr = attr }}
+        local parts = large and 2 or 1
+        for part = 0, parts - 1 do
+          local sourcePart = ((attr & 0x80) ~= 0) and (1 - part) or part
+          local ppuAddr, chr = resolvePattern(tile, sourcePart)
+          if chr and chr.hasPattern then
+            local pi = 16 + (attr % 4) * 4
+            local palette = 0xFF000000 | (pal[pi + 1] << 16) | (pal[pi + 2] << 8) | pal[pi + 3]
+            local pattern = -1
+            if chr.address >= 0 then pattern = chr.address // 16 end
+            local key = pattern .. ':' .. palette
+            if not combos[key] then
+              comboCount = comboCount + 1
+              combos[key] = {{ pattern = pattern, palette = palette }}
+            end
+            local screenY = y + 1 + part * 8
+            local skey = key .. ':' .. x .. ':' .. screenY .. ':' .. attr
+            if not sprites[skey] then
+              spriteCount = spriteCount + 1
+              sprites[skey] = {{
+                oamIndex = spr // 4 + j, part = part,
+                ppuAddr = ppuAddr, chrAddr = chr.address, chrType = chr.type,
+                tileData = chr.data, pattern = pattern, palette = palette,
+                screenX = x, screenY = screenY, oamX = x, oamY = y,
+                attr = attr, mapperId = mapperId, largeSprites = large and 1 or 0
+              }}
+            end
+          end
         end
       end
     end
@@ -167,11 +207,20 @@ local function writeCsv()
   if wrote then return end
   wrote = true
   local b = io.open(OUT, 'w')
-  b:write('objectId,pattern,palette,x,y,attr\n')
+  b:write('objectId,oamIndex,part,ppuAddr,chrAddr,chrType,tileData,pattern,palette,screenX,screenY,oamX,oamY,attr,frame,mapperId,largeSprites\n')
   for _, s in pairs(sprites) do
-    b:write(string.format('%d,%X,%08X,%d,%d,%d\n', OBJECT_ID, s.pattern, s.palette, s.x, s.y, s.attr))
+    b:write(string.format('%d,%d,%d,%X,%X,%s,%s,%X,%08X,%d,%d,%d,%d,%02X,%d,%d,%d\n',
+      OBJECT_ID, s.oamIndex, s.part, s.ppuAddr, s.chrAddr, s.chrType, s.tileData,
+      s.pattern, s.palette, s.screenX, s.screenY, s.oamX, s.oamY, s.attr, frame,
+      s.mapperId, s.largeSprites))
   end
   b:close()
+  --Evidence: the real rendered frame next to the reconstructed metasprite.
+  local shot = emu.takeScreenshot()
+  if shot then
+    local f = io.open(OUT .. '.png', 'wb')
+    if f then f:write(shot); f:close() end
+  end
   emu.log('atlas id=' .. OBJECT_ID .. ' combos=' .. comboCount .. ' sprites=' .. spriteCount)
   emu.stop()
 end

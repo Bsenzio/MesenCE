@@ -136,6 +136,11 @@ public:
 	uint32_t GetCurrentCycle() { return _cycle; }
 	int32_t GetCurrentScanline() { return _scanline; }
 
+	//HD Studio: the current $2000/$2001 flags, so capture scripts can resolve the real
+	//sprite size and pattern-table base instead of assuming SMB3's 8x16 mode.
+	PpuControlFlags GetControlFlags() { return _control; }
+	PpuMaskFlags GetMaskFlags() { return _mask; }
+
 	//HD Studio: the horizontal scroll as the game has set it (fine scroll + nametable), so a
 	//script can check whether a RAM write really moved the camera
 	uint32_t GetHorizontalScroll()

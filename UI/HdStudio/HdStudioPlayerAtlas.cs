@@ -257,17 +257,37 @@ local function emit(form, pose)
   local spr = r(0x058E)
   local pal = {{}}
   for i = 0, 31 do pal[i] = emu.read(i, emu.memType.nesPaletteRam) end
-  local banks = {{}}
-  for i = 0, 3 do banks[i] = r(0x071B + i) end
+  local ppu = emu.getPpuInfo()
+  local large = ppu and ppu.largeSprites or false
+  local mapperId = ppu and ppu.mapperId or -1
   for j = 0, 5 do
-    local p = 0x0200 + spr + j * 4
-    local y = r(p); local tile = r(p + 1); local attr = r(p + 2); local x = r(p + 3)
-    if y < 0xEF and tile ~= 0xF1 then
-      local pattern = (banks[tile // 64] or 0) * 64 + (tile % 64)
-      local pi = 16 + (attr % 4) * 4
-      local palette = 0xFF000000 | (pal[pi + 1] << 16) | (pal[pi + 2] << 8) | pal[pi + 3]
-      b:write(string.format('%d,%s,%d,%d,%s,%d,%08X,%d,%d,%02X\n',
-        form.id, form.name, form.suit, pose.code, pose.name, pattern, palette, x, y, attr))
+    local base = 0x0200 + spr + j * 4
+    local y = r(base); local tile = r(base + 1); local attr = r(base + 2); local x = r(base + 3)
+    if y < 0xEF and tile ~= 0xF1 and tile ~= 0xFF then
+      local parts = large and 2 or 1
+      for part = 0, parts - 1 do
+        --The mapper resolves the exact PPU pattern address; never approximate the
+        --8x16 pair with PatTable_BankSel[tile // 64].
+        local even = tile - (tile % 2)
+        local ppuAddr
+        if large then
+          ppuAddr = (tile % 2) * 0x1000 + even * 16 + part * 16
+        else
+          ppuAddr = (ppu and ppu.spritePatternAddr or 0) + tile * 16
+        end
+        local chr = emu.getChrTileInfo(ppuAddr)
+        if chr and chr.hasPattern then
+          local pi = 16 + (attr % 4) * 4
+          local palette = 0xFF000000 | (pal[pi + 1] << 16) | (pal[pi + 2] << 8) | pal[pi + 3]
+          local pattern = -1
+          if chr.address >= 0 then pattern = chr.address // 16 end
+          local screenY = y + 1 + part * 8
+          b:write(string.format('%d,%s,%d,%d,%s,%d,%d,%X,%X,%s,%s,%X,%08X,%d,%d,%02X,%d,%d,%d\n',
+            form.id, form.name, form.suit, pose.code, pose.name, spr // 4 + j, part,
+            ppuAddr, chr.address, chr.type, chr.data, pattern, palette, x, screenY, attr,
+            frame, mapperId, large and 1 or 0))
+        end
+      end
     end
   end
 end
@@ -278,7 +298,7 @@ if not b then
   emu.stop()
   return
 end
-b:write('formId,formName,suit,poseCode,poseName,pattern,palette,x,y,attr\n')
+b:write('formId,formName,suit,poseCode,poseName,oamIndex,part,ppuAddr,chrAddr,chrType,tileData,pattern,palette,screenX,screenY,attr,frame,mapperId,largeSprites\n')
 
 emu.addMemoryCallback(function(addr, value)
   if not armed then return end
@@ -386,11 +406,20 @@ end, emu.eventType.startFrame)
 			public int Suit;
 			public int PoseCode;
 			public string PoseName = "";
+			public int OamIndex;
+			public int Part;
+			public int PpuAddr;
+			public int ChrAddr;
+			public string ChrType = "";
+			public byte[]? TileData;
 			public int Pattern;
 			public uint Palette;
 			public int X;
 			public int Y;
 			public int Attr;
+			public int Frame;
+			public int MapperId;
+			public bool LargeSprites;
 		}
 
 		private class PoseEntry
@@ -425,21 +454,54 @@ end, emu.eventType.startFrame)
 				if(p.Length < 10) {
 					continue;
 				}
+
 				if(!int.TryParse(p[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int formId) ||
 					!int.TryParse(p[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int suit) ||
-					!int.TryParse(p[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int poseCode) ||
-					!int.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int pattern) ||
-					!uint.TryParse(p[6], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint palette) ||
-					!int.TryParse(p[7], NumberStyles.Integer, CultureInfo.InvariantCulture, out int x) ||
-					!int.TryParse(p[8], NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) ||
-					!int.TryParse(p[9], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int attr)) {
+					!int.TryParse(p[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int poseCode)) {
 					continue;
 				}
-				sprites.Add(new PlayerSprite() {
-					FormId = formId, FormName = p[1], Suit = suit,
-					PoseCode = poseCode, PoseName = p[4],
-					Pattern = pattern, Palette = palette, X = x, Y = y, Attr = attr
-				});
+
+				if(p.Length >= 19) {
+					//Mapper-aware format: one row per displayed 8x8 tile part, with the actual CHR bytes.
+					if(!int.TryParse(p[8], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int chrAddr) ||
+						!int.TryParse(p[11], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int pattern) ||
+						!uint.TryParse(p[12], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint palette) ||
+						!int.TryParse(p[13], NumberStyles.Integer, CultureInfo.InvariantCulture, out int screenX) ||
+						!int.TryParse(p[14], NumberStyles.Integer, CultureInfo.InvariantCulture, out int screenY) ||
+						!int.TryParse(p[15], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int attr)) {
+						continue;
+					}
+					int.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int oamIndex);
+					int.TryParse(p[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out int part);
+					int.TryParse(p[7], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int ppuAddr);
+					int.TryParse(p[16], NumberStyles.Integer, CultureInfo.InvariantCulture, out int frame);
+					int.TryParse(p[17], NumberStyles.Integer, CultureInfo.InvariantCulture, out int mapperId);
+					sprites.Add(new PlayerSprite() {
+						FormId = formId, FormName = p[1], Suit = suit,
+						PoseCode = poseCode, PoseName = p[4],
+						OamIndex = oamIndex, Part = part, PpuAddr = ppuAddr,
+						ChrAddr = chrAddr, ChrType = p[9],
+						TileData = p[10].Length == 32 ? Convert.FromHexString(p[10]) : null,
+						Pattern = pattern, Palette = palette,
+						X = screenX, Y = screenY, Attr = attr,
+						Frame = frame, MapperId = mapperId,
+						LargeSprites = p[18] == "1"
+					});
+				} else {
+					//Legacy format (pattern + OAM position, no mapper data). Kept so old captures still render.
+					if(!int.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out int pattern) ||
+						!uint.TryParse(p[6], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint palette) ||
+						!int.TryParse(p[7], NumberStyles.Integer, CultureInfo.InvariantCulture, out int x) ||
+						!int.TryParse(p[8], NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) ||
+						!int.TryParse(p[9], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int attr)) {
+						continue;
+					}
+					sprites.Add(new PlayerSprite() {
+						FormId = formId, FormName = p[1], Suit = suit,
+						PoseCode = poseCode, PoseName = p[4],
+						Pattern = pattern, Palette = palette, X = x, Y = y, Attr = attr
+					});
+				}
 			}
 
 			if(sprites.Count == 0) {
@@ -449,9 +511,14 @@ end, emu.eventType.startFrame)
 
 			HashSet<(int Pattern, uint Palette)> exact = new();
 			foreach(PlayerSprite sprite in sprites) {
-				int first = sprite.Pattern & ~1;
-				exact.Add((first, sprite.Palette));
-				exact.Add((first + 1, sprite.Palette));
+				if(sprite.TileData != null) {
+					//Each mapper-resolved row is one displayed 8x8 tile.
+					exact.Add((sprite.Pattern, sprite.Palette));
+				} else {
+					int first = sprite.Pattern & ~1;
+					exact.Add((first, sprite.Palette));
+					exact.Add((first + 1, sprite.Palette));
+				}
 			}
 			using(StreamWriter writer = new(Path.Combine(folder, "playerforms_exact.txt"), false, new UTF8Encoding(false))) {
 				foreach((int pattern, uint palette) in exact.OrderBy(e => e.Pattern).ThenBy(e => e.Palette)) {
@@ -473,32 +540,24 @@ end, emu.eventType.startFrame)
 					int minX = poseSprites.Min(s => s.X);
 					int minY = poseSprites.Min(s => s.Y);
 					int maxX = poseSprites.Max(s => s.X + 8);
-					int maxY = poseSprites.Max(s => s.Y + 16);
+					int maxY = poseSprites.Max(s => s.Y + (s.TileData != null ? 8 : 16));
 					int width = Math.Clamp(maxX - minX, 8, 64);
 					int height = Math.Clamp(maxY - minY, 8, 64);
 					uint[] pixels = new uint[width * height];
 					foreach(PlayerSprite sprite in poseSprites) {
-						//SMB3 runs the PPU in 8x16 sprite mode: each OAM entry is a pair of CHR tiles.
-						int firstPattern = sprite.Pattern & ~1;
-						for(int half = 0; half < 2; half++) {
-							int pattern = firstPattern + (((sprite.Attr & 0x80) != 0) ? 1 - half : half);
-							if(pattern < 0 || pattern >= rom.ChrTileCount) {
-								continue;
-							}
-							byte[] data = rom.GetChrTile(pattern);
-							for(int sy = 0; sy < 8; sy++) {
-								for(int sx = 0; sx < 8; sx++) {
-									int srcX = (sprite.Attr & 0x40) != 0 ? 7 - sx : sx;
-									int color = GetTilePixel(data, srcX, sy);
-									if(color == 0) {
-										continue;
-									}
-									int px = sprite.X - minX + sx;
-									int py = sprite.Y - minY + half * 8 + sy;
-									if(px >= 0 && px < width && py >= 0 && py < height) {
-										pixels[py * width + px] = PaletteToArgb(nesPalette, sprite.Palette, color);
-									}
+						if(sprite.TileData != null) {
+							//One mapper-resolved 8x8 tile part. The recorded bytes are what the PPU fetched,
+							//so this also works for CHR-RAM and for any CHR bank mapping.
+							DrawTile(pixels, width, height, sprite, sprite.TileData, minX, minY, 0, nesPalette);
+						} else {
+							//Legacy 8x16 capture: each OAM entry is a pair of CHR ROM tiles.
+							int firstPattern = sprite.Pattern & ~1;
+							for(int half = 0; half < 2; half++) {
+								int pattern = firstPattern + (((sprite.Attr & 0x80) != 0) ? 1 - half : half);
+								if(pattern < 0 || pattern >= rom.ChrTileCount) {
+									continue;
 								}
+								DrawTile(pixels, width, height, sprite, rom.GetChrTile(pattern), minX, minY, half * 8, nesPalette);
 							}
 						}
 					}
@@ -553,6 +612,27 @@ end, emu.eventType.startFrame)
 				sb.Append(char.IsLetterOrDigit(c) ? c : '_');
 			}
 			return sb.ToString().Trim('_');
+		}
+
+		private static void DrawTile(uint[] pixels, int width, int height, PlayerSprite sprite, byte[] tileData, int minX, int minY, int yOffset, uint[] nesPalette)
+		{
+			bool hflip = (sprite.Attr & 0x40) != 0;
+			bool vflip = (sprite.Attr & 0x80) != 0;
+			for(int sy = 0; sy < 8; sy++) {
+				for(int sx = 0; sx < 8; sx++) {
+					int srcX = hflip ? 7 - sx : sx;
+					int srcY = vflip ? 7 - sy : sy;
+					int color = GetTilePixel(tileData, srcX, srcY);
+					if(color == 0) {
+						continue;
+					}
+					int px = sprite.X - minX + sx;
+					int py = sprite.Y - minY + yOffset + sy;
+					if(px >= 0 && px < width && py >= 0 && py < height) {
+						pixels[py * width + px] = PaletteToArgb(nesPalette, sprite.Palette, color);
+					}
+				}
+			}
 		}
 
 		private static int GetTilePixel(byte[] tileData, int x, int y)

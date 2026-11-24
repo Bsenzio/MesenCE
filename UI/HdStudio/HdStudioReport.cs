@@ -59,6 +59,11 @@ namespace Mesen.HdStudio
 		private List<(int Id, string Label, string Name, string Png, int Width, int Height, int Sprites)> _objectAtlas = new();
 		private HashSet<(string Tile, uint Palette)> _atlasExactTiles = new();
 		private int _atlasExactInPack = 0;
+		private int _atlasVerifiedObjects = 0;
+		private int _atlasChrRamObjects = 0;
+		private int _atlasUnverifiedObjects = 0;
+		private int _atlasMismatchedTiles = 0;
+		private bool _atlasHasAudit = false;
 		private HashSet<(string Tile, uint Palette)> _playerExactTiles = new();
 		private int _playerExactInPack = 0;
 		private List<PlayerForm> _playerForms = new();
@@ -284,7 +289,20 @@ namespace Mesen.HdStudio
 					int width = obj.TryGetProperty("width", out JsonElement w) ? w.GetInt32() : 0;
 					int height = obj.TryGetProperty("height", out JsonElement h) ? h.GetInt32() : 0;
 					int sprites = obj.TryGetProperty("sprites", out JsonElement s) ? s.GetInt32() : 0;
+					string status = obj.TryGetProperty("status", out JsonElement st) ? st.GetString() ?? "" : "";
 					_objectAtlas.Add((id, label, name, png, width, height, sprites));
+					if(status == "verified") {
+						_atlasVerifiedObjects++;
+					} else if(status == "verified-chr-ram") {
+						_atlasChrRamObjects++;
+					} else if(sprites > 0) {
+						_atlasUnverifiedObjects++;
+					}
+				}
+
+				if(doc.RootElement.TryGetProperty("audit", out JsonElement audit)) {
+					_atlasHasAudit = true;
+					_atlasMismatchedTiles = audit.TryGetProperty("mismatchedTiles", out JsonElement mt) ? mt.GetInt32() : 0;
 				}
 
 				string exactPath = Path.Combine(_studioFolder, "atlas", "atlas_exact.txt");
@@ -1009,6 +1027,11 @@ namespace Mesen.HdStudio
 				json.WriteNumber("objectsWithSprites", _objectAtlas.Count(o => o.Sprites > 0));
 				json.WriteNumber("exactCombos", _atlasExactTiles.Count);
 				json.WriteNumber("exactCombosInPack", _atlasExactInPack);
+				json.WriteBoolean("mapperAudit", _atlasHasAudit);
+				json.WriteNumber("verifiedObjects", _atlasVerifiedObjects);
+				json.WriteNumber("verifiedChrRamObjects", _atlasChrRamObjects);
+				json.WriteNumber("unverifiedObjects", _atlasUnverifiedObjects);
+				json.WriteNumber("mismatchedTiles", _atlasMismatchedTiles);
 				json.WriteEndObject();
 			}
 
@@ -1158,6 +1181,11 @@ namespace Mesen.HdStudio
 			if(_atlasExactTiles.Count > 0) {
 				double atlasPct = 100.0 * _atlasExactInPack / _atlasExactTiles.Count;
 				sb.AppendLine($"<tr><td><b>Object atlas</b> (exact pattern + palette)</td><td class=\"n\">{_atlasExactInPack:N0}</td><td class=\"n\">{_atlasExactTiles.Count:N0}</td><td class=\"n\"><b>{atlasPct:0.0}%</b></td><td>{_objectAtlas.Count(o => o.Sprites > 0):N0} of {_objectAtlas.Count:N0} object types captured with their sprites.</td></tr>");
+				if(_atlasHasAudit) {
+					sb.AppendLine($"<tr><td><b>Object atlas</b> (mapper verification)</td><td class=\"n\">{_atlasVerifiedObjects + _atlasChrRamObjects:N0}</td><td class=\"n\">{_atlasVerifiedObjects + _atlasChrRamObjects + _atlasUnverifiedObjects:N0}</td><td class=\"n\"><b>{(_atlasVerifiedObjects + _atlasChrRamObjects + _atlasUnverifiedObjects > 0 ? 100.0 * (_atlasVerifiedObjects + _atlasChrRamObjects) / (_atlasVerifiedObjects + _atlasChrRamObjects + _atlasUnverifiedObjects) : 0):0.0}%</b></td><td>{_atlasVerifiedObjects:N0} verified against CHR ROM, {_atlasChrRamObjects:N0} verified CHR-RAM captures, {_atlasUnverifiedObjects:N0} unverified, {_atlasMismatchedTiles:N0} mismatched tiles. Only verified compositions are claimed as exact.</td></tr>");
+				} else {
+					sb.AppendLine($"<tr><td><b>Object atlas</b> (mapper verification)</td><td class=\"n\">0</td><td class=\"n\">{_objectAtlas.Count:N0}</td><td class=\"n\"><b>0.0%</b></td><td>Legacy capture without mapper audit: all compositions are unverified.</td></tr>");
+				}
 			}
 			if(_playerForms.Count > 0) {
 				double playerPct = _playerExactTiles.Count > 0 ? 100.0 * _playerExactInPack / _playerExactTiles.Count : 100.0;

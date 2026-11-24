@@ -90,6 +90,10 @@ public:
 	static int GetLogWindowLog(lua_State* lua);
 	static int GetHorizontalScroll(lua_State* lua);
 
+	//HD Studio: resolve a PPU address through the mapper exactly as the renderer does.
+	static int GetChrTileInfo(lua_State* lua);
+	static int GetPpuInfo(lua_State* lua);
+
 	static void GenerateStateTable(Serializer& s, lua_State* lua);
 	static void ReadStateTable(Serializer& s, lua_State* lua);
 
