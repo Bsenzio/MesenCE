@@ -149,12 +149,14 @@ The generic workflow cannot name the objects of an arbitrary game. For SMB3 the 
 process) loads 1-1, places object N in a free slot at the player's visible position, and captures the sprites
 its own drawing code writes to `Sprite_RAM`. A per-ID timeout isolates objects that need a specific state or
 hang. The images are rendered with CHR + the exact sprite palette into `HdStudio/atlas/` and listed in
-`atlas.json`; the report shows an **Object atlas (named sprites)** table with all 196 IDs, names and the
+`atlas.json`; each object is captured on **one frame** (not accumulated over animation frames, which made
+walking characters look doubled). The report shows an **Object atlas (named sprites)** table with all 196 IDs,
+names and the
 captured images. IDs that need a special state (doors, controllers, some bosses’ phases) show “no visible
-sprite in the forced state” instead of a wrong image. Measured on SMB3: **149 of 196 object types** produced
-sprites (3,173 visible sprite entries, **339 exact pattern+palette combinations** added to the pack; all 339
+sprite in the forced state” instead of a wrong image. Measured on SMB3: **147 of 196 object types** produced
+sprites (443 visible sprite entries, **200 exact pattern+palette combinations** added to the pack; all 200
 present). SMB3 uses **8×16 sprites**, so the renderer combines each OAM pattern pair; a few forced-state boss
-captures are still partial (Bowser, Boss Bass) because they need their real level/state. The 47 without sprites
+captures are still partial (Bowser, Boss Bass) because they need their real level/state. The 49 without sprites
 are 7 world-map objects, invisible objects (hidden whistle, door, lift, currents), and event/cannon controllers
 that spawn other objects instead of drawing themselves. Player forms (Tanuki, Frog, Hammer…) are not object IDs;
 they are captured by the separate `--playerforms` atlas (see below).
@@ -201,6 +203,13 @@ The Lua driver loads 1-1, walks Mario a little, clears the object slots and forc
 recording uses Mesen's GIF codec, so the output is the actual emulator video at the HD resolution. The
 repository's `assets/gifs/hd_goomba_demo.gif` used a temporarily retouched Goomba tile; the pack sheets were
 restored afterwards. The browser preview in `demo/` is a separate visual mockup (no ROM, no emulator).
+
+### Custom art import
+
+The companion documentation repository includes `scripts/import_hd_art.py`, which builds a new HD sheet, prepends
+exact entries for a supplied Goomba/background tile, records the `--demo` GIF and restores the pack. See the
+repository's `docs/custom-art.md`. The native emulator remains the source of truth; the browser preview is only
+a visual mockup.
 
 ## Checking that an HD pack works
 
