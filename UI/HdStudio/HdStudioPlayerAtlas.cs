@@ -35,6 +35,7 @@ namespace Mesen.HdStudio
 			(5, "Tanuki", 5),
 			(6, "Hammer", 6),
 			(7, "Tanuki Statue", 5),
+			(8, "Death", 0),
 		};
 
 		//Player_Frame values from Southbird's SMB3 disassembly (smb3.asm, PF_* constants).
@@ -100,6 +101,10 @@ namespace Mesen.HdStudio
 
 		private static readonly (int Code, string Name)[] _statuePoses = {
 			(0x1E, "statue"),
+		};
+
+		private static readonly (int Code, string Name)[] _deathPoses = {
+			(0x4B, "death"),
 		};
 
 		public static int RunAll(string romPath, string outFolder, uint[] nesPalette, Action<string> log)
@@ -195,6 +200,7 @@ namespace Mesen.HdStudio
 				5 => _tanukiPoses,
 				6 => _hammerPoses,
 				7 => _statuePoses,
+				8 => _deathPoses,
 				_ => Array.Empty<(int, string)>()
 			};
 		}
@@ -203,7 +209,7 @@ namespace Mesen.HdStudio
 		{
 			StringBuilder forms = new();
 			foreach((int id, string name, int suit) in _forms) {
-				forms.AppendLine($"  {{ id={id}, name='{name}', suit={suit}, statue={(id == 7 ? "true" : "false")}, poses={{");
+				forms.AppendLine($"  {{ id={id}, name='{name}', suit={suit}, statue={(id == 7 ? "true" : "false")}, death={(id == 8 ? "true" : "false")}, poses={{");
 				foreach((int code, string poseName) in PosesFor(id)) {
 					forms.AppendLine($"    {{ code=0x{code:X2}, name='{poseName}' }},");
 				}
@@ -335,7 +341,12 @@ emu.addEventCallback(function()
     forcedPose = -1
     forceStatueDown = false
     w(0x057A, 0) -- clear a previous Tanuki statue
-    if form.statue then
+    if form.death then
+      w(0x00F1, 1) -- Player_IsDying
+      w(0x00ED, 0) -- small death sprite/palette
+      w(0x00CE, 0) -- Player_HaltGame
+      w(0x0578, 1) -- queue small, so Level_SetPlayerPUpPal runs
+    elseif form.statue then
       w(0x00ED, 5)
       w(0x0578, 0x0F)
       forceStatueDown = true
@@ -344,7 +355,7 @@ emu.addEventCallback(function()
     end
     emu.log('player form: ' .. form.name)
     phase = 'suitwait'
-    waitUntil = rel + 12
+    waitUntil = rel + (form.death and 4 or 12)
   elseif phase == 'suitwait' and rel >= waitUntil then
     poseIndex = 1
     phase = 'pose'
@@ -532,7 +543,7 @@ end, emu.eventType.startFrame)
 				json.WriteEndObject();
 			}
 
-			log($"Player forms: {forms.Count} forms, {totalPoses} poses, {sprites.Count} sprites -> {folder}");
+			log($"Player forms: {forms.Count} entries (8 suits + Death), {totalPoses} poses, {sprites.Count} sprites -> {folder}");
 		}
 
 		private static string SafeName(string value)

@@ -1120,7 +1120,7 @@ namespace Mesen.HdStudio
 				sb.AppendLine($"<div class=\"stat\"><b>{atlasSprites:N0}</b><span>of {_objectAtlas.Count:N0} game object types drawn by the object atlas</span></div>");
 			}
 			if(_playerForms.Count > 0) {
-				sb.AppendLine($"<div class=\"stat\"><b>{_playerForms.Count}</b><span>player forms captured with named poses ({_playerFormPoses} poses, {_playerFormSprites} sprites)</span></div>");
+				sb.AppendLine($"<div class=\"stat\"><b>{_playerForms.Count}</b><span>player entries captured with named poses (8 suits + Death; {_playerFormPoses} poses, {_playerFormSprites} sprites)</span></div>");
 			}
 			if(_rom.HasChrRom) {
 				double coverage = nonBlank > 0 ? 100.0 * seen.Count / nonBlank : 0;
@@ -1161,7 +1161,7 @@ namespace Mesen.HdStudio
 			}
 			if(_playerForms.Count > 0) {
 				double playerPct = _playerExactTiles.Count > 0 ? 100.0 * _playerExactInPack / _playerExactTiles.Count : 100.0;
-				sb.AppendLine($"<tr><td><b>Player forms</b> (exact pattern + palette)</td><td class=\"n\">{_playerExactInPack:N0}</td><td class=\"n\">{_playerExactTiles.Count:N0}</td><td class=\"n\"><b>{playerPct:0.0}%</b></td><td>{_playerForms.Count} forms (Small, Super, Fire, Raccoon, Frog, Tanuki, Hammer, Tanuki Statue), {_playerFormPoses} named poses, {_playerFormSprites} sprites drawn by the game's own player code.</td></tr>");
+				sb.AppendLine($"<tr><td><b>Player forms</b> (exact pattern + palette)</td><td class=\"n\">{_playerExactInPack:N0}</td><td class=\"n\">{_playerExactTiles.Count:N0}</td><td class=\"n\"><b>{playerPct:0.0}%</b></td><td>{_playerForms.Count} entries: 8 suits + Death (Small, Super, Fire, Raccoon, Frog, Tanuki, Hammer, Tanuki Statue, Death), {_playerFormPoses} named poses, {_playerFormSprites} sprites drawn by the game's own player code.</td></tr>");
 			}
 			if(_rom.HasChrRom) {
 				int inPack = InPackChrTiles().Count;
@@ -1202,7 +1202,7 @@ namespace Mesen.HdStudio
 					$"The game defines <b>{_gameObjects.Count}</b> object types; this recording detected <b>{groups.Count}</b> metasprites (the table above and <code>sheet_objects.png</code>). " +
 					$"Enemies or forms that never appeared in the recording are not in that sheet: their cartridge tiles are still in the pack (with exact or wildcard palette), but HD Studio has not grouped or named them. " +
 					(_playerForms.Count > 0
-						? $"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer and the Tanuki Statue — are drawn by the player code, not by an object ID; they are captured with named poses in the <a href=\"#player-forms\">Player forms</a> section below ({_playerForms.Count} forms, {_playerFormPoses} poses, {_playerFormSprites} sprites). "
+						? $"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer, the Tanuki Statue and the <b>Death</b> state — are drawn by the player code, not by an object ID; they are captured with named poses in the <a href=\"#player-forms\">Player forms</a> section below ({_playerForms.Count} entries, {_playerFormPoses} poses, {_playerFormSprites} sprites). "
 						: $"<b>The player forms</b> — Small, Super, Fire, Raccoon, <b>Tanuki</b>, Frog, Hammer and the Tanuki Statue — are drawn by the player code, not by an object ID, so they appear in the sheet as generic player templates (top row of <code>sheet_objects.png</code>, 16×16/16×32) without individual “Tanuki”/“Frog” labels. ") +
 					$"The complete tile atlas, including unseen tiles in red, is <a href=\"chr_coverage.png\"><code>chr_coverage.png</code></a>.</p>");
 				sb.AppendLine($"<details><summary>All {_gameObjects.Count} object types defined by the game data</summary><div class=\"wrap\"><table><thead><tr><th>ID</th><th>Label</th><th>Name</th></tr></thead><tbody>");
@@ -1234,8 +1234,8 @@ namespace Mesen.HdStudio
 			if(_playerForms.Count > 0) {
 				sb.AppendLine("<h2 id=\"player-forms\">Player forms (named sprites)</h2>");
 				sb.AppendLine($"<p>The player is not an object ID: SMB3 draws it from <code>Player_Suit</code>, <code>Player_Statue</code> and <code>Player_Frame</code>. " +
-					$"HD Studio queues each suit through the game's own power-up code, forces the animation frame immediately before <code>Player_Draw</code>, and captures the 8×16 OAM sprites with the exact sprite palette. " +
-					$"<b>{_playerForms.Count}</b> forms, <b>{_playerFormPoses}</b> named poses, <b>{_playerFormSprites}</b> sprites. " +
+					$"HD Studio queues each suit through the game's own power-up code, forces the animation frame immediately before <code>Player_Draw</code>, and captures the 8×16 OAM sprites with the exact sprite palette. The <b>Death</b> entry sets <code>Player_IsDying</code> and frame <code>$4B</code> before the same draw call. " +
+					$"<b>{_playerForms.Count}</b> entries (8 suits + Death), <b>{_playerFormPoses}</b> named poses, <b>{_playerFormSprites}</b> sprites. " +
 					$"Images are in <code>HdStudio/playerforms</code>; the machine-readable list is <a href=\"playerforms/playerforms.json\"><code>playerforms/playerforms.json</code></a>.</p>");
 				foreach(PlayerForm form in _playerForms) {
 					sb.AppendLine($"<h3>{E(form.Name)}</h3>");

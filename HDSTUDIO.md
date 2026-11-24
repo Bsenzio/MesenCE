@@ -170,8 +170,8 @@ full tile atlas is `HdStudio/chr_coverage.png`; `report.json` has the 196-object
 ### Player-form atlas (`--playerforms`, SMB3 USA)
 
 The player is not an object ID: SMB3 draws it from `Player_Suit`, `Player_Statue` and `Player_Frame`.
-`--playerforms` captures all eight forms (Small, Super, Fire, Raccoon, Frog, **Tanuki**, Hammer and the
-**Tanuki Statue**) in one Mesen process:
+`--playerforms` captures all eight suits (Small, Super, Fire, Raccoon, Frog, **Tanuki**, Hammer and the
+**Tanuki Statue**) plus the **Death** state in one Mesen process:
 
 ```
 .\hdstudio.cmd game.nes --playerforms
@@ -185,11 +185,11 @@ The player is not an object ID: SMB3 draws it from `Player_Suit`, `Player_Statue
 5. Capture `Sprite_RAM` + the exact sprite palette, render one PNG per pose and write
    `HdStudio/playerforms/playerforms_exact.txt`.
 
-Measured on SMB3 (USA): **8/8 forms, 121 named poses, 530 visible sprites, 736/736 exact
+Measured on SMB3 (USA): **9 entries (8 suits + Death), 122 named poses, 532 visible sprites, 738/738 exact
 (pattern + palette) combinations in the pack**. The report adds a **Player forms (named sprites)** section
 with every form and pose. The pose set covers walk, run, jump, fall, duck, swim, climb, tail, flutter/fly,
-frog hop/swim, hammer throw and the statue; death/edge states are intentionally omitted because they need
-a different game state.
+frog hop/swim, hammer throw, the statue and the Death state; a few edge/scripted states are intentionally
+omitted because they need a different game state.
 
 ### Demo GIF (`--demo`, SMB3)
 
@@ -380,4 +380,4 @@ the generated packs.
 2. Automatic game profile: RAM search (player position, level, lives), OAM tracing to extract the metasprite tables, Code/Data Logger
 3. Import external profiles (RAM maps, disassemblies) and cc65 `.dbg` files for homebrew
 4. Automatic placement of the redrawn PNGs into `hires.txt` and side-by-side original/HD view
-5. Full player animation set (death/edge states) and better boss object captures
+5. Full player animation set (remaining edge/scripted states) and better boss object captures

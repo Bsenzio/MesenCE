@@ -34,7 +34,7 @@ namespace Mesen.HdStudio
 	///   --sweep           With --levels: try to reveal each whole level by moving the player position in RAM
 	///                     (experimental: it works on some games, the level runner is used when it fails)
 	///   --maps            Build full level maps with the game's own loader (needs --disasm; SMB3)
-	///   --playerforms     Capture every SMB3 player form (Small, Super, Fire, Raccoon, Frog, Tanuki,
+	///   --playerforms     Capture every SMB3 player suit plus Death (Small, Super, Fire, Raccoon, Frog, Tanuki,
 	///                     Hammer and Tanuki Statue) with named poses and exact sprite palettes
 	///   --demo            Record a short real-Mesen GIF with the HD pack active (SMB3; for the
 	///                     repository demo, not a full capture)
@@ -713,7 +713,7 @@ namespace Mesen.HdStudio
 			Log("");
 			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--demo] [--reportonly] [--verify [--shots=4]]");
 			Log("  --maps with --disasm=FOLDER: full level maps as PNG + exact per-level tile usage (uses the game's own level generator).");
-			Log("  --playerforms: SMB3 (USA) only: all eight player forms and their named poses, exact sprite palettes.");
+			Log("  --playerforms: SMB3 (USA) only: all eight player suits plus Death and their named poses, exact sprite palettes.");
 			Log("  --demo: records a short real-Mesen GIF with the HD pack active (SMB3 1-1).");
 		}
 
