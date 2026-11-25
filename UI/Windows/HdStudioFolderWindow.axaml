@@ -1,0 +1,138 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Mesen.Windows.HdStudioFolderWindow"
+        x:CompileBindings="False"
+        Width="820" Height="560" MinWidth="680" MinHeight="460"
+        WindowStartupLocation="CenterOwner"
+        Title="Choose a folder"
+        Background="{DynamicResource StudioBgBrush}"
+        Foreground="{DynamicResource StudioTextBrush}"
+        FontFamily="Segoe UI">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="/HdStudio/HdStudioTheme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+  <Window.Styles>
+    <StyleInclude Source="/HdStudio/HdStudioStyles.axaml" />
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+      <StackPanel>
+        <TextBlock Name="HeaderText" Classes="h2" Text="Choose a folder" />
+        <TextBlock Name="SubheaderText" Classes="muted" Margin="0,3,0,0"
+                   Text="Browse to the destination. The Studio never asks you to type a path." />
+      </StackPanel>
+      <Button Grid.Column="1" Classes="tool" Click="Close_Click" ToolTip.Tip="Close">
+        <Path Classes="icon" Data="{StaticResource Icon.X}" />
+      </Button>
+    </Grid>
+
+    <Border Grid.Row="1" Classes="panel" Padding="10" Margin="0,14,0,10">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+        <Button Name="UpButton" Classes="tool" Click="Up_Click" ToolTip.Tip="Parent folder">
+          <Path Classes="icon" Data="{StaticResource Icon.ArrowLeft}" />
+        </Button>
+        <Border Grid.Column="1" Background="{DynamicResource StudioInputBrush}" BorderBrush="{DynamicResource StudioBorderBrush}"
+                BorderThickness="1" CornerRadius="6" Padding="8,5">
+          <TextBlock Name="PathText" Classes="mono" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        </Border>
+        <Button Grid.Column="2" ToolTip.Tip="Common locations">
+          <Button.Flyout>
+            <MenuFlyout>
+              <MenuItem Header="Documents" Click="GoDocuments_Click" />
+              <MenuItem Header="Pictures" Click="GoPictures_Click" />
+              <MenuItem Header="Desktop" Click="GoDesktop_Click" />
+              <MenuItem Header="Home" Click="GoHome_Click" />
+            </MenuFlyout>
+          </Button.Flyout>
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Path Classes="icon small" Data="{StaticResource Icon.House}" />
+            <TextBlock Text="Places" />
+          </StackPanel>
+        </Button>
+        <Button Grid.Column="3" Classes="tool" Click="Refresh_Click" ToolTip.Tip="Refresh folder list">
+          <Path Classes="icon" Data="{StaticResource Icon.RefreshCw}" />
+        </Button>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="2" ColumnDefinitions="180,12,*">
+      <Border Grid.Column="0" Classes="panel" Padding="8">
+        <StackPanel Spacing="3">
+          <TextBlock Classes="section" Text="PLACES" Margin="6,4,6,8" />
+          <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="GoDocuments_Click">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon small" Data="{StaticResource Icon.Folder}" />
+              <TextBlock Text="Documents" />
+            </StackPanel>
+          </Button>
+          <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="GoPictures_Click">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon small" Data="{StaticResource Icon.Image}" />
+              <TextBlock Text="Pictures" />
+            </StackPanel>
+          </Button>
+          <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="GoDesktop_Click">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon small" Data="{StaticResource Icon.LayoutGrid}" />
+              <TextBlock Text="Desktop" />
+            </StackPanel>
+          </Button>
+          <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="GoHome_Click">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Path Classes="icon small" Data="{StaticResource Icon.House}" />
+              <TextBlock Text="Home" />
+            </StackPanel>
+          </Button>
+          <Path Data="{StaticResource Icon.FolderOpen}" Classes="icon large" Stroke="{DynamicResource StudioAccentBrush}"
+                Width="54" Height="54" Margin="0,28,0,6" HorizontalAlignment="Center" />
+          <TextBlock Classes="caption" TextAlignment="Center" TextWrapping="Wrap" Margin="4,0"
+                     Text="The chosen folder will contain the complete HD Pack, never the original ROM." />
+        </StackPanel>
+      </Border>
+
+      <Border Grid.Column="2" Classes="panel" Padding="6">
+        <Grid RowDefinitions="Auto,*">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,4,6,8">
+            <TextBlock Classes="section" Text="FOLDERS" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Name="FolderCountText" Classes="caption" VerticalAlignment="Center" />
+          </Grid>
+          <ListBox Grid.Row="1" Name="FolderList" SelectionChanged="FolderList_SelectionChanged" DoubleTapped="FolderList_DoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="4,3">
+                  <Path Classes="icon" Data="{StaticResource Icon.Folder}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="0,14,0,0">
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock Name="SelectionText" Classes="mono" Text="No folder selected" TextTrimming="CharacterEllipsis" />
+        <TextBlock Name="ValidationText" Classes="caption" Margin="0,2,0,0" Text="Select a folder to continue." />
+      </StackPanel>
+      <Button Grid.Column="1" Click="NewFolder_Click">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Classes="icon small" Data="{StaticResource Icon.Plus}" />
+          <TextBlock Text="New folder" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="2" Click="Close_Click" Content="Cancel" />
+      <Button Grid.Column="3" Name="ChooseButton" Classes="cta" Click="Choose_Click" IsEnabled="False">
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <Path Classes="icon small" Data="{StaticResource Icon.Check}" />
+          <TextBlock Text="Use this folder" />
+        </StackPanel>
+      </Button>
+    </Grid>
+  </Grid>
+</Window>

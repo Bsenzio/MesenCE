@@ -1,4 +1,16 @@
-# HD Studio validation (v0.2 Alpha, 2026-11-25)
+﻿# HD Studio validation
+
+## v0.3 (2026-11-25)
+
+The graphical redesign preserves the engine and passed: full core+UI build,
+165/165 self-tests, managed project/compiler, export full/minimal/backup/install,
+shared-pattern safety, discovery 600→1200 resume/restart, sprite-sheet slicer and
+the SMB3 mapper audit (36/36 rows). UI ZIP export was smoke-tested. The v0.3
+screenshots and the actual 1024×960 Goomba gameplay frame are in the docs repo
+under `assets/v03/`. Dark is the validated appearance; light is deferred; physical
+DPI/2560/3840 captures were not available on the validation display.
+
+## v0.2 Alpha (2026-11-25)
 
 > Project documentation and this matrix with commentary:
 > <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/validation.md>

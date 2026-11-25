@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -38,6 +38,9 @@ namespace Mesen.HdStudio
 		public string CaptureStatus = "";
 		public int CaptureFrames;
 		public int CapturedAssets;
+		/// <summary>Stable catalog ids whose approved replacement must not be overwritten by
+		/// automatic animation/sheet workflows. Stored with the project, not the pack.</summary>
+		public readonly List<string> LockedAssets = new();
 		public readonly List<HdStudioReplacement> Replacements = new();
 		public readonly List<string> ValidationNotes = new();
 
@@ -115,6 +118,14 @@ namespace Mesen.HdStudio
 				}
 			}
 
+			if(root.TryGetProperty("lockedAssets", out JsonElement locked) && locked.ValueKind == JsonValueKind.Array) {
+				foreach(JsonElement item in locked.EnumerateArray()) {
+					if(item.ValueKind == JsonValueKind.String) {
+						project.LockedAssets.Add(item.GetString() ?? "");
+					}
+				}
+			}
+
 			project.RomPath = ResolveRomPath(project.RomPath, project.RomPathAbsolute, project.PackFolder, project.OriginalPackFolder);
 			if(string.IsNullOrWhiteSpace(project.RomPathAbsolute) && Path.IsPathFullyQualified(project.RomPath)) {
 				project.RomPathAbsolute = project.RomPath;
@@ -168,6 +179,11 @@ namespace Mesen.HdStudio
 					json.WriteStartArray("replacements");
 					foreach(HdStudioReplacement replacement in Replacements.OrderBy(r => r.AssetId).ThenBy(r => r.Id)) {
 						replacement.WriteJson(json, path);
+					}
+					json.WriteEndArray();
+					json.WriteStartArray("lockedAssets");
+					foreach(string lockedId in LockedAssets.Distinct(StringComparer.OrdinalIgnoreCase)) {
+						json.WriteStringValue(lockedId);
 					}
 					json.WriteEndArray();
 					json.WriteEndObject();
@@ -368,7 +384,7 @@ namespace Mesen.HdStudio
 		}
 	}
 
-	internal sealed class HdStudioAdaptationSettings
+	public sealed class HdStudioAdaptationSettings
 	{
 		public bool RemoveBackground;
 		public int BackgroundTolerance = 40;
@@ -385,6 +401,10 @@ namespace Mesen.HdStudio
 		public bool MirrorConditions;
 		public bool MatchBackgroundPriority;
 		public bool AllPaletteVariants = true;
+		public int CropLeft;
+		public int CropTop;
+		public int CropRight;
+		public int CropBottom;
 
 		public void WriteJson(Utf8JsonWriter json)
 		{
@@ -404,6 +424,10 @@ namespace Mesen.HdStudio
 			json.WriteBoolean("mirrorConditions", MirrorConditions);
 			json.WriteBoolean("matchBackgroundPriority", MatchBackgroundPriority);
 			json.WriteBoolean("allPaletteVariants", AllPaletteVariants);
+			json.WriteNumber("cropLeft", CropLeft);
+			json.WriteNumber("cropTop", CropTop);
+			json.WriteNumber("cropRight", CropRight);
+			json.WriteNumber("cropBottom", CropBottom);
 			json.WriteEndObject();
 		}
 
@@ -427,6 +451,10 @@ namespace Mesen.HdStudio
 			MirrorConditions = a.TryGetProperty("mirrorConditions", out JsonElement mc) && mc.ValueKind == JsonValueKind.True;
 			MatchBackgroundPriority = a.TryGetProperty("matchBackgroundPriority", out JsonElement mbp) && mbp.ValueKind == JsonValueKind.True;
 			AllPaletteVariants = !a.TryGetProperty("allPaletteVariants", out JsonElement ap) || ap.ValueKind != JsonValueKind.False;
+			CropLeft = a.TryGetProperty("cropLeft", out JsonElement cl) && cl.TryGetInt32(out int clv) ? Math.Max(0, clv) : 0;
+			CropTop = a.TryGetProperty("cropTop", out JsonElement ct) && ct.TryGetInt32(out int ctv) ? Math.Max(0, ctv) : 0;
+			CropRight = a.TryGetProperty("cropRight", out JsonElement cr2) && cr2.TryGetInt32(out int crv) ? Math.Max(0, crv) : 0;
+			CropBottom = a.TryGetProperty("cropBottom", out JsonElement cb) && cb.TryGetInt32(out int cbv) ? Math.Max(0, cbv) : 0;
 		}
 	}
 
@@ -453,6 +481,7 @@ namespace Mesen.HdStudio
 		public int TargetHeight;
 		public string Approval = "draft";
 		public bool AllowSharedReplacement;
+		public bool Locked;
 		public string CreatedAtUtc = "";
 		public string UpdatedAtUtc = "";
 		public string LegacyManifest = "";
@@ -484,6 +513,7 @@ namespace Mesen.HdStudio
 			json.WriteNumber("targetHeight", TargetHeight);
 			json.WriteString("approval", Approval);
 			json.WriteBoolean("allowSharedReplacement", AllowSharedReplacement);
+			json.WriteBoolean("locked", Locked);
 			json.WriteString("createdAtUtc", CreatedAtUtc);
 			json.WriteString("updatedAtUtc", UpdatedAtUtc);
 			if(!string.IsNullOrEmpty(LegacyManifest)) {
@@ -530,6 +560,7 @@ namespace Mesen.HdStudio
 				TargetHeight = root.TryGetProperty("targetHeight", out JsonElement th) && th.TryGetInt32(out int tHeight) ? tHeight : 0,
 				Approval = root.TryGetProperty("approval", out JsonElement ap) && ap.ValueKind == JsonValueKind.String ? ap.GetString() ?? "draft" : "draft",
 				AllowSharedReplacement = !root.TryGetProperty("allowSharedReplacement", out JsonElement asr) || asr.ValueKind == JsonValueKind.True,
+				Locked = root.TryGetProperty("locked", out JsonElement lk) && lk.ValueKind == JsonValueKind.True,
 				CreatedAtUtc = root.TryGetProperty("createdAtUtc", out JsonElement ca) && ca.ValueKind == JsonValueKind.String ? ca.GetString() ?? "" : "",
 				UpdatedAtUtc = root.TryGetProperty("updatedAtUtc", out JsonElement ua) && ua.ValueKind == JsonValueKind.String ? ua.GetString() ?? "" : "",
 				LegacyManifest = root.TryGetProperty("legacyManifest", out JsonElement lm) && lm.ValueKind == JsonValueKind.String ? lm.GetString() ?? "" : ""
@@ -555,3 +586,4 @@ namespace Mesen.HdStudio
 		}
 	}
 }
+

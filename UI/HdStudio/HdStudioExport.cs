@@ -21,6 +21,12 @@ namespace Mesen.HdStudio
 		public bool LastExportMinimal;
 		public bool LastExportInstall;
 		public bool LastExportBackup = true;
+		public string Theme = "dark";
+		public double AssetThumbnailSize = 128;
+		public bool AssetGridView = true;
+		public bool ShowTileGrid = true;
+		public bool ShowCheckerboard = true;
+		public bool BottomPanelOpen = true;
 		public readonly List<string> RecentProjects = new();
 
 		public static string SettingsPath
@@ -50,6 +56,14 @@ namespace Mesen.HdStudio
 					settings.LastExportMinimal = GetBool(root, "lastExportMinimal");
 					settings.LastExportInstall = GetBool(root, "lastExportInstall");
 					settings.LastExportBackup = !root.TryGetProperty("lastExportBackup", out JsonElement backup) || backup.ValueKind != JsonValueKind.False;
+					settings.Theme = GetString(root, "theme");
+					if(root.TryGetProperty("assetThumbnailSize", out JsonElement thumb) && thumb.TryGetDouble(out double thumbSize)) {
+						settings.AssetThumbnailSize = Math.Clamp(thumbSize, 96, 220);
+					}
+					settings.AssetGridView = !root.TryGetProperty("assetGridView", out JsonElement grid) || grid.ValueKind != JsonValueKind.False;
+					settings.ShowTileGrid = !root.TryGetProperty("showTileGrid", out JsonElement tileGrid) || tileGrid.ValueKind != JsonValueKind.False;
+					settings.ShowCheckerboard = !root.TryGetProperty("showCheckerboard", out JsonElement checker) || checker.ValueKind != JsonValueKind.False;
+					settings.BottomPanelOpen = !root.TryGetProperty("bottomPanelOpen", out JsonElement bottom) || bottom.ValueKind != JsonValueKind.False;
 					if(root.TryGetProperty("recentProjects", out JsonElement recent) && recent.ValueKind == JsonValueKind.Array) {
 						foreach(JsonElement item in recent.EnumerateArray()) {
 							if(item.ValueKind == JsonValueKind.String) {
@@ -86,6 +100,12 @@ namespace Mesen.HdStudio
 						json.WriteBoolean("lastExportMinimal", LastExportMinimal);
 						json.WriteBoolean("lastExportInstall", LastExportInstall);
 						json.WriteBoolean("lastExportBackup", LastExportBackup);
+						json.WriteString("theme", Theme);
+						json.WriteNumber("assetThumbnailSize", AssetThumbnailSize);
+						json.WriteBoolean("assetGridView", AssetGridView);
+						json.WriteBoolean("showTileGrid", ShowTileGrid);
+						json.WriteBoolean("showCheckerboard", ShowCheckerboard);
+						json.WriteBoolean("bottomPanelOpen", BottomPanelOpen);
 						json.WriteStartArray("recentProjects");
 						foreach(string project in RecentProjects) {
 							json.WriteStringValue(project);

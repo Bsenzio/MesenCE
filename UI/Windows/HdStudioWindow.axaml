@@ -1,427 +1,1632 @@
-<Window
-	xmlns="https://github.com/avaloniaui"
-	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-	mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="860"
-	x:Class="Mesen.Windows.HdStudioWindow"
-	Width="1360" Height="860" MinWidth="1020" MinHeight="660"
-	Title="RetroArcDo HD Studio"
-	Icon="/Assets/HdPack.png"
-	Name="root"
->
-	<Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="6">
-		<Border Grid.Row="0" BorderThickness="1" BorderBrush="#40808080" Padding="9,6" CornerRadius="3">
-			<DockPanel LastChildFill="True">
-				<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
-					<Button Name="OpenRomButton" Content="Open ROM..." Click="OpenRom_Click" ToolTip.Tip="Choose a NES ROM and open its HD pack project" />
-					<Button Name="TopCompileButton" Content="Build Pack" Click="Compile_Click" ToolTip.Tip="Compile the project into a standard Mesen hires.txt pack" />
-					<Button Name="TopExportButton" Content="Export HD Pack..." Click="Navigate_Click" Tag="export" ToolTip.Tip="Export a validated, distributable pack to a folder of your choice" />
-				</StackPanel>
-				<StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-					<TextBlock Text="RetroArcDo HD Studio" FontWeight="Bold" FontSize="15" />
-					<TextBlock Name="RomText" FontWeight="SemiBold" Text="No ROM loaded" VerticalAlignment="Center" />
-					<TextBlock Name="ProjectText" Opacity="0.75" Text="" VerticalAlignment="Center" />
-				</StackPanel>
-			</DockPanel>
-		</Border>
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:Mesen.Controls"
+        x:Class="Mesen.Windows.HdStudioWindow"
+        x:CompileBindings="False"
+        Width="1500" Height="940" MinWidth="1180" MinHeight="720"
+        WindowStartupLocation="CenterScreen"
+        Title="RetroArcDo HD Studio"
+        Icon="/Assets/HdPack.png"
+        Name="root">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="/HdStudio/HdStudioTheme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
 
-		<Border Grid.Row="1" BorderThickness="0,0,0,1" BorderBrush="#30808080" Padding="2,4">
-			<WrapPanel>
-				<Button Content="Welcome" Click="Navigate_Click" Tag="welcome" Margin="0,0,4,0" />
-				<Button Content="Discover" Click="Navigate_Click" Tag="discover" Margin="0,0,4,0" />
-				<Button Content="Artwork" Click="Navigate_Click" Tag="workshop" Margin="0,0,4,0" />
-				<Button Content="Animations" Click="Navigate_Click" Tag="animations" Margin="0,0,4,0" />
-				<Button Content="Backgrounds" Click="Navigate_Click" Tag="backgrounds" Margin="0,0,4,0" />
-				<Button Content="Replacements" Click="Navigate_Click" Tag="replacements" Margin="0,0,4,0" />
-				<Button Content="Preview" Click="Navigate_Click" Tag="preview" Margin="0,0,4,0" />
-				<Button Content="Export" Click="Navigate_Click" Tag="export" Margin="0,0,4,0" />
-				<Button Content="Project" Click="Navigate_Click" Tag="project" Margin="0,0,4,0" />
-				<Button Content="Diagnostics" Click="Navigate_Click" Tag="build" Margin="0,0,4,0" />
-			</WrapPanel>
-		</Border>
+      <DataTemplate x:Key="AssetGridTemplate">
+        <Border Classes="assetCard" Margin="2" Padding="4" Width="{Binding CardSize}">
+          <Grid RowDefinitions="Auto,Auto">
+            <Border Height="{Binding ThumbnailSize}" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="5" ClipToBounds="True">
+              <Grid>
+                <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="3" />
+                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4" Width="22" Height="22"
+                        CornerRadius="11" Background="{DynamicResource StudioOverlayBrush}"
+                        ToolTip.Tip="{Binding StatusTip}">
+                  <Path Data="{Binding StatusGeometry}" Stroke="{Binding StatusBrush}" StrokeThickness="1.8"
+                        Width="13" Height="13" Fill="Transparent" StrokeLineCap="Round" StrokeJoin="Round"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4" Classes="badge" IsVisible="{Binding HasReplacement}">
+                  <TextBlock Text="HD" />
+                </Border>
+                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4" Width="8" Height="8"
+                        CornerRadius="4" Background="{DynamicResource StudioInfoBrush}" IsVisible="{Binding IsNew}" />
+              </Grid>
+            </Border>
+            <StackPanel Grid.Row="1" Margin="1,6,1,2" Spacing="1">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="11.5" MaxLines="1" />
+              <TextBlock Text="{Binding Category}" Classes="caption" FontSize="10" MaxLines="1" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </DataTemplate>
 
-		<TextBlock Grid.Row="2" Name="StatusText" Margin="3,4,3,4" Text="Ready." TextWrapping="Wrap" />
+      <DataTemplate x:Key="AssetListTemplate">
+        <Border Classes="assetCard" Margin="2" Padding="5">
+          <Grid ColumnDefinitions="52,*,Auto" ColumnSpacing="8">
+            <Border Width="52" Height="44" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="4" ClipToBounds="True">
+              <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="2" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="11.5" MaxLines="1" />
+              <TextBlock Text="{Binding Category}" Classes="caption" FontSize="10" MaxLines="1" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Spacing="2">
+              <Path Data="{Binding StatusGeometry}" Stroke="{Binding StatusBrush}" StrokeThickness="1.8"
+                    Width="14" Height="14" Fill="Transparent" StrokeLineCap="Round" StrokeJoin="Round"
+                    ToolTip.Tip="{Binding StatusTip}" />
+              <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource StudioInfoBrush}" IsVisible="{Binding IsNew}" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </DataTemplate>
 
-		<Grid Grid.Row="3" ColumnDefinitions="370,6,*">
-			<Border Grid.Column="0" BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="6">
-				<Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-					<TextBlock Text="Asset catalog" FontWeight="Bold" Margin="0,0,0,4" />
-					<StackPanel Grid.Row="1" Spacing="4">
-						<TextBox Name="AssetSearchBox" PlaceholderText="Search name, label, id or context..." TextChanged="AssetSearch_TextChanged" />
-						<Grid ColumnDefinitions="*,6,*">
-							<ComboBox Grid.Column="0" Name="CategoryBox" SelectedIndex="0" SelectionChanged="Category_SelectionChanged" HorizontalAlignment="Stretch" ToolTip.Tip="Graphical asset category">
-								<ComboBoxItem Content="All assets" />
-								<ComboBoxItem Content="Objects" />
-								<ComboBoxItem Content="Rendered metasprites" />
-								<ComboBoxItem Content="Animation frames" />
-								<ComboBoxItem Content="Animation sequences" />
-								<ComboBoxItem Content="Backgrounds" />
-								<ComboBoxItem Content="Background tiles" />
-								<ComboBoxItem Content="Other" />
-							</ComboBox>
-							<ComboBox Grid.Column="2" Name="StatusFilterBox" SelectedIndex="0" SelectionChanged="StatusFilter_SelectionChanged" HorizontalAlignment="Stretch" ToolTip.Tip="Filter by replacement state">
-								<ComboBoxItem Content="Any status" />
-								<ComboBoxItem Content="Replaced" />
-								<ComboBoxItem Content="Missing replacement" />
-								<ComboBoxItem Content="Shared-key risk" />
-							</ComboBox>
-						</Grid>
-					</StackPanel>
-					<ListBox Grid.Row="2" Name="AssetList" Margin="0,6,0,0" SelectionChanged="AssetList_SelectionChanged" />
-					<StackPanel Grid.Row="3" Spacing="5" Margin="0,6,0,0">
-						<TextBlock Name="AssetCountText" VerticalAlignment="Center" Opacity="0.7" Text="0 assets" />
-						<Button Name="OpenWorkshopButton" Content="Open selected asset in Artwork" Click="OpenWorkshop_Click" HorizontalAlignment="Left" />
-					</StackPanel>
-					<TextBlock Grid.Row="4" Opacity="0.65" TextWrapping="Wrap" Margin="0,6,0,0" Text="Names are discovery labels. Stable IDs are shown in details. Unknown assets stay visible under Other." />
-				</Grid>
-			</Border>
+      <DataTemplate x:Key="FrameTemplate">
+        <Border Classes="frameCard" Width="112" Padding="4">
+          <Grid RowDefinitions="Auto,Auto">
+            <Border Height="76" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="3" ClipToBounds="True">
+              <Grid>
+                <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="2" />
+                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="3" Background="{DynamicResource StudioOverlayBrush}"
+                        CornerRadius="3" Padding="4,1">
+                  <TextBlock Text="{Binding FrameLabel}" FontSize="9.5" Classes="mono" />
+                </Border>
+                <Path HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4" Data="{Binding StatusGeometry}"
+                      Stroke="{Binding StatusBrush}" Width="12" Height="12" StrokeThickness="1.8" Fill="Transparent" StrokeLineCap="Round" StrokeJoin="Round" />
+              </Grid>
+            </Border>
+            <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="10" Margin="2,4,2,1" MaxLines="1" />
+          </Grid>
+        </Border>
+      </DataTemplate>
 
-			<GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" />
+      <DataTemplate x:Key="SessionTemplate">
+        <Border Classes="card" Padding="9" Margin="0,0,0,5">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+            <Border Width="28" Height="28" CornerRadius="14" Background="{DynamicResource StudioAccentSoftBrush}">
+              <TextBlock Text="{Binding Chunk}" Classes="mono" FontSize="10" Foreground="{DynamicResource StudioAccentBrush}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="1">
+              <TextBlock Text="{Binding Headline}" FontSize="11" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding Detail}" Classes="caption" FontSize="10" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </DataTemplate>
 
-			<TabControl Grid.Column="2" Name="Tabs" Margin="4,0,0,0">
-				<TabItem x:Name="WelcomeTab" Header="Welcome">
-					<ScrollViewer VerticalScrollBarVisibility="Auto">
-						<StackPanel Spacing="10" Margin="12">
-							<TextBlock Text="A graphical workshop for standard Mesen HD Packs" FontSize="22" FontWeight="Bold" />
-							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="Open any NES ROM, discover its graphics, replace them with your artwork, preview the result in the original game and export a pack to a folder you choose. The original ROM and gameplay are never modified." />
-							<WrapPanel>
-								<Button Content="Open ROM..." Click="OpenRom_Click" Margin="0,0,8,6" />
-								<Button Content="Open project..." Click="OpenProject_Click" Margin="0,0,8,6" />
-								<Button Content="Open synthetic example" Click="OpenExample_Click" Margin="0,0,8,6" />
-								<Button Content="Open HD Packs folder" Click="OpenPackFolder_Click" Margin="0,0,8,6" />
-							</WrapPanel>
-							<TextBlock Text="Recent projects" FontWeight="Bold" />
-							<ListBox Name="RecentProjectsList" Height="150" DoubleTapped="RecentProjectsList_DoubleTapped" />
-							<Border BorderThickness="1" BorderBrush="#30808080" Padding="10" CornerRadius="4">
-								<StackPanel Spacing="4">
-									<TextBlock Text="First-run workflow" FontWeight="Bold" />
-									<TextBlock Text="1. Open ROM  →  2. Discover graphics  →  3. Select an asset  →  4. Import artwork  →  5. Adjust and apply  →  6. Preview in game  →  7. Export HD Pack" TextWrapping="Wrap" />
-									<TextBlock Text="The synthetic example in the portable package is a legally distributable NES ROM with its own project and HD pack. Use it to try the complete workflow without commercial game files." TextWrapping="Wrap" Opacity="0.75" />
-								</StackPanel>
-							</Border>
-							<TextBlock Name="WelcomeStatusText" TextWrapping="Wrap" Opacity="0.8" />
-						</StackPanel>
-					</ScrollViewer>
-				</TabItem>
+      <DataTemplate x:Key="RecentTemplate">
+        <Button Classes="subtle" Padding="0" Margin="0,0,10,10" Tag="{Binding Path}" Click="RecentProject_Click">
+          <Border Classes="card" Width="220" Padding="14">
+            <StackPanel Spacing="8">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Border Width="34" Height="34" CornerRadius="7" Background="{DynamicResource StudioAccentSoftBrush}">
+                  <Path Classes="icon" Data="{StaticResource Icon.FolderOpen}" Stroke="{DynamicResource StudioAccentBrush}" />
+                </Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" MaxLines="1" />
+                  <TextBlock Text="{Binding Game}" Classes="caption" MaxLines="1" FontSize="10" />
+                </StackPanel>
+              </Grid>
+              <Path Data="{StaticResource Icon.History}" Classes="icon small" HorizontalAlignment="Left" />
+              <TextBlock Text="{Binding When}" Classes="caption" FontSize="10" />
+            </StackPanel>
+          </Border>
+        </Button>
+      </DataTemplate>
 
-				<TabItem x:Name="DiscoverTab" Header="Discover">
-					<Grid RowDefinitions="Auto,Auto,*,Auto" Margin="4">
-						<StackPanel Grid.Row="0" Spacing="8">
-							<TextBlock Text="Progressive graphics discovery" FontWeight="Bold" FontSize="15" />
-							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="Discovery runs in separate headless Mesen processes. Each chunk adds observations to the same pack; approved artwork is preserved. A session file lets you resume later. Saturation means no measured growth, not proof of completeness." />
-							<WrapPanel>
-								<TextBlock Text="Mode" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<ComboBox Name="DiscoveryModeBox" SelectedIndex="1" Width="210" Margin="0,0,12,6">
-									<ComboBoxItem Content="Quick scan (incomplete)" />
-									<ComboBoxItem Content="Deep scan" />
-									<ComboBoxItem Content="Replay capture (movie)" />
-									<ComboBoxItem Content="Assisted exploration (script)" />
-								</ComboBox>
-								<TextBlock Text="Frames to add" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="DiscoveryBudgetBox" Minimum="300" Maximum="3600000" Value="18000" Increment="1800" Width="120" Margin="0,0,12,6" />
-								<TextBlock Text="Chunk" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="DiscoveryChunkBox" Minimum="300" Maximum="36000" Value="1800" Increment="300" Width="100" Margin="0,0,12,6" />
-								<TextBlock Text="Seed" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="DiscoverySeedBox" Minimum="1" Maximum="2000000000" Value="20261124" Increment="1" Width="130" Margin="0,0,12,6" />
-								<CheckBox Name="DiscoveryRestartCheck" Content="Start new session" VerticalAlignment="Center" Margin="0,0,12,6" />
-								<CheckBox Name="DiscoveryObserveBgCheck" Content="Observe background blocks" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,6" />
-								<Button Name="DiscoverStartButton" Content="Start / resume discovery" Click="DiscoverStart_Click" Margin="0,0,6,6" />
-								<Button Name="DiscoverCancelButton" Content="Cancel" Click="DiscoverCancel_Click" Margin="0,0,6,6" IsEnabled="False" />
-							</WrapPanel>
-							<Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="6">
-								<TextBlock Text="Movie" VerticalAlignment="Center" />
-								<TextBox Grid.Column="1" Name="DiscoveryMovieBox" PlaceholderText="Optional .fm2 / .mmo / .bk2 replay (replay capture)" />
-								<Button Grid.Column="2" Content="Browse..." Click="BrowseMovie_Click" />
-								<TextBox Grid.Column="3" Name="DiscoveryScriptBox" PlaceholderText="Optional Lua script (assisted)" />
-							</Grid>
-							<Button Content="Browse Lua script..." Click="BrowseScript_Click" HorizontalAlignment="Left" />
-							<ProgressBar Name="DiscoveryProgress" Height="8" Minimum="0" Maximum="100" Value="0" />
-						</StackPanel>
-						<TextBlock Grid.Row="1" Name="DiscoveryStatusText" TextWrapping="Wrap" Margin="0,8,0,8" Opacity="0.85" />
-						<Grid Grid.Row="2" ColumnDefinitions="*,6,340">
-							<TextBox Grid.Column="0" Name="DiscoveryMetricsText" AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas, Cascadia Mono, monospace" />
-							<ListBox Grid.Column="2" Name="DiscoverySessionList" />
-						</Grid>
-						<TextBlock Grid.Row="3" Opacity="0.7" TextWrapping="Wrap" Margin="0,6,0,0" Text="Quick scan is labelled incomplete. Deep scan uses a larger budget and different deterministic seeds per chunk. Replay needs a matching ROM movie. Live capture from an already-running Mesen window is not claimed in this version." />
-					</Grid>
-				</TabItem>
+      <DataTemplate x:Key="CandidateTemplate">
+        <Border Classes="card" Padding="7" Margin="0,0,0,4">
+          <Grid ColumnDefinitions="40,*,Auto" ColumnSpacing="8">
+            <Border Width="40" Height="34" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="3">
+              <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="2" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" MaxLines="1" />
+              <TextBlock Text="{Binding Category}" Classes="caption" FontSize="10" />
+            </StackPanel>
+            <Button Grid.Column="2" Classes="tool" Tag="{Binding Asset}" Click="OpenCandidate_Click" ToolTip.Tip="Open in Artwork Workshop">
+              <Path Classes="icon small" Data="{StaticResource Icon.ArrowRight}" />
+            </Button>
+          </Grid>
+        </Border>
+      </DataTemplate>
 
-				<TabItem x:Name="WorkshopTab" Header="Artwork Workshop">
-					<ScrollViewer VerticalScrollBarVisibility="Auto">
-						<StackPanel Spacing="8" Margin="4">
-							<Grid ColumnDefinitions="*,8,*">
-								<StackPanel Grid.Column="0" Spacing="4">
-									<TextBlock Text="Original NES appearance" FontWeight="Bold" />
-									<Border BorderThickness="1" BorderBrush="#40808080" Height="250" Background="#18808080">
-										<Image Name="OriginalImage" Stretch="Uniform" Margin="4" />
-									</Border>
-								</StackPanel>
-								<StackPanel Grid.Column="2" Spacing="4">
-									<TextBlock Text="HD replacement preview" FontWeight="Bold" />
-									<Border BorderThickness="1" BorderBrush="#40808080" Height="250" Background="#18808080">
-										<Image Name="ReplacementImage" Stretch="Uniform" Margin="4" />
-									</Border>
-								</StackPanel>
-							</Grid>
+      <ItemsPanelTemplate x:Key="AssetGridPanel"><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+      <ItemsPanelTemplate x:Key="AssetListPanel"><VirtualizingStackPanel /></ItemsPanelTemplate>
+      <ItemsPanelTemplate x:Key="TimelinePanel">
+        <StackPanel Orientation="Horizontal" Spacing="2" />
+      </ItemsPanelTemplate>
+    </ResourceDictionary>
+  </Window.Resources>
 
-							<TextBlock Name="AssetInfoText" TextWrapping="Wrap" Opacity="0.85" Text="Select an asset from the catalog." />
-							<TextBlock Name="SharedKeysText" TextWrapping="Wrap" Foreground="#C98A00" />
+  <Window.Styles>
+    <StyleInclude Source="/HdStudio/HdStudioStyles.axaml" />
+  </Window.Styles>
 
-							<TextBlock Text="Source artwork" FontWeight="Bold" />
-							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-								<TextBox Name="SourcePathBox" PlaceholderText="PNG, JPEG or WebP artwork..." />
-								<Button Grid.Column="1" Content="Browse..." Click="Browse_Click" />
-							</Grid>
-							<TextBlock Text="Drop an image file on the window to use it as source artwork." Opacity="0.65" />
+  <ThemeVariantScope Name="ThemeScope" RequestedThemeVariant="Dark" Classes="studioRoot">
+  <Grid RowDefinitions="56,*,26">
+    <!-- ============================ TOP TOOLBAR ============================ -->
+    <Border Grid.Row="0" Name="TopBar" Classes="topBar" Background="{DynamicResource StudioToolbarBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="12,0">
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Border Width="32" Height="32" CornerRadius="7" Background="{DynamicResource StudioAccentBrush}">
+            <Path Data="{StaticResource Icon.Gamepad2}" Stroke="#171A1F" StrokeThickness="2" Width="19" Height="19"
+                  Fill="Transparent" StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel VerticalAlignment="Center" Spacing="-1">
+            <TextBlock Text="RetroArcDo" FontSize="14" FontWeight="Bold" />
+            <TextBlock Name="BrandSubtitle" Text="HD STUDIO" Classes="section" LetterSpacing="1.5" FontSize="9" />
+          </StackPanel>
+          <Border Classes="vdivider" Margin="6,12" />
+          <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+          <StackPanel Name="ProjectContextPanel" VerticalAlignment="Center" MaxWidth="250">
+            <TextBlock Name="RomText" Text="No game loaded" FontWeight="SemiBold" FontSize="12" MaxLines="1" MaxWidth="230" />
+            <TextBlock Name="ProjectText" Text="Open a NES game to begin" Classes="caption" FontSize="10" MaxLines="1" />
+          </StackPanel>
+        </StackPanel>
 
-							<TextBlock Text="Adaptation (the whole object is composed once, then segmented into the original 8x8 grid)" FontWeight="Bold" TextWrapping="Wrap" />
-							<WrapPanel>
-								<CheckBox Name="RemoveBackgroundCheck" Content="Remove background" Margin="0,0,14,0" />
-								<TextBlock Text="Tolerance" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="ToleranceBox" Minimum="0" Maximum="441" Value="40" Increment="1" Width="90" Margin="0,0,14,0" />
-								<CheckBox Name="KeepLargestCheck" Content="Keep largest component" Margin="0,0,14,0" />
-								<CheckBox Name="CropCheck" Content="Crop transparent border" IsChecked="True" />
-							</WrapPanel>
-							<WrapPanel>
-								<TextBlock Text="Fit" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<ComboBox Name="FitBox" SelectedIndex="0" Width="120" Margin="0,0,14,0">
-									<ComboBoxItem Content="contain" />
-									<ComboBoxItem Content="stretch" />
-								</ComboBox>
-								<TextBlock Text="Anchor" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<ComboBox Name="AnchorBox" SelectedIndex="2" Width="110" Margin="0,0,14,0">
-									<ComboBoxItem Content="top" />
-									<ComboBoxItem Content="left" />
-									<ComboBoxItem Content="center" />
-									<ComboBoxItem Content="right" />
-									<ComboBoxItem Content="bottom" />
-								</ComboBox>
-								<TextBlock Text="Padding" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="PaddingBox" Minimum="0" Maximum="256" Value="0" Increment="1" Width="90" />
-							</WrapPanel>
-							<WrapPanel>
-								<TextBlock Text="Offset X" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="OffsetXBox" Minimum="-1024" Maximum="1024" Value="0" Increment="1" Width="90" Margin="0,0,14,0" />
-								<TextBlock Text="Offset Y" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="OffsetYBox" Minimum="-1024" Maximum="1024" Value="0" Increment="1" Width="90" Margin="0,0,14,0" />
-								<TextBlock Text="Zoom %" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="ZoomBox" Minimum="10" Maximum="400" Value="100" Increment="5" Width="90" Margin="0,0,14,0" />
-								<CheckBox Name="FlipHCheck" Content="Flip H" Margin="0,0,10,0" />
-								<CheckBox Name="FlipVCheck" Content="Flip V" Margin="0,0,10,0" />
-							</WrapPanel>
-							<WrapPanel>
-								<CheckBox Name="AllPalettesCheck" Content="All observed palettes" IsChecked="True" Margin="0,0,10,0" />
-								<CheckBox Name="MirrorCheck" Content="Mirror-specific variants (advanced)" IsChecked="False" Margin="0,0,10,0" />
-								<CheckBox Name="MatchBgPriorityCheck" Content="Match background priority (advanced)" IsChecked="False" Margin="0,0,10,0" />
-								<CheckBox Name="AllowSharedCheck" Content="Apply to shared hardware keys (explicit)" IsChecked="False" />
-							</WrapPanel>
+        <StackPanel Name="TopToolbar" Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="18,0,0,0">
+          <Button Classes="tool" Click="OpenRom_Click" ToolTip.Tip="Open NES game (Ctrl+O)" AutomationProperties.Name="Open ROM">
+            <Path Classes="icon" Data="{StaticResource Icon.FolderOpen}" />
+          </Button>
+          <Button Classes="tool" Click="NewProject_Click" ToolTip.Tip="New project (Ctrl+Shift+O)" AutomationProperties.Name="New project">
+            <Path Classes="icon" Data="{StaticResource Icon.FilePlus}" />
+          </Button>
+          <Button Classes="tool" Click="SaveProject_Click" ToolTip.Tip="Save project (Ctrl+S)" AutomationProperties.Name="Save project">
+            <Path Classes="icon" Data="{StaticResource Icon.Save}" />
+          </Button>
+          <Border Classes="vdivider" Margin="5,8" />
+          <Button Name="UndoButton" Classes="tool" Click="Undo_Click" ToolTip.Tip="Undo (Ctrl+Z)" AutomationProperties.Name="Undo">
+            <Path Classes="icon" Data="{StaticResource Icon.Undo2}" />
+          </Button>
+          <Button Name="RedoButton" Classes="tool" Click="Redo_Click" ToolTip.Tip="Redo (Ctrl+Y)" AutomationProperties.Name="Redo">
+            <Path Classes="icon" Data="{StaticResource Icon.Redo2}" />
+          </Button>
+          <Border Classes="vdivider" Margin="5,8" />
+          <Button Name="RecordButton" Classes="tool" Click="Record_Click" ToolTip.Tip="Record gameplay discovery" AutomationProperties.Name="Record gameplay">
+            <Path Classes="icon" Data="{StaticResource Icon.Circle}" Stroke="{DynamicResource StudioErrorBrush}" Fill="{DynamicResource StudioErrorBrush}" Width="14" Height="14" />
+          </Button>
+          <Button Name="PauseCaptureButton" Classes="tool" Click="PauseCapture_Click" ToolTip.Tip="Pause capture" AutomationProperties.Name="Pause capture" IsEnabled="False">
+            <Path Classes="icon" Data="{StaticResource Icon.Pause}" />
+          </Button>
+          <Button Name="StopCaptureButton" Classes="tool" Click="StopCapture_Click" ToolTip.Tip="Stop capture" AutomationProperties.Name="Stop capture" IsEnabled="False">
+            <Path Classes="icon" Data="{StaticResource Icon.Square}" />
+          </Button>
+          <Button Classes="tool" Click="Browse_Click" ToolTip.Tip="Import artwork" AutomationProperties.Name="Import artwork">
+            <Path Classes="icon" Data="{StaticResource Icon.ImagePlus}" />
+          </Button>
+          <Border Classes="vdivider" Margin="5,8" />
+          <Button Classes="iconText" Click="PreviewBuildInstall_Click" ToolTip.Tip="Build, install and preview in the real emulator">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Path Classes="icon" Data="{StaticResource Icon.Gamepad2}" />
+              <TextBlock Name="PreviewButtonText" Text="Preview in Game" />
+            </StackPanel>
+          </Button>
+          <Button Classes="iconText" Click="Compile_Click" ToolTip.Tip="Build HD Pack">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Path Classes="icon" Data="{StaticResource Icon.Package}" />
+              <TextBlock Name="BuildButtonText" Text="Build HD Pack" />
+            </StackPanel>
+          </Button>
+          <Button Classes="cta iconText" Click="Navigate_Click" Tag="export" ToolTip.Tip="Export HD Pack">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Path Classes="icon" Data="{StaticResource Icon.Upload}" />
+              <TextBlock Text="Export HD Pack" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
 
-							<StackPanel Orientation="Horizontal" Spacing="8">
-								<Button Name="PreviewButton" Content="Preview" Click="Preview_Click" />
-								<Button Name="SaveDraftButton" Content="Save Draft" Click="SaveDraft_Click" />
-								<Button Name="ApplyButton" Content="Approve &amp; Apply" Click="Apply_Click" />
-								<TextBlock Name="WorkshopStatusText" VerticalAlignment="Center" Opacity="0.8" Text="" />
-							</StackPanel>
-						</StackPanel>
-					</ScrollViewer>
-				</TabItem>
+        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+          <Button Classes="tool" Click="Navigate_Click" Tag="settings" ToolTip.Tip="Studio settings" AutomationProperties.Name="Settings">
+            <Path Classes="icon" Data="{StaticResource Icon.Settings}" />
+          </Button>
+          <Button Classes="tool" Click="Help_Click" ToolTip.Tip="User guide and keyboard shortcuts" AutomationProperties.Name="Help">
+            <Path Classes="icon" Data="{StaticResource Icon.CircleHelp}" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
 
-				<TabItem x:Name="AnimationsTab" Header="Animations">
-					<Grid RowDefinitions="Auto,*" Margin="4">
-						<Border BorderThickness="1" BorderBrush="#30808080" Padding="8" Margin="0,0,0,6" CornerRadius="3">
-							<StackPanel Spacing="5">
-								<TextBlock Text="Sprite-sheet slicing" FontWeight="Bold" />
-								<Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-									<TextBlock Text="Sheet" VerticalAlignment="Center" />
-									<TextBox Grid.Column="1" Name="SheetPathBox" PlaceholderText="PNG sprite sheet..." />
-									<Button Grid.Column="2" Content="Browse..." Click="BrowseSheet_Click" />
-								</Grid>
-								<WrapPanel>
-									<TextBlock Text="Columns" VerticalAlignment="Center" Margin="0,0,4,0" />
-									<NumericUpDown Name="SliceColumnsBox" Minimum="0" Maximum="128" Value="4" Increment="1" Width="90" Margin="0,0,12,4" />
-									<TextBlock Text="Rows" VerticalAlignment="Center" Margin="0,0,4,0" />
-									<NumericUpDown Name="SliceRowsBox" Minimum="0" Maximum="128" Value="1" Increment="1" Width="90" Margin="0,0,12,4" />
-									<TextBlock Text="Frame W" VerticalAlignment="Center" Margin="0,0,4,0" />
-									<NumericUpDown Name="SliceFrameWidthBox" Minimum="0" Maximum="4096" Value="64" Increment="8" Width="90" Margin="0,0,12,4" />
-									<TextBlock Text="Frame H" VerticalAlignment="Center" Margin="0,0,4,0" />
-									<NumericUpDown Name="SliceFrameHeightBox" Minimum="0" Maximum="4096" Value="64" Increment="8" Width="90" Margin="0,0,12,4" />
-									<TextBlock Text="Margin" VerticalAlignment="Center" Margin="0,0,4,0" />
-									<NumericUpDown Name="SliceMarginBox" Minimum="0" Maximum="512" Value="0" Increment="1" Width="80" Margin="0,0,12,4" />
-									<TextBlock Text="Spacing" VerticalAlignment="Center" Margin="0,0,4,0" />
-									<NumericUpDown Name="SliceSpacingBox" Minimum="0" Maximum="512" Value="0" Increment="1" Width="80" Margin="0,0,12,4" />
-									<CheckBox Name="SliceTrimCheck" Content="Trim transparent borders" VerticalAlignment="Center" Margin="0,0,12,4" />
-									<Button Content="Slice preview" Click="SlicePreview_Click" Margin="0,0,6,4" />
-									<Button Content="Assign frames to selected sequence" Click="SliceAssign_Click" Margin="0,0,6,4" />
-								</WrapPanel>
-								<TextBlock Name="SliceStatusText" TextWrapping="Wrap" Opacity="0.8" />
-								<Border BorderThickness="1" BorderBrush="#30808080" Height="90" Background="#18808080">
-									<Image Name="SlicePreviewImage" Stretch="Uniform" Margin="3" />
-								</Border>
-							</StackPanel>
-						</Border>
-						<Grid Grid.Row="1" ColumnDefinitions="360,6,*" Margin="4">
-							<StackPanel Spacing="6">
-								<TextBlock Text="Animation sequences and frames" FontWeight="Bold" />
-								<ListBox Name="AnimationList" SelectionChanged="AnimationList_SelectionChanged" />
-							</StackPanel>
-							<GridSplitter Grid.Column="1" Background="Transparent" />
-							<StackPanel Grid.Column="2" Spacing="6">
-								<Border BorderThickness="1" BorderBrush="#40808080" Height="260" Background="#18808080">
-									<Image Name="AnimationPreview" Stretch="Uniform" Margin="4" />
-								</Border>
-								<TextBlock Name="AnimationInfoText" TextWrapping="Wrap" />
-								<Button Name="OpenAnimationButton" Content="Open frame in Artwork" Click="OpenAnimation_Click" HorizontalAlignment="Left" />
-							</StackPanel>
-						</Grid>
-					</Grid>
-				</TabItem>
+    <!-- ============================ WORKSPACE ============================ -->
+    <Grid Grid.Row="1" Name="WorkspaceGrid" ColumnDefinitions="64,350,5,*,5,336">
+      <!-- Navigation rail -->
+      <Border Grid.Column="0" Name="NavRail" Classes="navRail" Background="{DynamicResource StudioPanelAltBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,1,0">
+        <StackPanel Margin="2,8" Spacing="2">
+          <Button Classes="nav" Tag="home" Click="Navigate_Click" ToolTip.Tip="Home">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.House}" />
+              <TextBlock Text="Home" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="discover" Click="Navigate_Click" ToolTip.Tip="Discovery">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Scan}" />
+              <TextBlock Text="Discover" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="sprites" Click="Navigate_Click" ToolTip.Tip="Sprite library">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Grid3x3}" />
+              <TextBlock Text="Sprites" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="backgrounds" Click="Navigate_Click" ToolTip.Tip="Background workshop">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Layers}" />
+              <TextBlock Text="Backgrounds" FontSize="9" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="animations" Click="Navigate_Click" ToolTip.Tip="Animation timeline">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Film}" />
+              <TextBlock Text="Animations" FontSize="9" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="artwork" Click="Navigate_Click" ToolTip.Tip="Artwork workshop">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Image}" />
+              <TextBlock Text="Artwork" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="preview" Click="Navigate_Click" ToolTip.Tip="Game preview">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.MonitorPlay}" />
+              <TextBlock Text="Preview" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="export" Click="Navigate_Click" ToolTip.Tip="Export">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Package}" />
+              <TextBlock Text="Export" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Border Classes="divider" Margin="8,6" />
+          <Button Classes="nav" Tag="settings" Click="Navigate_Click" ToolTip.Tip="Settings and project">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Settings}" />
+              <TextBlock Text="Settings" FontSize="9" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Border>
 
-				<TabItem x:Name="BackgroundsTab" Header="Backgrounds">
-					<Grid ColumnDefinitions="360,6,*" Margin="4">
-						<StackPanel Spacing="6">
-							<TextBlock Text="Background blocks and tiles" FontWeight="Bold" />
-							<ListBox Name="BackgroundList" SelectionChanged="BackgroundList_SelectionChanged" />
-						</StackPanel>
-						<GridSplitter Grid.Column="1" Background="Transparent" />
-						<StackPanel Grid.Column="2" Spacing="6">
-							<Border BorderThickness="1" BorderBrush="#40808080" Height="260" Background="#18808080">
-								<Image Name="BackgroundPreview" Stretch="Uniform" Margin="4" />
-							</Border>
-							<TextBlock Name="BackgroundInfoText" TextWrapping="Wrap" />
-							<Button Name="OpenBackgroundButton" Content="Open block in Artwork" Click="OpenBackground_Click" HorizontalAlignment="Left" />
-						</StackPanel>
-					</Grid>
-				</TabItem>
+      <!-- ============================ ASSET LIBRARY ============================ -->
+      <Border Grid.Column="1" Name="AssetLibraryPanel" Classes="sidePanel" Background="{DynamicResource StudioPanelBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="12,12,12,8">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+            <StackPanel>
+              <TextBlock Classes="section" Text="ASSET LIBRARY" />
+              <TextBlock Name="AssetCountText" Classes="caption" Text="No catalog loaded" Margin="0,3,0,0" />
+            </StackPanel>
+            <Button Grid.Column="1" Name="GridViewButton" Classes="tool active" Click="GridView_Click" ToolTip.Tip="Grid view">
+              <Path Classes="icon" Data="{StaticResource Icon.LayoutGrid}" />
+            </Button>
+            <Button Grid.Column="2" Name="ListViewButton" Classes="tool" Click="ListView_Click" ToolTip.Tip="List view">
+              <Path Classes="icon" Data="{StaticResource Icon.List}" />
+            </Button>
+          </Grid>
 
-				<TabItem x:Name="ReplacementsTab" Header="Replacements">
-					<Grid ColumnDefinitions="400,6,*" Margin="4">
-						<StackPanel Spacing="6">
-							<TextBlock Text="Project replacements" FontWeight="Bold" />
-							<ListBox Name="ReplacementList" SelectionChanged="ReplacementList_SelectionChanged" />
-						</StackPanel>
-						<GridSplitter Grid.Column="1" Background="Transparent" />
-						<StackPanel Grid.Column="2" Spacing="8">
-							<TextBlock Name="ReplacementInfoText" TextWrapping="Wrap" />
-							<StackPanel Orientation="Horizontal" Spacing="6">
-								<Button Name="ApproveReplacementButton" Content="Approve" Click="ApproveReplacement_Click" />
-								<Button Name="UnapproveReplacementButton" Content="Unapprove" Click="UnapproveReplacement_Click" />
-								<Button Name="ApplyReplacementButton" Content="Apply Selected" Click="ApplyReplacement_Click" />
-								<Button Name="RemoveReplacementButton" Content="Remove" Click="RemoveReplacement_Click" />
-							</StackPanel>
-							<TextBlock Text="Approved replacements are written to the pack on Build. Drafts stay in the project and are never exported. Shared-key approvals are explicit and listed." TextWrapping="Wrap" Opacity="0.75" />
-						</StackPanel>
-					</Grid>
-				</TabItem>
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,10,0,8">
+            <Path Classes="icon small" Data="{StaticResource Icon.Search}" Margin="10,0,0,0" />
+            <TextBox Grid.Column="1" Name="AssetSearchBox" PlaceholderText="Search assets, labels or contexts..." TextChanged="AssetSearch_TextChanged" Margin="26,0,0,0" />
+          </Grid>
 
-				<TabItem x:Name="PreviewTab" Header="Preview">
-					<ScrollViewer VerticalScrollBarVisibility="Auto">
-						<StackPanel Spacing="8" Margin="6">
-							<TextBlock Text="Preview in the real emulator" FontWeight="Bold" FontSize="15" />
-							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="A valid preview uses the actual Mesen renderer. Build and install the pack, then launch the ROM. Verify runs the game twice with identical deterministic input and compares CPU RAM, nametables, OAM, palette and PPU memory." />
-							<WrapPanel>
-								<Button Name="PreviewBuildInstallButton" Content="Build &amp; install pack" Click="PreviewBuildInstall_Click" Margin="0,0,6,6" />
-								<Button Name="PreviewLaunchButton" Content="Launch in Mesen" Click="PreviewLaunch_Click" Margin="0,0,6,6" />
-								<Button Name="VerifyButton" Content="Verify original vs HD" Click="Verify_Click" Margin="0,0,6,6" />
-								<Button Content="Open pack folder" Click="OpenPackFolder_Click" Margin="0,0,6,6" />
-							</WrapPanel>
-							<TextBlock Name="PreviewStatusText" TextWrapping="Wrap" Opacity="0.85" />
-							<Grid ColumnDefinitions="*,8,*">
-								<StackPanel Grid.Column="0" Spacing="4">
-									<TextBlock Text="Original" FontWeight="Bold" />
-									<Border BorderThickness="1" BorderBrush="#30808080" Height="260" Background="#18808080"><Image Name="VerifyOriginalImage" Stretch="Uniform" Margin="3" /></Border>
-								</StackPanel>
-								<StackPanel Grid.Column="2" Spacing="4">
-									<TextBlock Text="HD render" FontWeight="Bold" />
-									<Border BorderThickness="1" BorderBrush="#30808080" Height="260" Background="#18808080"><Image Name="VerifyHdImage" Stretch="Uniform" Margin="3" /></Border>
-								</StackPanel>
-							</Grid>
-							<TextBlock Name="VerifySummaryText" TextWrapping="Wrap" />
-						</StackPanel>
-					</ScrollViewer>
-				</TabItem>
+          <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
+            <Button Name="CategoryAllButton" Classes="chip active" Content="All" Tag="All assets" Click="AssetCategory_Click" Margin="0,0,5,5" />
+            <Button Name="CategorySpriteButton" Classes="chip" Content="Sprites" Tag="Rendered metasprites" Click="AssetCategory_Click" Margin="0,0,5,5" />
+            <Button Name="CategoryObjectButton" Classes="chip" Content="Objects" Tag="Objects" Click="AssetCategory_Click" Margin="0,0,5,5" />
+            <Button Name="CategoryBackgroundButton" Classes="chip" Content="Backgrounds" Tag="Backgrounds" Click="AssetCategory_Click" Margin="0,0,5,5" />
+            <Button Name="CategoryAnimationButton" Classes="chip" Content="Animations" Tag="Animation frames" Click="AssetCategory_Click" Margin="0,0,5,5" />
+          </WrapPanel>
 
-				<TabItem x:Name="ExportTab" Header="Export">
-					<ScrollViewer VerticalScrollBarVisibility="Auto">
-						<StackPanel Spacing="8" Margin="6">
-							<TextBlock Text="Export HD Pack" FontWeight="Bold" FontSize="16" />
-							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="The export is built in a staging folder, validated there, and only then moved into place. A failed build never destroys the previous working pack. The original ROM is never included." />
-							<TextBlock Text="Current project folder" FontWeight="Bold" />
-							<TextBlock Name="ExportProjectFolderText" TextWrapping="Wrap" />
-							<TextBlock Text="Current preview / build pack" FontWeight="Bold" Margin="0,6,0,0" />
-							<TextBlock Name="ExportCurrentPackText" TextWrapping="Wrap" />
-							<TextBlock Text="Export destination" FontWeight="Bold" Margin="0,6,0,0" />
-							<Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-								<TextBlock Text="Root" VerticalAlignment="Center" />
-								<TextBox Grid.Column="1" Name="ExportRootBox" PlaceholderText="Default: Documents\RetroArcDo HD Studio\Exports" TextChanged="ExportPath_TextChanged" />
-								<Button Grid.Column="2" Content="Browse root..." Click="BrowseExportRoot_Click" />
-							</Grid>
-							<Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
-								<TextBlock Text="Pack name" VerticalAlignment="Center" />
-								<TextBox Grid.Column="1" Name="ExportNameBox" TextChanged="ExportPath_TextChanged" />
-								<Button Grid.Column="2" Content="Use ROM name" Click="UseRomName_Click" />
-							</Grid>
-							<TextBlock Name="ExportDestinationText" TextWrapping="Wrap" Opacity="0.85" />
-							<WrapPanel>
-								<CheckBox Name="ExportMinimalCheck" Content="Minimal pack (only authored replacements)" Margin="0,0,14,0" />
-								<CheckBox Name="ExportInstallCheck" Content="Install into Mesen HD Packs folder" IsChecked="True" Margin="0,0,14,0" />
-								<CheckBox Name="ExportOverwriteCheck" Content="Allow replacing an existing destination" Margin="0,0,14,0" />
-								<CheckBox Name="ExportBackupCheck" Content="Keep previous destination as backup" IsChecked="True" />
-							</WrapPanel>
-							<WrapPanel>
-								<Button Name="ExportRunButton" Content="Export now" Click="ExportRun_Click" Margin="0,0,6,6" />
-								<Button Name="ExportOpenButton" Content="Open folder" Click="ExportOpen_Click" Margin="0,0,6,6" />
-								<Button Name="ExportCopyButton" Content="Copy path" Click="ExportCopy_Click" Margin="0,0,6,6" />
-								<Button Name="ExportPlayButton" Content="Play in Mesen" Click="PreviewLaunch_Click" Margin="0,0,6,6" />
-							</WrapPanel>
-							<TextBlock Name="ExportResultText" TextWrapping="Wrap" />
-						</StackPanel>
-					</ScrollViewer>
-				</TabItem>
+          <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,0,0,8">
+            <ComboBox Name="StatusFilterBox" SelectedIndex="0" SelectionChanged="StatusFilter_SelectionChanged" HorizontalAlignment="Stretch" ToolTip.Tip="Filter by replacement state">
+              <ComboBoxItem Content="Any status" />
+              <ComboBoxItem Content="Discovered" />
+              <ComboBoxItem Content="Newly discovered" />
+              <ComboBoxItem Content="Artwork assigned" />
+              <ComboBoxItem Content="Draft replacement" />
+              <ComboBoxItem Content="Approved replacement" />
+              <ComboBoxItem Content="Verified in emulator" />
+              <ComboBoxItem Content="Shared graphics conflict" />
+              <ComboBoxItem Content="Unsupported replacement" />
+              <ComboBoxItem Content="Unclassified" />
+              <ComboBoxItem Content="Locked frame" />
+            </ComboBox>
+            <Button Grid.Column="1" Classes="tool" Click="ClearFilters_Click" ToolTip.Tip="Clear filters">
+              <Path Classes="icon" Data="{StaticResource Icon.X}" />
+            </Button>
+          </Grid>
 
-				<TabItem x:Name="ProjectTab" Header="Project">
-					<ScrollViewer VerticalScrollBarVisibility="Auto">
-						<StackPanel Spacing="8" Margin="4">
-							<TextBlock Text="Project file" FontWeight="Bold" />
-							<TextBlock Name="ProjectPathText" TextWrapping="Wrap" />
-							<WrapPanel>
-								<TextBlock Text="Output scale" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="ScaleBox" Minimum="1" Maximum="10" Value="4" Increment="1" Width="90" Margin="0,0,14,0" />
-								<Button Name="SaveProjectButton" Content="Save project" Click="SaveProject_Click" Margin="0,0,6,0" />
-								<Button Name="ReloadProjectButton" Content="Reload project" Click="ReloadProject_Click" Margin="0,0,6,0" />
-								<Button Name="RebuildBaseButton" Content="Re-snapshot base pack" Click="RebuildBase_Click" />
-							</WrapPanel>
-							<TextBlock Name="BaseStatusText" TextWrapping="Wrap" Opacity="0.8" />
-							<TextBlock Text="The base snapshot preserves capture-generated hires.txt content. Managed replacements are rebuilt on top of it, so builds are repeatable and never accumulate duplicate entries. Projects store the ROM relative to the pack folder whenever possible." TextWrapping="Wrap" Opacity="0.75" />
-							<TextBlock Name="ProjectSummaryText" TextWrapping="Wrap" />
-							<TextBlock Text="Validation" FontWeight="Bold" Margin="0,8,0,0" />
-							<TextBlock Name="ValidationText" TextWrapping="Wrap" />
-						</StackPanel>
-					</ScrollViewer>
-				</TabItem>
+          <Grid Grid.Row="4" RowDefinitions="*,Auto">
+            <ListBox Name="AssetList" Classes="assetList" SelectionChanged="AssetList_SelectionChanged" DoubleTapped="AssetList_DoubleTapped"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+            <StackPanel Grid.Row="1" Margin="0,7,0,0" Spacing="5">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Path Classes="icon small" Data="{StaticResource Icon.Scaling}" />
+                <TextBlock Grid.Column="1" Classes="caption" Text="Thumbnail size" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Name="ThumbnailSizeText" Classes="caption mono" Text="128" />
+              </Grid>
+              <Slider Name="ThumbnailSizeSlider" Minimum="96" Maximum="200" Value="128" TickFrequency="8" IsSnapToTickEnabled="True" ValueChanged="ThumbnailSize_Changed" />
+            </StackPanel>
+          </Grid>
 
-				<TabItem x:Name="BuildTab" Header="Diagnostics">
-					<Grid RowDefinitions="Auto,*" Margin="4">
-						<StackPanel Grid.Row="0" Spacing="6">
-							<WrapPanel>
-								<TextBlock Text="Capture frames" VerticalAlignment="Center" Margin="0,0,4,0" />
-								<NumericUpDown Name="FramesBox" Minimum="600" Maximum="360000" Value="18000" Increment="600" Width="110" Margin="0,0,14,0" />
-								<Button Name="CaptureButton" Content="Run headless capture" Click="Capture_Click" Margin="0,0,6,0" />
-								<Button Name="CompileButton" Content="Build standard pack" Click="Compile_Click" Margin="0,0,6,0" />
-								<Button Name="ValidateButton" Content="Validate project" Click="Validate_Click" Margin="0,0,6,0" />
-								<Button Name="OpenPackFolderButton" Content="Open pack folder" Click="OpenPackFolder_Click" />
-							</WrapPanel>
-							<ProgressBar Name="BuildProgress" Height="6" IsIndeterminate="False" Minimum="0" Maximum="100" Value="0" />
-							<TextBlock Text="Technical log. Capture runs in a separate headless Mesen process; the Studio stays responsive. Build writes only standard hires.txt and PNG files." TextWrapping="Wrap" Opacity="0.75" />
-						</StackPanel>
-						<TextBox Grid.Row="1" Name="LogBox" Margin="0,8,0,0" AcceptsReturn="True" IsReadOnly="True" TextWrapping="NoWrap" FontFamily="Consolas, Cascadia Mono, monospace" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
-					</Grid>
-				</TabItem>
-			</TabControl>
-		</Grid>
+          <StackPanel Grid.Row="5" Spacing="3" Margin="0,8,0,0">
+            <Button Classes="cta" HorizontalAlignment="Stretch" Click="OpenWorkshop_Click">
+              <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+                <Path Classes="icon small" Data="{StaticResource Icon.WandSparkles}" />
+                <TextBlock Text="Open in Artwork Workshop" />
+              </StackPanel>
+            </Button>
+            <Button Name="LoadMoreAssetsButton" Classes="subtle" HorizontalAlignment="Stretch" Click="LoadMoreAssets_Click" IsVisible="False" Margin="0,2,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                <Path Classes="icon small" Data="{StaticResource Icon.Plus}" />
+                <TextBlock Text="Show more assets" />
+              </StackPanel>
+            </Button>
+            <TextBlock Classes="caption" FontSize="10" Text="Double-click any card to edit it. Drag a PNG onto the canvas to import." TextWrapping="Wrap" />
+          </StackPanel>
+        </Grid>
+      </Border>
 
-		<Border Grid.Row="4" BorderThickness="0,1,0,0" BorderBrush="#40808080" Margin="0,6,0,0" Padding="4,4,0,0">
-			<TextBlock Name="FooterText" Opacity="0.7" Text="RetroArcDo HD Studio - original NES geometry is preserved; only appearance changes." />
-		</Border>
-	</Grid>
+      <GridSplitter Grid.Column="2" Name="AssetSplitter" Width="5" ResizeDirection="Columns" />
+
+      <!-- ============================ CENTER + BOTTOM ============================ -->
+      <Grid Grid.Column="3" Name="CenterGrid" RowDefinitions="*,5,238">
+        <GridSplitter Grid.Row="1" Height="5" ResizeDirection="Rows" HorizontalAlignment="Stretch" />
+        <Grid Grid.Row="0" Margin="10,10,10,0">
+          <!-- HOME -->
+          <Grid Name="HomePage" RowDefinitions="*,Auto">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="18" Margin="8,6,8,16">
+                <Border Classes="panel" Padding="30,26" CornerRadius="10">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+                    <StackPanel Spacing="12">
+                      <Border Classes="badge" HorizontalAlignment="Left">
+                        <TextBlock Text="RETROARCDO HD STUDIO · v0.3 ALPHA" />
+                      </Border>
+                      <TextBlock Classes="h1" Text="Remember the game.&#10;Reimagine the art." TextWrapping="Wrap" MaxWidth="680" />
+                      <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" MaxWidth="660"
+                                 Text="A visual remastering workshop for NES graphics. Discover original sprites and backgrounds, paint HD replacements on the original grid, preview them in the real game and export a standard Mesen HD Pack." />
+                      <WrapPanel>
+                        <Button Classes="cta" Click="OpenRom_Click" Margin="0,0,8,8" Padding="16,9">
+                          <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+                            <TextBlock Text="Open NES Game" FontWeight="SemiBold" />
+                          </StackPanel>
+                        </Button>
+                        <Button Click="OpenProject_Click" Margin="0,0,8,8" Padding="14,9">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon small" Data="{StaticResource Icon.FilePlus}" />
+                            <TextBlock Text="New Project" />
+                          </StackPanel>
+                        </Button>
+                        <Button Click="ContinueLast_Click" Margin="0,0,8,8" Padding="14,9">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon small" Data="{StaticResource Icon.History}" />
+                            <TextBlock Text="Continue Last Project" />
+                          </StackPanel>
+                        </Button>
+                        <Button Click="OpenExample_Click" Margin="0,0,8,8" Padding="14,9">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon small" Data="{StaticResource Icon.Sparkles}" />
+                            <TextBlock Text="Open Example Project" />
+                          </StackPanel>
+                        </Button>
+                      </WrapPanel>
+                    </StackPanel>
+                    <Border Grid.Column="1" Width="250" Height="220" CornerRadius="10" Background="{DynamicResource StudioPanelAltBrush}"
+                            BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1" ClipToBounds="True">
+                      <Grid>
+                        <c:HdStudioArtworkCanvas Name="HomePreviewCanvas" Mode="Replacement" ShowTileGrid="True" IsHitTestVisible="False" />
+                        <Border VerticalAlignment="Bottom" Background="{DynamicResource StudioOverlayBrush}" Padding="10,7">
+                          <StackPanel>
+                            <TextBlock Text="ORIGINAL GRID · HD ART" Classes="section" FontSize="9" />
+                            <TextBlock Classes="caption" Text="8×8 NES geometry is always preserved." FontSize="10" />
+                          </StackPanel>
+                        </Border>
+                      </Grid>
+                    </Border>
+                  </Grid>
+                </Border>
+
+                <Grid ColumnDefinitions="*,10,*,10,*">
+                  <Border Classes="card" Padding="16">
+                    <StackPanel Spacing="6">
+                      <Path Classes="icon" Data="{StaticResource Icon.Scan}" Stroke="{DynamicResource StudioInfoBrush}" HorizontalAlignment="Left" />
+                      <TextBlock Name="HomeAssetStat" Classes="h2" Text="0" />
+                      <TextBlock Classes="caption" Text="discovered graphical assets" />
+                      <TextBlock Name="HomeAssetDetail" Classes="dim" FontSize="10" Text="Open a game to build the catalog." />
+                    </StackPanel>
+                  </Border>
+                  <Border Grid.Column="2" Classes="card" Padding="16">
+                    <StackPanel Spacing="6">
+                      <Path Classes="icon" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioSuccessBrush}" HorizontalAlignment="Left" />
+                      <TextBlock Name="HomeApprovedStat" Classes="h2" Text="0" />
+                      <TextBlock Classes="caption" Text="approved replacements" />
+                      <TextBlock Name="HomeApprovedDetail" Classes="dim" FontSize="10" Text="Drafts stay local until approved." />
+                    </StackPanel>
+                  </Border>
+                  <Border Grid.Column="4" Classes="card" Padding="16">
+                    <StackPanel Spacing="6">
+                      <Path Classes="icon" Data="{StaticResource Icon.ShieldCheck}" Stroke="{DynamicResource StudioWarningBrush}" HorizontalAlignment="Left" />
+                      <TextBlock Name="HomeVerifiedStat" Classes="h2" Text="Not verified" />
+                      <TextBlock Classes="caption" Text="real emulator check" />
+                      <TextBlock Name="HomeVerifiedDetail" Classes="dim" FontSize="10" Text="Verify compares gameplay state." />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,16,340">
+                  <StackPanel>
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                      <TextBlock Classes="h3" Text="Recent projects" />
+                      <Button Grid.Column="1" Classes="subtle" Click="OpenProject_Click" Content="Open project..." />
+                    </Grid>
+                    <ItemsControl Name="RecentProjectsList" ItemTemplate="{StaticResource RecentTemplate}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <WrapPanel />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                    <Border Classes="card" Padding="14" Margin="0,4,0,0">
+                      <StackPanel Spacing="7">
+                        <TextBlock Classes="h3" Text="Your first remaster" />
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                          <Border Width="24" Height="24" CornerRadius="12" Background="{DynamicResource StudioAccentSoftBrush}"><TextBlock Text="1" Classes="mono" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                          <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="Open a NES game and let Discovery build the asset library." TextWrapping="Wrap" Classes="muted" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                          <Border Width="24" Height="24" CornerRadius="12" Background="{DynamicResource StudioAccentSoftBrush}"><TextBlock Text="2" Classes="mono" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                          <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="Choose a sprite or background and paint its HD replacement." TextWrapping="Wrap" Classes="muted" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                          <Border Width="24" Height="24" CornerRadius="12" Background="{DynamicResource StudioAccentSoftBrush}"><TextBlock Text="3" Classes="mono" HorizontalAlignment="Center" VerticalAlignment="Center" /></Border>
+                          <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="Preview in the real game, then export a standard Mesen HD Pack." TextWrapping="Wrap" Classes="muted" />
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="10">
+                    <Border Classes="card" Padding="14">
+                      <StackPanel Spacing="7">
+                        <TextBlock Classes="h3" Text="Getting started" />
+                        <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="Help_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Path Classes="icon small" Data="{StaticResource Icon.CircleHelp}" />
+                            <TextBlock Text="User guide and shortcuts" />
+                          </StackPanel>
+                        </Button>
+                        <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OpenPackFolder_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+                            <TextBlock Text="Open local HD Packs folder" />
+                          </StackPanel>
+                        </Button>
+                        <Button Classes="subtle" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Click="OpenExample_Click">
+                          <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Path Classes="icon small" Data="{StaticResource Icon.Sparkles}" />
+                            <TextBlock Text="Load the synthetic example" />
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                    </Border>
+                    <Border Classes="card" Padding="14">
+                      <StackPanel Spacing="5">
+                        <TextBlock Classes="section" Text="ORIGINAL GAME IS NEVER MODIFIED" />
+                        <TextBlock Classes="caption" TextWrapping="Wrap" Text="Every edit is stored in the project and compiled into a separate HD Pack. ROM bytes, tile placement, animation timing and gameplay are untouched." />
+                      </StackPanel>
+                    </Border>
+                    <TextBlock Name="WelcomeStatusText" Classes="caption" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+
+          <!-- DISCOVERY -->
+          <Grid Name="DiscoveryPage" IsVisible="False" RowDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,9">
+              <StackPanel>
+                <TextBlock Classes="h2" Text="Discovery" />
+                <TextBlock Classes="caption" Text="Record the running game, inspect a still frame and open any object in the Artwork Workshop." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <Border Name="CaptureStateBadge" Classes="badge"><TextBlock Name="CaptureStateText" Text="IDLE" /></Border>
+                <Button Classes="subtle" Click="CaptureFrame_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.ImagePlus}" />
+                    <TextBlock Text="Capture frame" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="*,10,286">
+              <Border Classes="panel" CornerRadius="8" ClipToBounds="True">
+                <Grid>
+                  <c:HdStudioGameplayCanvas Name="GameplayCanvas" />
+                  <Border Name="GameplayToolbar" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="12"
+                          Background="{DynamicResource StudioOverlayBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1"
+                          CornerRadius="8" Padding="5">
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                      <Button Classes="tool" ToolTip.Tip="Record or resume discovery" Click="Record_Click"><Path Classes="icon" Data="{StaticResource Icon.Circle}" Stroke="{DynamicResource StudioErrorBrush}" Fill="{DynamicResource StudioErrorBrush}" Width="13" Height="13" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Pause capture (current chunk is cancelled; progress is kept)" Click="PauseCapture_Click"><Path Classes="icon" Data="{StaticResource Icon.Pause}" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Resume capture" Click="ResumeCapture_Click"><Path Classes="icon" Data="{StaticResource Icon.Play}" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Stop capture" Click="StopCapture_Click"><Path Classes="icon" Data="{StaticResource Icon.Square}" /></Button>
+                      <Border Classes="vdivider" Margin="4,4" />
+                      <Button Classes="tool" ToolTip.Tip="Capture one deterministic gameplay frame" Click="CaptureFrame_Click"><Path Classes="icon" Data="{StaticResource Icon.ImagePlus}" /></Button>
+                      <Button Name="SelectObjectButton" Classes="tool" ToolTip.Tip="Select a graphical object in the paused frame" Click="SelectObject_Click"><Path Classes="icon" Data="{StaticResource Icon.SquareDashedMousePointer}" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Inspect background objects" Click="InspectBackground_Click"><Path Classes="icon" Data="{StaticResource Icon.Layers}" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Inspect sprite objects" Click="InspectSprite_Click"><Path Classes="icon" Data="{StaticResource Icon.Grid3x3}" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Add the selected object to the review list" Click="AddDiscovered_Click"><Path Classes="icon" Data="{StaticResource Icon.Plus}" /></Button>
+                    </StackPanel>
+                  </Border>
+                  <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12" Background="{DynamicResource StudioOverlayBrush}"
+                          CornerRadius="6" Padding="10,6">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                      <Path Classes="icon small" Data="{StaticResource Icon.Info}" />
+                      <TextBlock Name="GameplayHintText" Classes="caption" Text="Capture a frame, then use Select object to mark an 8×8-aligned region." />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </Border>
+
+              <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="9">
+                  <Border Classes="panel" Padding="12">
+                    <StackPanel Spacing="8">
+                      <TextBlock Classes="section" Text="CAPTURE SESSION" />
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Name="CaptureSessionText" Classes="h3" Text="No session yet" />
+                        <Border Grid.Column="1" Classes="badge"><TextBlock Name="CapturePercentText" Text="0%" /></Border>
+                      </Grid>
+                      <ProgressBar Name="DiscoveryProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
+                      <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="8" ColumnSpacing="6">
+                        <StackPanel><TextBlock Text="Frames" Classes="caption" /><TextBlock Name="CaptureFramesText" Classes="mono" Text="0" /></StackPanel>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Assets" Classes="caption" /><TextBlock Name="CaptureAssetsText" Classes="mono" Text="0" /></StackPanel>
+                        <StackPanel Grid.Row="1"><TextBlock Text="Patterns" Classes="caption" /><TextBlock Name="CapturePatternsText" Classes="mono" Text="0" /></StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="New" Classes="caption" /><TextBlock Name="CaptureNewText" Classes="mono" Text="0" /></StackPanel>
+                      </Grid>
+                      <TextBlock Name="DiscoveryStatusText" Classes="caption" TextWrapping="Wrap" Text="Choose a discovery mode and press Record." />
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="panel" Padding="12">
+                    <StackPanel Spacing="7">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Classes="section" Text="OBJECT MATCHES" />
+                        <TextBlock Grid.Column="1" Name="CandidateFilterText" Classes="caption" Text="All objects" />
+                      </Grid>
+                      <ListBox Name="GameplayCandidateList" MaxHeight="190" ItemTemplate="{StaticResource CandidateTemplate}" />
+                      <TextBlock Name="CandidateHintText" Classes="caption" TextWrapping="Wrap" Text="Capture a frame and mark a region to find candidate assets." />
+                    </StackPanel>
+                  </Border>
+
+                  <Expander Header="Discovery options" IsExpanded="True">
+                    <StackPanel Spacing="7">
+                      <ComboBox Name="DiscoveryModeBox" SelectedIndex="1" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Quick scan (incomplete)" />
+                        <ComboBoxItem Content="Deep scan" />
+                        <ComboBoxItem Content="Replay capture (movie)" />
+                        <ComboBoxItem Content="Assisted exploration (script)" />
+                      </ComboBox>
+                      <Grid ColumnDefinitions="*,6,*">
+                        <StackPanel><TextBlock Text="Frames" Classes="caption" /><NumericUpDown Name="DiscoveryBudgetBox" Minimum="300" Maximum="3600000" Value="18000" Increment="1800" /></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="Chunk" Classes="caption" /><NumericUpDown Name="DiscoveryChunkBox" Minimum="300" Maximum="36000" Value="1800" Increment="300" /></StackPanel>
+                      </Grid>
+                      <Grid ColumnDefinitions="*,6,*">
+                        <StackPanel><TextBlock Text="Seed" Classes="caption" /><NumericUpDown Name="DiscoverySeedBox" Minimum="1" Maximum="2000000000" Value="20261124" Increment="1" /></StackPanel>
+                        <CheckBox Grid.Column="2" Name="DiscoveryObserveBgCheck" Content="Observe backgrounds" IsChecked="True" VerticalAlignment="Bottom" />
+                      </Grid>
+                      <CheckBox Name="DiscoveryRestartCheck" Content="Start a new session" />
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                        <TextBox Name="DiscoveryMovieBox" PlaceholderText="Movie (.fm2 / .mmo / .bk2)" />
+                        <Button Grid.Column="1" Classes="tool" Click="BrowseMovie_Click" ToolTip.Tip="Browse movie"><Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" /></Button>
+                      </Grid>
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                        <TextBox Name="DiscoveryScriptBox" PlaceholderText="Lua script (assisted)" />
+                        <Button Grid.Column="1" Classes="tool" Click="BrowseScript_Click" ToolTip.Tip="Browse script"><Path Classes="icon small" Data="{StaticResource Icon.FileArchive}" /></Button>
+                      </Grid>
+                      <Button Name="DiscoverStartButton" Classes="cta" Click="DiscoverStart_Click" HorizontalAlignment="Stretch">
+                        <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+                          <Path Classes="icon small" Data="{StaticResource Icon.Play}" />
+                          <TextBlock Text="Start / resume discovery" />
+                        </StackPanel>
+                      </Button>
+                      <Button Name="DiscoverCancelButton" Click="DiscoverCancel_Click" HorizontalAlignment="Stretch" IsEnabled="False" Content="Cancel current chunk" />
+                    </StackPanel>
+                  </Expander>
+                </StackPanel>
+              </ScrollViewer>
+            </Grid>
+
+            <Border Grid.Row="2" Classes="panel" Padding="10" Margin="0,9,0,0">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel>
+                  <TextBlock Classes="section" Text="GAMEPLAY SELECTION" />
+                  <TextBlock Name="GameplaySelectionText" Classes="caption" Text="No region selected." Margin="0,3,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <Button Name="ClearSelectionButton" Classes="subtle" Click="ClearSelection_Click" Content="Clear" />
+                  <Button Classes="cta" Click="OpenSelectionInWorkshop_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Path Classes="icon small" Data="{StaticResource Icon.ArrowRight}" />
+                      <TextBlock Text="Open match in Artwork" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
+
+          <!-- SPRITE LIBRARY -->
+          <Grid Name="SpritesPage" IsVisible="False" RowDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <StackPanel>
+                <TextBlock Classes="h2" Text="Sprite Library" />
+                <TextBlock Name="SpriteLibrarySubtitle" Classes="caption" Text="Original compositions reconstructed from captured OAM data." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <Button Classes="subtle" Click="FilterSpriteShared_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.TriangleAlert}" Stroke="{DynamicResource StudioWarningBrush}" />
+                    <TextBlock Text="Shared conflicts" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="cta" Click="OpenWorkshop_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.WandSparkles}" />
+                    <TextBlock Text="Edit selected" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Grid>
+            <Border Grid.Row="1" Classes="panel" Padding="8">
+              <ListBox Name="SpriteGalleryList" Classes="assetList" SelectionChanged="SpriteGallery_SelectionChanged" DoubleTapped="AssetList_DoubleTapped">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="assetCard" Margin="4" Padding="7" Width="150">
+                      <StackPanel Spacing="6">
+                        <Border Height="112" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="5" ClipToBounds="True">
+                          <Grid>
+                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="4" />
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4" Width="23" Height="23" CornerRadius="12" Background="{DynamicResource StudioOverlayBrush}" ToolTip.Tip="{Binding StatusTip}">
+                              <Path Data="{Binding StatusGeometry}" Stroke="{Binding StatusBrush}" Width="13" Height="13" StrokeThickness="1.8" Fill="Transparent" StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                          </Grid>
+                        </Border>
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" MaxLines="1" />
+                        <TextBlock Text="{Binding Detail}" Classes="caption" FontSize="10" MaxLines="1" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Border>
+            <Border Grid.Row="2" Classes="card" Padding="10" Margin="0,9,0,0">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <Path Classes="icon" Data="{StaticResource Icon.Info}" Stroke="{DynamicResource StudioInfoBrush}" />
+                <TextBlock Grid.Column="1" Classes="caption" TextWrapping="Wrap"
+                           Text="The sprite library shows captured compositions, not a claim of a complete bestiary. Unclassified and partial objects remain visible so their tiles can still be replaced." />
+                <Button Grid.Column="2" Classes="subtle" Click="OpenWorkshop_Click" Content="Open selected" />
+              </Grid>
+            </Border>
+          </Grid>
+
+          <!-- BACKGROUNDS -->
+          <Grid Name="BackgroundsPage" IsVisible="False" RowDefinitions="Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <StackPanel>
+                <TextBlock Classes="h2" Text="Background Workshop" />
+                <TextBlock Name="BackgroundsSubtitle" Classes="caption" Text="Original 16×16 blocks and 8×8 tiles, reconstructed from NES memory." />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="cta" Click="OpenBackground_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Classes="icon small" Data="{StaticResource Icon.WandSparkles}" />
+                  <TextBlock Text="Edit selected background" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <Grid Grid.Row="1" ColumnDefinitions="340,10,*">
+              <Border Classes="panel" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                  <TextBlock Classes="section" Text="BACKGROUND OBJECTS" Margin="6,4,6,8" />
+                  <ListBox Grid.Row="1" Name="BackgroundList" Classes="assetList" SelectionChanged="BackgroundList_SelectionChanged" DoubleTapped="AssetList_DoubleTapped" ItemTemplate="{StaticResource AssetListTemplate}" />
+                </Grid>
+              </Border>
+              <Grid Grid.Column="2" RowDefinitions="*,Auto">
+                <Border Classes="panel" Padding="8">
+                  <Grid RowDefinitions="Auto,*">
+                    <Grid ColumnDefinitions="*,Auto" Margin="4,2,4,8">
+                      <TextBlock Classes="section" Text="ORIGINAL BACKGROUND" />
+                      <Border Grid.Column="1" Classes="badge"><TextBlock Text="NES GEOMETRY" /></Border>
+                    </Grid>
+                    <Border Grid.Row="1" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="6" ClipToBounds="True">
+                      <Grid>
+                        <Image Name="BackgroundPreview" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" RenderOptions.BitmapInterpolationMode="None" Margin="14" />
+                        <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="12" Background="{DynamicResource StudioOverlayBrush}" CornerRadius="5" Padding="8,5">
+                          <TextBlock Name="BackgroundGridLabel" Classes="mono" FontSize="10" Text="8×8 tile grid" />
+                        </Border>
+                      </Grid>
+                    </Border>
+                  </Grid>
+                </Border>
+                <Border Grid.Row="1" Classes="card" Padding="12" Margin="0,9,0,0">
+                  <StackPanel Spacing="4">
+                    <TextBlock Name="BackgroundInfoText" TextWrapping="Wrap" />
+                    <TextBlock Classes="caption" Text="Background replacements are segmented into the same original cells. NES priority and nametable behaviour remain untouched." TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </Grid>
+          </Grid>
+
+          <!-- ANIMATIONS -->
+          <Grid Name="AnimationsPage" IsVisible="False" RowDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,9">
+              <StackPanel>
+                <TextBlock Classes="h2" Text="Animation Timeline" />
+                <TextBlock Name="AnimationSubtitle" Classes="caption" Text="Captured frame sequences. Timing and frame order come from the game and are never edited." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <Button Classes="subtle" Click="OpenAnimation_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.WandSparkles}" />
+                    <TextBlock Text="Edit current frame" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Grid>
+
+            <Grid Grid.Row="1" ColumnDefinitions="246,10,*">
+              <Border Classes="panel" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                  <TextBlock Classes="section" Text="SEQUENCES AND FRAMES" Margin="6,4,6,8" />
+                  <ListBox Grid.Row="1" Name="AnimationList" SelectionChanged="AnimationList_SelectionChanged" />
+                </Grid>
+              </Border>
+              <Grid Grid.Column="2" RowDefinitions="*,Auto">
+                <Border Classes="panel" Padding="8">
+                  <Grid RowDefinitions="Auto,*">
+                    <Grid ColumnDefinitions="*,Auto" Margin="4,2,4,8">
+                      <TextBlock Classes="section" Text="FRAME PREVIEW" />
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                        <Button Classes="tool" Click="PreviousFrame_Click" ToolTip.Tip="Previous frame"><Path Classes="icon small" Data="{StaticResource Icon.SkipBack}" /></Button>
+                        <Button Name="PlayAnimationButton" Classes="tool" Click="PlayAnimation_Click" ToolTip.Tip="Play / pause"><Path Classes="icon small" Data="{StaticResource Icon.Play}" /></Button>
+                        <Button Classes="tool" Click="NextFrame_Click" ToolTip.Tip="Next frame"><Path Classes="icon small" Data="{StaticResource Icon.SkipForward}" /></Button>
+                        <Button Name="LoopAnimationButton" Classes="tool" Click="LoopAnimation_Click" ToolTip.Tip="Loop preview"><Path Classes="icon small" Data="{StaticResource Icon.RefreshCw}" /></Button>
+                      </StackPanel>
+                    </Grid>
+                    <Border Grid.Row="1" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="6" ClipToBounds="True">
+                      <Image Name="AnimationPreview" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" RenderOptions.BitmapInterpolationMode="None" Margin="16" />
+                    </Border>
+                  </Grid>
+                </Border>
+                <Border Grid.Row="1" Classes="card" Padding="10" Margin="0,9,0,0">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <TextBlock Name="AnimationInfoText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Classes="subtle" Click="ApproveFrame_Click">
+                      <StackPanel Orientation="Horizontal" Spacing="5">
+                        <Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioSuccessBrush}" />
+                        <TextBlock Text="Approve frame" />
+                      </StackPanel>
+                    </Button>
+                    <Button Grid.Column="2" Classes="subtle" Click="LockFrame_Click">
+                      <StackPanel Orientation="Horizontal" Spacing="5">
+                        <Path Classes="icon small" Data="{StaticResource Icon.Lock}" />
+                        <TextBlock Text="Lock frame" />
+                      </StackPanel>
+                    </Button>
+                  </Grid>
+                </Border>
+              </Grid>
+            </Grid>
+
+            <Border Grid.Row="2" Classes="panel" Padding="8" Margin="0,9,0,0">
+              <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Classes="section" Text="FRAME TIMELINE" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Classes="caption" VerticalAlignment="Center"
+                             Text="The live filmstrip is in the Timeline panel below. Frame order and timing are never edited." />
+                </Grid>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="7">
+                  <Button Classes="subtle" Click="PreviousFrame_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.SkipBack}" /><TextBlock Text="Previous" /></StackPanel>
+                  </Button>
+                  <Button Classes="subtle" Click="PlayAnimation_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.Play}" /><TextBlock Text="Play / pause" /></StackPanel>
+                  </Button>
+                  <Button Classes="subtle" Click="NextFrame_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.SkipForward}" /><TextBlock Text="Next" /></StackPanel>
+                  </Button>
+                  <Button Classes="subtle" Click="SlicePanelToggle_Click">
+                    <Button.Flyout>
+                      <Flyout Placement="Top">
+                        <Border Classes="panel" Width="560" Padding="14">
+                          <StackPanel Spacing="8">
+                            <TextBlock Classes="h3" Text="Sprite-sheet import" />
+                            <TextBlock Classes="caption" TextWrapping="Wrap" Text="Slice a sheet into frames and assign them to the selected animation sequence. Assignments stay drafts until approved." />
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                              <TextBox Name="SheetPathBox" PlaceholderText="PNG sprite sheet..." />
+                              <Button Grid.Column="1" Classes="tool" Click="BrowseSheet_Click" ToolTip.Tip="Browse sheet"><Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" /></Button>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,6,*,6,*,6,*" RowDefinitions="Auto" ColumnSpacing="4">
+                              <StackPanel><TextBlock Text="Columns" Classes="caption" /><NumericUpDown Name="SliceColumnsBox" Minimum="0" Maximum="128" Value="4" Increment="1" /></StackPanel>
+                              <StackPanel Grid.Column="2"><TextBlock Text="Rows" Classes="caption" /><NumericUpDown Name="SliceRowsBox" Minimum="0" Maximum="128" Value="1" Increment="1" /></StackPanel>
+                              <StackPanel Grid.Column="4"><TextBlock Text="Frame W" Classes="caption" /><NumericUpDown Name="SliceFrameWidthBox" Minimum="0" Maximum="4096" Value="64" Increment="8" /></StackPanel>
+                              <StackPanel Grid.Column="6"><TextBlock Text="Frame H" Classes="caption" /><NumericUpDown Name="SliceFrameHeightBox" Minimum="0" Maximum="4096" Value="64" Increment="8" /></StackPanel>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,6,*,6,*" ColumnSpacing="4">
+                              <StackPanel><TextBlock Text="Margin" Classes="caption" /><NumericUpDown Name="SliceMarginBox" Minimum="0" Maximum="512" Value="0" Increment="1" /></StackPanel>
+                              <StackPanel Grid.Column="2"><TextBlock Text="Spacing" Classes="caption" /><NumericUpDown Name="SliceSpacingBox" Minimum="0" Maximum="512" Value="0" Increment="1" /></StackPanel>
+                              <CheckBox Grid.Column="4" Name="SliceTrimCheck" Content="Trim transparent borders" VerticalAlignment="Bottom" />
+                            </Grid>
+                            <Border Height="78" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="5" ClipToBounds="True">
+                              <Image Name="SlicePreviewImage" Stretch="Uniform" Margin="3" />
+                            </Border>
+                            <TextBlock Name="SliceStatusText" Classes="caption" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <Button Click="SlicePreview_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.Eye}" /><TextBlock Text="Slice preview" /></StackPanel>
+                              </Button>
+                              <Button Classes="cta" Click="SliceAssign_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.Check}" /><TextBlock Text="Assign frames to sequence" /></StackPanel>
+                              </Button>
+                            </StackPanel>
+                          </StackPanel>
+                        </Border>
+                      </Flyout>
+                    </Button.Flyout>
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.ImagePlus}" /><TextBlock Text="Sprite-sheet import" /></StackPanel>
+                  </Button>
+                  <TextBlock Name="TimelineInfoText" Classes="caption" VerticalAlignment="Center" Margin="6,0,0,0" TextWrapping="Wrap" MaxWidth="320" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
+
+          <!-- ARTWORK -->
+          <Grid Name="ArtworkPage" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+              <StackPanel>
+                <TextBlock Name="WorkshopTitleText" Classes="h2" Text="Artwork Workshop" />
+                <TextBlock Name="WorkshopSubtitleText" Classes="caption" Text="Select an asset from the library to begin." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <Button Classes="tool" Click="SelectTool_Click" ToolTip.Tip="Select and position artwork"><Path Classes="icon" Data="{StaticResource Icon.MousePointer}" /></Button>
+                <Button Classes="tool" Click="MoveTool_Click" ToolTip.Tip="Move artwork"><Path Classes="icon" Data="{StaticResource Icon.Move}" /></Button>
+                <Button Classes="tool" Click="ResizeTool_Click" ToolTip.Tip="Resize artwork handles"><Path Classes="icon" Data="{StaticResource Icon.Scaling}" /></Button>
+                <Button Name="CropToolButton" Classes="tool" Click="CropTool_Click" ToolTip.Tip="Crop handles"><Path Classes="icon" Data="{StaticResource Icon.Crop}" /></Button>
+                <Border Classes="vdivider" Margin="4,4" />
+                <Button Classes="tool" Click="FlipH_Click" ToolTip.Tip="Mirror horizontally"><Path Classes="icon" Data="{StaticResource Icon.FlipHorizontal}" /></Button>
+                <Button Classes="tool" Click="FlipV_Click" ToolTip.Tip="Mirror vertically"><Path Classes="icon" Data="{StaticResource Icon.FlipVertical}" /></Button>
+                <Border Classes="vdivider" Margin="4,4" />
+                <Button Classes="tool" Click="ZoomIn_Click" ToolTip.Tip="Zoom in"><Path Classes="icon" Data="{StaticResource Icon.ZoomIn}" /></Button>
+                <Button Classes="tool" Click="ZoomOut_Click" ToolTip.Tip="Zoom out"><Path Classes="icon" Data="{StaticResource Icon.ZoomOut}" /></Button>
+                <Button Classes="tool" Click="FitView_Click" ToolTip.Tip="Fit to view"><Path Classes="icon" Data="{StaticResource Icon.Maximize}" /></Button>
+                <Button Name="GridToggleButton" Classes="tool active" Click="GridToggle_Click" ToolTip.Tip="Toggle NES tile grid"><Path Classes="icon" Data="{StaticResource Icon.Grid2x2}" /></Button>
+                <Border Classes="vdivider" Margin="4,4" />
+                <Button Classes="tool" Click="Undo_Click" ToolTip.Tip="Undo"><Path Classes="icon" Data="{StaticResource Icon.Undo2}" /></Button>
+                <Button Classes="tool" Click="Redo_Click" ToolTip.Tip="Redo"><Path Classes="icon" Data="{StaticResource Icon.Redo2}" /></Button>
+                <Button Classes="tool" Click="ResetTransform_Click" ToolTip.Tip="Reset transformation"><Path Classes="icon" Data="{StaticResource Icon.RotateCcw}" /></Button>
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" Classes="panel" Padding="9" Margin="0,0,0,8">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                <Path Classes="icon small" Data="{StaticResource Icon.ImagePlus}" />
+                <TextBox Grid.Column="1" Name="SourcePathBox" PlaceholderText="Drop artwork here or browse: PNG, JPEG, WebP..." />
+                <Button Grid.Column="2" Click="Browse_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Upload}" />
+                    <TextBlock Text="Import artwork" />
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="3" Classes="cta" Click="Apply_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" />
+                    <TextBlock Text="Approve &amp; Apply" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,8,*">
+              <Border Classes="panel" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                  <Grid ColumnDefinitions="*,Auto" Margin="4,2,4,6">
+                    <TextBlock Classes="section" Text="ORIGINAL NES APPEARANCE" />
+                    <Border Grid.Column="1" Classes="badge"><TextBlock Name="OriginalSizeBadge" Text="8×8" /></Border>
+                  </Grid>
+                  <c:HdStudioArtworkCanvas Grid.Row="1" Name="OriginalCanvas" Mode="Original" ShowTileGrid="True" />
+                </Grid>
+              </Border>
+              <Border Grid.Column="2" Classes="panel" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                  <Grid ColumnDefinitions="*,Auto" Margin="4,2,4,6">
+                    <TextBlock Classes="section" Text="HD REPLACEMENT · LIVE COMPOSITE" />
+                    <Border Grid.Column="1" Classes="badge"><TextBlock Name="ReplacementSizeBadge" Text="32×32" /></Border>
+                  </Grid>
+                  <c:HdStudioArtworkCanvas Grid.Row="1" Name="ReplacementCanvas" Mode="Replacement" ShowTileGrid="True" />
+                </Grid>
+              </Border>
+            </Grid>
+
+            <Border Grid.Row="3" Classes="card" Padding="10" Margin="0,8,0,0">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10">
+                <Button Classes="subtle" Click="Preview_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Eye}" />
+                    <TextBlock Text="Preview" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="1" Name="WorkshopStatusText" Classes="caption" VerticalAlignment="Center" Text="Adjust position, scale, anchor and crop. The NES geometry never changes." TextWrapping="Wrap" />
+                <CheckBox Grid.Column="2" Name="ShowGridCheck" Content="Tile grid" IsChecked="True" Click="ShowGrid_Click" />
+                <CheckBox Grid.Column="3" Name="ShowCheckerCheck" Content="Transparency" IsChecked="True" Click="ShowChecker_Click" />
+                <Button Grid.Column="4" Click="SaveDraft_Click" Content="Save draft" />
+              </Grid>
+            </Border>
+          </Grid>
+
+          <!-- PREVIEW -->
+          <Grid Name="PreviewPage" IsVisible="False" RowDefinitions="Auto,Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <StackPanel>
+                <TextBlock Classes="h2" Text="Game Preview" />
+                <TextBlock Classes="caption" Text="The real Mesen renderer compares the original and HD build with deterministic input." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <Button Click="PreviewBuildInstall_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Package}" />
+                    <TextBlock Text="Build &amp; install" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="cta" Click="PreviewLaunch_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Gamepad2}" />
+                    <TextBlock Text="Play in Mesen" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" Classes="card" Padding="10" Margin="0,0,0,9">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                <Button Classes="subtle" Click="Verify_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.ShieldCheck}" />
+                    <TextBlock Text="Verify original vs HD" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Grid.Column="1" Name="PreviewStatusText" Classes="caption" Text="Build and install the pack before launching." VerticalAlignment="Center" TextWrapping="Wrap" />
+                <Button Grid.Column="2" Classes="subtle" Click="OpenPackFolder_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+                    <TextBlock Text="Open pack folder" />
+                  </StackPanel>
+                </Button>
+                <Border Grid.Column="3" Classes="badge success" IsVisible="True"><TextBlock Text="ORIGINAL STATE PRESERVED" /></Border>
+              </Grid>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,10,*" RowDefinitions="*,Auto">
+              <Border Classes="panel" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                  <Grid ColumnDefinitions="*,Auto" Margin="4,2,4,8">
+                    <TextBlock Classes="section" Text="ORIGINAL GAME" />
+                    <Border Grid.Column="1" Classes="badge"><TextBlock Text="256×240" /></Border>
+                  </Grid>
+                  <Border Grid.Row="1" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="6" ClipToBounds="True">
+                    <Viewbox Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10"><Image Name="VerifyOriginalImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None" /></Viewbox>
+                  </Border>
+                </Grid>
+              </Border>
+              <Border Grid.Column="2" Classes="panel" Padding="8">
+                <Grid RowDefinitions="Auto,*">
+                  <Grid ColumnDefinitions="*,Auto" Margin="4,2,4,8">
+                    <TextBlock Classes="section" Text="HD RENDER" />
+                    <Border Grid.Column="1" Classes="badge success"><TextBlock Text="HD PACK ACTIVE" /></Border>
+                  </Grid>
+                  <Border Grid.Row="1" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="6" ClipToBounds="True">
+                    <Viewbox Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10"><Image Name="VerifyHdImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None" /></Viewbox>
+                  </Border>
+                </Grid>
+              </Border>
+              <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Name="VerifySummaryText" Classes="caption" VerticalAlignment="Bottom" Margin="8" TextWrapping="Wrap" />
+            </Grid>
+          </Grid>
+
+          <!-- EXPORT -->
+          <Grid Name="ExportPage" IsVisible="False" RowDefinitions="Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <StackPanel>
+                <TextBlock Classes="h2" Text="Export HD Pack" />
+                <TextBlock Classes="caption" Text="A validated, distributable standard Mesen pack. The original ROM is never included." />
+              </StackPanel>
+              <Border Grid.Column="1" Classes="badge success" VerticalAlignment="Center"><TextBlock Text="STANDARD MESEN FORMAT" /></Border>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="12" Margin="0,0,4,14">
+                <Border Classes="panel" Padding="16">
+                  <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel>
+                        <TextBlock Classes="section" Text="DESTINATION FOLDER" />
+                        <TextBlock Name="ExportDestinationText" Classes="mono" FontSize="13" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <TextBlock Name="ExportDestinationHint" Classes="caption" Margin="0,3,0,0" Text="Default: Documents\RetroArcDo HD Studio\Exports" />
+                      </StackPanel>
+                      <Button Grid.Column="1" Classes="cta" Click="BrowseExportRoot_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                          <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+                          <TextBlock Text="Choose Destination" />
+                        </StackPanel>
+                      </Button>
+                    </Grid>
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                      <TextBlock Text="Pack name" VerticalAlignment="Center" Classes="caption" />
+                      <TextBox Grid.Column="1" Name="ExportNameBox" TextChanged="ExportPath_TextChanged" />
+                      <Button Grid.Column="2" Click="UseRomName_Click" Content="Use game name" />
+                    </Grid>
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                      <TextBlock Text="Root folder" VerticalAlignment="Center" Classes="caption" />
+                      <TextBox Grid.Column="1" Name="ExportRootBox" TextChanged="ExportPath_TextChanged" IsReadOnly="True" />
+                      <Button Grid.Column="2" Click="BrowseExportRoot_Click" Content="Browse..." />
+                    </Grid>
+                  </Grid>
+                </Border>
+
+                <Border Classes="panel" Padding="14">
+                  <StackPanel Spacing="9">
+                    <TextBlock Classes="section" Text="EXPORT OPTIONS" />
+                    <WrapPanel>
+                      <CheckBox Name="ExportMinimalCheck" Content="Minimal pack (authored replacements only)" Margin="0,0,20,6" />
+                      <CheckBox Name="ExportInstallCheck" Content="Install into Mesen HD Packs" IsChecked="True" Margin="0,0,20,6" />
+                      <CheckBox Name="ExportOverwriteCheck" Content="Allow replacing an existing destination" Margin="0,0,20,6" />
+                      <CheckBox Name="ExportBackupCheck" Content="Keep previous pack as backup" IsChecked="True" Margin="0,0,20,6" />
+                    </WrapPanel>
+                    <WrapPanel>
+                      <Button Name="ExportRunButton" Classes="cta" Click="ExportRun_Click" Margin="0,0,7,6" Padding="15,8">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                          <Path Classes="icon small" Data="{StaticResource Icon.Upload}" />
+                          <TextBlock Text="Export HD Pack" FontWeight="SemiBold" />
+                        </StackPanel>
+                      </Button>
+                      <Button Click="ExportSaveAs_Click" Margin="0,0,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Path Classes="icon small" Data="{StaticResource Icon.Save}" />
+                          <TextBlock Text="Save HD Pack As..." />
+                        </StackPanel>
+                      </Button>
+                      <Button Click="ExportZip_Click" Margin="0,0,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Path Classes="icon small" Data="{StaticResource Icon.FileArchive}" />
+                          <TextBlock Text="Export ZIP" />
+                        </StackPanel>
+                      </Button>
+                      <Button Name="ExportOpenButton" Click="ExportOpen_Click" Margin="0,0,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+                          <TextBlock Text="Open Destination" />
+                        </StackPanel>
+                      </Button>
+                      <Button Click="ExportCopy_Click" Margin="0,0,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Path Classes="icon small" Data="{StaticResource Icon.Copy}" />
+                          <TextBlock Text="Copy Path" />
+                        </StackPanel>
+                      </Button>
+                      <Button Click="ExportInstall_Click" Margin="0,0,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Path Classes="icon small" Data="{StaticResource Icon.Package}" />
+                          <TextBlock Text="Install into Mesen" />
+                        </StackPanel>
+                      </Button>
+                      <Button Click="PreviewLaunch_Click" Margin="0,0,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Path Classes="icon small" Data="{StaticResource Icon.Gamepad2}" />
+                          <TextBlock Text="Play in Mesen" />
+                        </StackPanel>
+                      </Button>
+                    </WrapPanel>
+                    <TextBlock Name="ExportResultText" TextWrapping="Wrap" FontSize="11.5" />
+                  </StackPanel>
+                </Border>
+
+                <Grid ColumnDefinitions="*,10,*">
+                  <Border Classes="panel" Padding="14">
+                    <StackPanel Spacing="10">
+                      <TextBlock Classes="section" Text="EXPORT PREVIEW" />
+                      <Grid ColumnDefinitions="120,*" ColumnSpacing="12">
+                        <Border Width="120" Height="96" Classes="card" Padding="8">
+                          <Path Data="{StaticResource Icon.Package}" Classes="icon large" Stroke="{DynamicResource StudioAccentBrush}" Width="46" Height="46" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="4">
+                          <TextBlock Name="ExportSummaryPackName" Classes="h3" Text="No pack selected" />
+                          <TextBlock Name="ExportSummaryApproved" Classes="caption" Text="0 approved replacements" />
+                          <TextBlock Name="ExportSummaryScale" Classes="caption" Text="Output scale: 4×" />
+                          <TextBlock Name="ExportSummaryValidation" Classes="caption" Text="Validation: not run" />
+                        </StackPanel>
+                      </Grid>
+                      <Border Classes="divider" />
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Files" Classes="caption" />
+                        <TextBlock Name="ExportSummaryFiles" Classes="mono" Text="—" />
+                        <TextBlock Text="Generated destination" Classes="caption" Margin="0,6,0,0" />
+                        <TextBlock Name="ExportSummaryDestination" Classes="mono" FontSize="10.5" Text="—" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <Border Background="#18E9B44C" BorderBrush="{DynamicResource StudioWarningBrush}" BorderThickness="1" CornerRadius="6" Padding="10">
+                        <TextBlock Classes="caption" TextWrapping="Wrap" Text="The exporter stages the pack, validates supported ROM, scale, every PNG and the absence of ROM files, then swaps the destination atomically. The original game file is never copied." />
+                      </Border>
+                    </StackPanel>
+                  </Border>
+                  <Border Grid.Column="2" Classes="panel" Padding="14">
+                    <StackPanel Spacing="8">
+                      <TextBlock Classes="section" Text="CURRENT PROJECT" />
+                      <TextBlock Text="Project folder" Classes="caption" />
+                      <TextBlock Name="ExportProjectFolderText" Classes="mono" FontSize="10.5" TextWrapping="Wrap" />
+                      <TextBlock Text="Preview / build pack" Classes="caption" Margin="0,6,0,0" />
+                      <TextBlock Name="ExportCurrentPackText" Classes="mono" FontSize="10.5" TextWrapping="Wrap" />
+                      <Border Classes="divider" Margin="0,4" />
+                      <TextBlock Text="Default location preserved" Classes="caption" />
+                      <TextBlock Classes="mono" FontSize="10.5" Text="Documents\RetroArcDo HD Studio\Exports" TextWrapping="Wrap" />
+                      <TextBlock Text="The last selected destination is remembered for the next export." Classes="caption" TextWrapping="Wrap" Margin="0,6,0,0" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+
+          <!-- SETTINGS / PROJECT -->
+          <Grid Name="SettingsPage" IsVisible="False" RowDefinitions="Auto,*">
+            <StackPanel Grid.Row="0" Margin="0,0,0,10">
+              <TextBlock Classes="h2" Text="Studio Settings" />
+              <TextBlock Classes="caption" Text="Appearance, project persistence, validation and diagnostics." />
+            </StackPanel>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="10" Margin="0,0,4,14">
+                <Grid ColumnDefinitions="*,10,*">
+                  <Border Classes="panel" Padding="14">
+                    <StackPanel Spacing="9">
+                      <TextBlock Classes="section" Text="APPEARANCE" />
+                      <Grid ColumnDefinitions="120,*" ColumnSpacing="8">
+                        <TextBlock Text="Theme" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1" Name="ThemeBox" SelectedIndex="0" SelectionChanged="Theme_SelectionChanged">
+                          <ComboBoxItem Content="Dark" />
+                        </ComboBox>
+                      </Grid>
+                      <CheckBox Name="DefaultGridCheck" Content="Show NES tile grid by default" IsChecked="True" Click="DefaultGrid_Click" />
+                      <CheckBox Name="DefaultCheckerCheck" Content="Show transparency checkerboard" IsChecked="True" Click="DefaultChecker_Click" />
+                      <TextBlock Classes="caption" Text="Dark is the validated v0.3 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                  <Border Grid.Column="2" Classes="panel" Padding="14">
+                    <StackPanel Spacing="9">
+                      <TextBlock Classes="section" Text="PROJECT" />
+                      <Grid ColumnDefinitions="120,*" ColumnSpacing="8">
+                        <TextBlock Text="Output scale" VerticalAlignment="Center" />
+                        <NumericUpDown Grid.Column="1" Name="ScaleBox" Minimum="1" Maximum="10" Value="4" Increment="1" />
+                      </Grid>
+                      <TextBlock Name="ProjectPathText" Classes="mono" FontSize="10.5" TextWrapping="Wrap" />
+                      <WrapPanel>
+                        <Button Name="SaveProjectButton" Click="SaveProject_Click" Margin="0,0,6,5">
+                          <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.Save}" /><TextBlock Text="Save project" /></StackPanel>
+                        </Button>
+                        <Button Name="ReloadProjectButton" Click="ReloadProject_Click" Margin="0,0,6,5">
+                          <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.RefreshCw}" /><TextBlock Text="Reload" /></StackPanel>
+                        </Button>
+                        <Button Name="RebuildBaseButton" Click="RebuildBase_Click" Margin="0,0,6,5" Content="Re-snapshot base" />
+                      </WrapPanel>
+                      <TextBlock Name="BaseStatusText" Classes="caption" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </Grid>
+
+                <Border Classes="panel" Padding="14">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="section" Text="BUILD AND DIAGNOSTICS" />
+                    <WrapPanel>
+                      <StackPanel Margin="0,0,16,6">
+                        <TextBlock Text="Capture frames" Classes="caption" />
+                        <NumericUpDown Name="FramesBox" Minimum="600" Maximum="360000" Value="18000" Increment="600" Width="130" />
+                      </StackPanel>
+                      <Button Name="CaptureButton" Click="Capture_Click" Margin="0,14,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.Scan}" /><TextBlock Text="Run headless capture" /></StackPanel>
+                      </Button>
+                      <Button Name="CompileButton" Click="Compile_Click" Margin="0,14,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.Package}" /><TextBlock Text="Build standard pack" /></StackPanel>
+                      </Button>
+                      <Button Name="ValidateButton" Click="Validate_Click" Margin="0,14,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" /><TextBlock Text="Validate project" /></StackPanel>
+                      </Button>
+                      <Button Name="OpenPackFolderButton" Click="OpenPackFolder_Click" Margin="0,14,7,6">
+                        <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" /><TextBlock Text="Open pack folder" /></StackPanel>
+                      </Button>
+                    </WrapPanel>
+                    <ProgressBar Name="BuildProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
+                    <TextBlock Name="ProjectSummaryText" Classes="caption" TextWrapping="Wrap" />
+                    <TextBlock Name="ValidationText" Classes="caption" TextWrapping="Wrap" />
+                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.3 Alpha · Original NES geometry preserved." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="panel" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Classes="section" Text="HELP AND ABOUT" />
+                    <TextBlock Classes="caption" TextWrapping="Wrap"
+                               Text="RetroArcDo HD Studio is a graphical remastering environment built on the Mesen emulator. It writes standard Mesen HD Packs and never modifies the original game." />
+                    <WrapPanel>
+                      <Button Classes="subtle" Click="Help_Click" Margin="0,0,8,4" Content="User guide" />
+                      <Button Classes="subtle" Click="OpenDocs_Click" Margin="0,0,8,4" Content="Online documentation" />
+                      <Button Classes="subtle" Click="About_Click" Margin="0,0,8,4" Content="About / version" />
+                    </WrapPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+        </Grid>
+
+        <!-- BOTTOM DOCK -->
+        <Grid Grid.Row="2" Margin="10,5,10,8" Name="BottomDock">
+          <Border Classes="panel" CornerRadius="8">
+            <Grid RowDefinitions="36,*">
+              <Border Grid.Row="0" Background="{DynamicResource StudioPanelAltBrush}" CornerRadius="8,8,0,0">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="0" Margin="6,0">
+                  <Button Classes="segment active" Tag="timeline" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.Film}" /><TextBlock Text="Timeline" /></StackPanel>
+                  </Button>
+                  <Button Classes="segment" Tag="replacements" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.Image}" /><TextBlock Text="Replacements" /></StackPanel>
+                  </Button>
+                  <Button Classes="segment" Tag="capture" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.Scan}" /><TextBlock Text="Capture" /></StackPanel>
+                  </Button>
+                  <Button Classes="segment" Tag="history" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.History}" /><TextBlock Text="Discovery history" /></StackPanel>
+                  </Button>
+                  <Button Classes="segment" Tag="validation" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" /><TextBlock Text="Validation" /></StackPanel>
+                  </Button>
+                  <Button Classes="segment" Tag="conflicts" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.TriangleAlert}" /><TextBlock Text="Conflicts" /></StackPanel>
+                  </Button>
+                  <Button Classes="segment" Tag="console" Click="BottomTab_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon small" Data="{StaticResource Icon.SlidersHorizontal}" /><TextBlock Text="Console" /></StackPanel>
+                  </Button>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="tool" Click="ToggleBottom_Click" ToolTip.Tip="Collapse bottom panel" Margin="0,1,4,0">
+                  <Path Classes="icon small" Data="{StaticResource Icon.ChevronDown}" />
+                </Button>
+              </Grid>
+              </Border>
+
+              <Grid Grid.Row="1" Margin="8">
+                <Grid Name="TimelineDockPanel">
+                  <Grid RowDefinitions="Auto,*" RowSpacing="7">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                      <StackPanel Orientation="Horizontal" Spacing="3">
+                        <Button Classes="tool" Click="PreviousFrame_Click" ToolTip.Tip="Previous frame"><Path Classes="icon small" Data="{StaticResource Icon.SkipBack}" /></Button>
+                        <Button Classes="tool" Click="PlayAnimation_Click" ToolTip.Tip="Play / pause"><Path Classes="icon small" Data="{StaticResource Icon.Play}" /></Button>
+                        <Button Classes="tool" Click="NextFrame_Click" ToolTip.Tip="Next frame"><Path Classes="icon small" Data="{StaticResource Icon.SkipForward}" /></Button>
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" Name="DockTimelineInfo" Classes="caption" VerticalAlignment="Center" Text="Select an animation sequence to see its filmstrip." />
+                      <Border Grid.Column="2" Classes="badge"><TextBlock Text="ORIGINAL TIMING PRESERVED" /></Border>
+                    </Grid>
+                    <ListBox Grid.Row="1" Name="AnimationTimeline" Classes="timeline" ItemTemplate="{StaticResource FrameTemplate}"
+                             ItemsPanel="{StaticResource TimelinePanel}" SelectionChanged="AnimationTimeline_SelectionChanged" />
+                  </Grid>
+                </Grid>
+                <Grid Name="ReplacementsDockPanel" IsVisible="False">
+                  <Grid ColumnDefinitions="*,12,330">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="6">
+                      <TextBlock Classes="section" Text="PROJECT REPLACEMENTS" />
+                      <ListBox Grid.Row="1" Name="ReplacementList" SelectionChanged="ReplacementList_SelectionChanged" DoubleTapped="ReplacementList_DoubleTapped" />
+                    </Grid>
+                    <Border Grid.Column="2" Classes="card" Padding="10">
+                      <StackPanel Spacing="7">
+                        <TextBlock Name="ReplacementInfoText" Classes="caption" TextWrapping="Wrap" Text="No replacement selected." />
+                        <WrapPanel>
+                          <Button Name="ApproveReplacementButton" Classes="subtle" Click="ApproveReplacement_Click" Margin="0,0,5,5">
+                            <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" /><TextBlock Text="Approve" /></StackPanel>
+                          </Button>
+                          <Button Name="UnapproveReplacementButton" Classes="subtle" Click="UnapproveReplacement_Click" Margin="0,0,5,5">
+                            <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.Pencil}" /><TextBlock Text="Unapprove" /></StackPanel>
+                          </Button>
+                          <Button Name="ApplyReplacementButton" Classes="subtle" Click="ApplyReplacement_Click" Margin="0,0,5,5">
+                            <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.Package}" /><TextBlock Text="Apply" /></StackPanel>
+                          </Button>
+                          <Button Name="RemoveReplacementButton" Classes="subtle" Click="RemoveReplacement_Click" Margin="0,0,5,5">
+                            <StackPanel Orientation="Horizontal" Spacing="5"><Path Classes="icon small" Data="{StaticResource Icon.X}" /><TextBlock Text="Remove" /></StackPanel>
+                          </Button>
+                        </WrapPanel>
+                        <TextBlock Classes="caption" FontSize="10" TextWrapping="Wrap" Text="Approved replacements are compiled into the pack. Drafts stay in the project. Shared-key approvals are explicit." />
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </Grid>
+                <Grid Name="CaptureDockPanel" IsVisible="False">
+                  <Grid ColumnDefinitions="*,12,360">
+                    <StackPanel Spacing="5">
+                      <TextBlock Classes="section" Text="CAPTURE PROGRESS" />
+                      <ProgressBar Name="DockCaptureProgress" Height="8" Minimum="0" Maximum="100" Value="0" />
+                      <TextBlock Name="DockCaptureStatus" Classes="caption" Text="No capture running." />
+                      <Grid ColumnDefinitions="*,*,*,*" Margin="0,5,0,0">
+                        <StackPanel><TextBlock Text="Mode" Classes="caption" /><TextBlock Name="DockCaptureMode" Classes="mono" Text="—" /></StackPanel>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Frames" Classes="caption" /><TextBlock Name="DockCaptureFrames" Classes="mono" Text="0" /></StackPanel>
+                        <StackPanel Grid.Column="2"><TextBlock Text="Chunks" Classes="caption" /><TextBlock Name="DockCaptureChunks" Classes="mono" Text="0" /></StackPanel>
+                        <StackPanel Grid.Column="3"><TextBlock Text="Stop reason" Classes="caption" /><TextBlock Name="DockCaptureReason" Classes="mono" Text="—" /></StackPanel>
+                      </Grid>
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="card" Padding="9">
+                      <TextBlock Name="DiscoveryMetricsText" Classes="mono" FontSize="10" TextWrapping="Wrap" Text="No discovery metrics yet." />
+                    </Border>
+                  </Grid>
+                </Grid>
+                <Grid Name="HistoryDockPanel" IsVisible="False">
+                  <Grid ColumnDefinitions="*,12,380">
+                    <StackPanel>
+                      <TextBlock Classes="section" Text="SESSION SNAPSHOTS" Margin="0,0,0,5" />
+                      <ListBox Name="DiscoverySessionList" ItemTemplate="{StaticResource SessionTemplate}" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="card" Padding="9">
+                      <StackPanel Spacing="4">
+                        <TextBlock Classes="section" Text="MEASURED, NOT ASSUMED" />
+                        <TextBlock Classes="caption" TextWrapping="Wrap" Text="Saturation means the measured asset and pattern counts stopped growing. It is not proof that every state was reached. Approved artwork is preserved between chunks." />
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </Grid>
+                <Grid Name="ValidationDockPanel" IsVisible="False">
+                  <Grid ColumnDefinitions="*,12,360">
+                    <TextBox Name="ValidationDetailsBox" AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" Classes="mono"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" Background="{DynamicResource StudioInputBrush}" />
+                    <Border Grid.Column="2" Classes="card" Padding="10">
+                      <StackPanel Spacing="5">
+                        <TextBlock Classes="section" Text="VALIDATION STATUS" />
+                        <TextBlock Name="DockValidationHeadline" Classes="h3" Text="Not run" />
+                        <TextBlock Name="DockValidationDetail" Classes="caption" TextWrapping="Wrap" Text="Build or Validate writes the compile result here." />
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </Grid>
+                <Grid Name="ConflictDockPanel" IsVisible="False">
+                  <Grid ColumnDefinitions="*,12,420">
+                    <StackPanel>
+                      <TextBlock Classes="section" Text="SHARED GRAPHICS" Margin="0,0,0,5" />
+                      <TextBlock Name="ConflictSummaryText" Classes="caption" TextWrapping="Wrap" Text="Select an asset to check whether its tiles are shared with other objects." />
+                      <ListBox Name="ConflictList" Margin="0,6,0,0">
+                        <ListBox.ItemTemplate>
+                          <DataTemplate>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                              <Path Classes="icon small" Data="{StaticResource Icon.TriangleAlert}" Stroke="{DynamicResource StudioWarningBrush}" />
+                              <TextBlock Grid.Column="1" Text="{Binding Name}" />
+                              <TextBlock Grid.Column="2" Text="{Binding Category}" Classes="caption" />
+                            </Grid>
+                          </DataTemplate>
+                        </ListBox.ItemTemplate>
+                      </ListBox>
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="card" Padding="10">
+                      <StackPanel Spacing="6">
+                        <TextBlock Classes="section" Text="REVIEW" />
+                        <TextBlock Classes="caption" TextWrapping="Wrap" Text="Shared tiles are replaced together in a standard Mesen pack. Review the affected objects and explicitly allow the shared replacement if that is intended." />
+                        <Button Name="ReviewConflictButton" Classes="cta" Click="ReviewConflict_Click" HorizontalAlignment="Left">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="icon small" Data="{StaticResource Icon.Eye}" />
+                            <TextBlock Text="Open conflict review" />
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </Grid>
+                <Grid Name="ConsoleDockPanel" IsVisible="False">
+                  <TextBox Name="LogBox" AcceptsReturn="True" IsReadOnly="True" TextWrapping="NoWrap" Classes="mono"
+                           ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                           Background="{DynamicResource StudioInputBrush}" />
+                </Grid>
+              </Grid>
+            </Grid>
+          </Border>
+        </Grid>
+      </Grid>
+
+      <GridSplitter Grid.Column="4" Name="InspectorSplitter" Width="5" ResizeDirection="Columns" />
+
+      <!-- ============================ INSPECTOR ============================ -->
+      <Border Grid.Column="5" Name="InspectorPanel" Classes="sidePanel" Background="{DynamicResource StudioPanelBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,12,12,8">
+            <StackPanel>
+              <TextBlock Classes="section" Text="INSPECTOR" />
+              <TextBlock Name="InspectorAssetName" Classes="h3" Text="No asset selected" Margin="0,3,0,0" />
+              <TextBlock Name="InspectorAssetKind" Classes="caption" Text="Select a card in the Asset Library" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="tool" Click="OpenWorkshop_Click" ToolTip.Tip="Edit in Artwork Workshop">
+              <Path Classes="icon small" Data="{StaticResource Icon.WandSparkles}" />
+            </Button>
+          </Grid>
+
+          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="12,0,12,0" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="11">
+              <Border Classes="card" Padding="10">
+                <Grid ColumnDefinitions="76,*" ColumnSpacing="10">
+                  <Border Width="76" Height="68" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="5" ClipToBounds="True">
+                    <Image Name="InspectorThumbnail" Stretch="Uniform" Margin="3" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                    <TextBlock Name="AssetInfoText" Classes="caption" TextWrapping="Wrap" Text="Original composition, replacement state and source." />
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                      <Border Name="InspectorStatusBadge" Classes="badge"><TextBlock Name="InspectorStatusBadgeText" Text="DISCOVERED" /></Border>
+                      <Border Name="InspectorNewBadge" Classes="badge info" IsVisible="False"><TextBlock Text="NEW" /></Border>
+                    </StackPanel>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section" Text="DIMENSIONS" />
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="5" ColumnSpacing="6">
+                  <StackPanel><TextBlock Text="Original logical" Classes="caption" /><TextBlock Name="LogicalSizeText" Classes="mono" Text="—" /></StackPanel>
+                  <StackPanel Grid.Column="1"><TextBlock Text="HD replacement" Classes="caption" /><TextBlock Name="HdSizeText" Classes="mono" Text="—" /></StackPanel>
+                  <StackPanel Grid.Row="1"><TextBlock Text="Source artwork" Classes="caption" /><TextBlock Name="SourceSizeText" Classes="mono" Text="—" /></StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="Output scale" Classes="caption" /><TextBlock Name="InspectorScaleText" Classes="mono" Text="4×" /></StackPanel>
+                </Grid>
+              </StackPanel>
+
+              <Border Classes="divider" />
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section" Text="TRANSFORM" />
+                <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                  <StackPanel><TextBlock Text="Position X" Classes="caption" /><NumericUpDown Name="OffsetXBox" Minimum="-2048" Maximum="2048" Value="0" Increment="1" /></StackPanel>
+                  <StackPanel Grid.Column="2"><TextBlock Text="Position Y" Classes="caption" /><NumericUpDown Name="OffsetYBox" Minimum="-2048" Maximum="2048" Value="0" Increment="1" /></StackPanel>
+                  <StackPanel Grid.Row="1"><TextBlock Text="Scale %" Classes="caption" /><NumericUpDown Name="ZoomBox" Minimum="10" Maximum="400" Value="100" Increment="5" /></StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="2"><TextBlock Text="Anchor" Classes="caption" />
+                    <ComboBox Name="AnchorBox" SelectedIndex="2">
+                      <ComboBoxItem Content="top" />
+                      <ComboBoxItem Content="left" />
+                      <ComboBoxItem Content="center" />
+                      <ComboBoxItem Content="right" />
+                      <ComboBoxItem Content="bottom" />
+                    </ComboBox>
+                  </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                  <CheckBox Name="CropCheck" Content="Crop transparent border" IsChecked="True" />
+                  <TextBlock Grid.Column="1" Name="CropInfoText" Classes="caption mono" VerticalAlignment="Center" Text="0,0,0,0" />
+                  <Button Grid.Column="2" Classes="tool" Click="ResetCrop_Click" ToolTip.Tip="Reset crop handles"><Path Classes="icon small" Data="{StaticResource Icon.RotateCcw}" /></Button>
+                </Grid>
+              </StackPanel>
+
+              <Border Classes="divider" />
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section" Text="APPEARANCE" />
+                <CheckBox Name="RemoveBackgroundCheck" Content="Remove flat background" />
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                  <TextBlock Text="Tolerance" Classes="caption" VerticalAlignment="Center" />
+                  <Slider Grid.Column="1" Name="ToleranceSlider" Minimum="0" Maximum="120" Value="40" ValueChanged="Tolerance_Changed" />
+                  <NumericUpDown Grid.Column="2" Name="ToleranceBox" Minimum="0" Maximum="441" Value="40" Width="82" />
+                </Grid>
+                <CheckBox Name="KeepLargestCheck" Content="Keep largest connected subject" />
+                <CheckBox Name="CheckerToggleCheck" Content="Transparency checkerboard" IsChecked="True" Click="ShowChecker_Click" />
+              </StackPanel>
+
+              <Border Classes="divider" />
+
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Classes="section" Text="PALETTE VARIANTS" />
+                  <TextBlock Grid.Column="1" Name="PaletteCountText" Classes="caption" Text="0" />
+                </Grid>
+                <WrapPanel Name="PaletteList" />
+                <CheckBox Name="AllPalettesCheck" Content="Apply to all observed palettes" IsChecked="True" />
+              </StackPanel>
+
+              <Border Classes="divider" />
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section" Text="REPLACEMENT CONTEXT" />
+                <CheckBox Name="MirrorCheck" Content="Mirror-specific variants" />
+                <CheckBox Name="MatchBgPriorityCheck" Content="Match background priority" />
+                <CheckBox Name="AllowSharedCheck" Content="Allow shared graphics replacement" />
+                <TextBlock Name="SharedKeysText" Classes="warning" FontSize="10.5" TextWrapping="Wrap" />
+              </StackPanel>
+
+              <Expander Header="Advanced details" IsExpanded="False">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="Asset id" Classes="caption" />
+                  <TextBlock Name="AssetIdText" Classes="mono" FontSize="10" TextWrapping="Wrap" Text="—" />
+                  <TextBlock Text="Provenance" Classes="caption" Margin="0,5,0,0" />
+                  <TextBlock Name="ProvenanceText" Classes="mono" FontSize="10" TextWrapping="Wrap" Text="—" />
+                  <TextBlock Text="CHR / mapper context" Classes="caption" Margin="0,5,0,0" />
+                  <TextBlock Name="HardwareText" Classes="mono" FontSize="10" TextWrapping="Wrap" Text="—" />
+                  <TextBlock Text="Tiles" Classes="caption" Margin="0,5,0,0" />
+                  <TextBlock Name="TileListText" Classes="mono" FontSize="10" TextWrapping="Wrap" Text="—" />
+                </StackPanel>
+              </Expander>
+
+              <TextBlock Name="WorkshopStatusTextInspector" Classes="caption" TextWrapping="Wrap" />
+            </StackPanel>
+          </ScrollViewer>
+
+          <Border Grid.Row="2" Background="{DynamicResource StudioPanelAltBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,1,0,0" Padding="10">
+            <StackPanel Spacing="5">
+              <Grid ColumnDefinitions="*,6,*">
+                <Button Name="InspectorPreviewButton" Click="Preview_Click" HorizontalAlignment="Stretch">
+                  <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Eye}" />
+                    <TextBlock Text="Preview" />
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="2" Name="InspectorDraftButton" Click="SaveDraft_Click" HorizontalAlignment="Stretch" Content="Save draft" />
+              </Grid>
+              <Button Name="ApplyButton" Classes="cta" Click="Apply_Click" HorizontalAlignment="Stretch">
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                  <Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" />
+                  <TextBlock Text="Approve &amp; Apply" />
+                </StackPanel>
+              </Button>
+              <TextBlock Name="InspectorStatusText" Classes="caption" FontSize="10" TextWrapping="Wrap" Text="Changes are stored in the project, never in the ROM." />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ============================ STATUS BAR ============================ -->
+    <Border Grid.Row="2" Name="StatusBar" Classes="statusBar" Background="{DynamicResource StudioStatusBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0" VerticalAlignment="Center">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Path Classes="icon small" Data="{StaticResource Icon.Folder}" />
+            <TextBlock Name="StatusRomText" Classes="caption" FontSize="10.5" Text="No game" MaxWidth="220" />
+          </StackPanel>
+          <Border Classes="vdivider" Margin="6,5" />
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Path Classes="icon small" Data="{StaticResource Icon.Save}" />
+            <TextBlock Name="StatusSaveText" Classes="caption" FontSize="10.5" Text="No project" />
+          </StackPanel>
+          <Border Classes="vdivider" Margin="6,5" />
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Path Classes="icon small" Data="{StaticResource Icon.Scaling}" />
+            <TextBlock Name="StatusScaleText" Classes="caption" FontSize="10.5" Text="4×" />
+          </StackPanel>
+          <Border Classes="vdivider" Margin="6,5" />
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Path Classes="icon small" Data="{StaticResource Icon.Scan}" />
+            <TextBlock Name="StatusAssetCountText" Classes="caption" FontSize="10.5" Text="0 assets" />
+          </StackPanel>
+          <Border Classes="vdivider" Margin="6,5" />
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Path Classes="icon small" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioSuccessBrush}" />
+            <TextBlock Name="StatusApprovedText" Classes="caption" FontSize="10.5" Text="0 approved" />
+          </StackPanel>
+          <Border Classes="vdivider" Margin="6,5" />
+          <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <Path Classes="icon small" Data="{StaticResource Icon.Circle}" Stroke="{DynamicResource StudioErrorBrush}" Fill="{DynamicResource StudioErrorBrush}" Width="8" Height="8" />
+            <TextBlock Name="StatusCaptureText" Classes="caption" FontSize="10.5" Text="Capture idle" />
+          </StackPanel>
+        </StackPanel>
+        <TextBlock Grid.Column="2" Name="StatusOperationText" Classes="caption" FontSize="10.5" Text="Ready" MaxWidth="520" HorizontalAlignment="Right" />
+      </Grid>
+    </Border>
+  </Grid>
+</ThemeVariantScope>
 </Window>
+
+

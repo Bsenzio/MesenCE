@@ -199,6 +199,15 @@ namespace Mesen.HdStudio
 		/// <summary>Composes the prepared source image into the exact target pixel grid.</summary>
 		public static SKColor[] Compose(ArtworkImage source, SKRectI bounds, int targetWidth, int targetHeight, HdStudioAdaptationSettings settings)
 		{
+			//Crop handles in the artwork canvas store their insets in source pixels. Keep the
+			//rectangle inside the prepared image so an aggressive crop can never produce an
+			//empty or negative source region.
+			int cropLeft = Math.Clamp(settings.CropLeft, 0, Math.Max(0, bounds.Width - 1));
+			int cropTop = Math.Clamp(settings.CropTop, 0, Math.Max(0, bounds.Height - 1));
+			int cropRight = Math.Clamp(settings.CropRight, 0, Math.Max(0, bounds.Width - 1 - cropLeft));
+			int cropBottom = Math.Clamp(settings.CropBottom, 0, Math.Max(0, bounds.Height - 1 - cropTop));
+			bounds = new SKRectI(bounds.Left + cropLeft, bounds.Top + cropTop,
+				bounds.Right - cropRight, bounds.Bottom - cropBottom);
 			int padding = Math.Max(0, settings.Padding);
 			int availableWidth = Math.Max(1, targetWidth - padding * 2);
 			int availableHeight = Math.Max(1, targetHeight - padding * 2);

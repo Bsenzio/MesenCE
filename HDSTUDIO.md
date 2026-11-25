@@ -1,9 +1,34 @@
-# Mesen HD Studio
+﻿# Mesen HD Studio
 
 > **Project documentation, measured results and source snapshot:**
 > <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio>
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
+
+## v0.3 Alpha — graphical editor redesign (2026-11-25)
+
+The native Studio is now a graphical RetroArcDo editor. The complete report with
+screenshots and limits is in the documentation repository and in
+`FINAL_ENGINEERING_REPORT_v0.3.md` (docs repo).
+
+- Central dark design system (`UI/HdStudio/HdStudioTheme.axaml`,
+  `HdStudioStyles.axaml`) with Lucide icons (ISC), consistent panels, typography,
+  hover/selected/disabled/focus states and accessible icon names.
+- Editor shell: icon toolbar, workspace rail, thumbnail Asset Library, live
+  original/replacement canvases with grid/checkerboard/zoom/pan/drag/resize/crop,
+  contextual Inspector, replacement approval dock and status bar.
+- Graphical discovery: record/pause/resume/stop, real paused frame, grid-aligned
+  object selection, candidate matching, open in Artwork and add discovered region.
+- Animation filmstrip with approve/lock, and preserved sprite-sheet slicing.
+- Export screen with graphical folder selector, remembered destination, HD Pack/ZIP,
+  install/play and a confirmation card.
+- Responsive toolbar at 1366×768; asynchronous batched thumbnails for large catalogs.
+- Crop insets and locked assets are persisted in `project.hdstudio.json`.
+- Light appearance is reserved but not shipped in v0.3; dark is validated.
+
+Regression evidence: full build 0 errors/0 warnings, 165/165 self-tests, export,
+safety, discovery, slicer, project/compiler and mapper tests passed. Actual
+reimagined gameplay was captured at 1024×960.
 
 ## v0.2 Alpha — generalized discovery, export and safety (2026-11-25)
 

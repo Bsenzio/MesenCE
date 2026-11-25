@@ -1,0 +1,91 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Mesen.Windows.HdStudioConflictWindow"
+        x:CompileBindings="False"
+        Width="720" Height="520" MinWidth="620" MinHeight="440"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Title="Shared graphics conflict"
+        Background="{DynamicResource StudioBgBrush}"
+        Foreground="{DynamicResource StudioTextBrush}"
+        FontFamily="Segoe UI">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="/HdStudio/HdStudioTheme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Window.Resources>
+  <Window.Styles>
+    <StyleInclude Source="/HdStudio/HdStudioStyles.axaml" />
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="20">
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="14">
+      <Border Width="48" Height="48" CornerRadius="24" Background="#22E9B44C" VerticalAlignment="Top">
+        <Path Classes="icon large" Data="{StaticResource Icon.TriangleAlert}" Stroke="{DynamicResource StudioWarningBrush}" Width="26" Height="26" />
+      </Border>
+      <StackPanel Grid.Column="1">
+        <TextBlock Classes="h2" Text="This graphic is shared" />
+        <TextBlock Classes="muted" Margin="0,5,0,0" TextWrapping="Wrap"
+                   Text="The selected NES tiles are also used by other objects in the game. A standard HD Pack replaces every use of the same tile and palette, so approval is explicit." />
+      </StackPanel>
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,18,0,16" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="12">
+        <Border Classes="card" Padding="14">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Classes="section" Text="SELECTED ASSET" />
+              <TextBlock Name="AssetNameText" Classes="h3" Margin="0,4,0,0" TextWrapping="Wrap" />
+              <TextBlock Name="AssetInfoText" Classes="caption" Margin="0,3,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+            <Border Grid.Column="1" Classes="badge warning">
+              <TextBlock Text="SHARED GRAPHICS" />
+            </Border>
+          </Grid>
+        </Border>
+
+        <Border Classes="card" Padding="0">
+          <Grid RowDefinitions="Auto,Auto">
+            <Grid Margin="14,12,14,6" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="section" Text="ALSO USED BY" />
+              <TextBlock Grid.Column="1" Name="SharedCountText" Classes="caption" />
+            </Grid>
+            <ListBox Grid.Row="1" Name="SharedList" Margin="8,0,8,8" MaxHeight="170">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="4,3">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Image}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" />
+                    <TextBlock Grid.Column="2" Text="{Binding Category}" Classes="caption" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+
+        <Border Background="#18E9B44C" BorderBrush="{DynamicResource StudioWarningBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <Path Classes="icon" Data="{StaticResource Icon.Info}" Stroke="{DynamicResource StudioWarningBrush}" VerticalAlignment="Top" />
+            <TextBlock Grid.Column="1" TextWrapping="Wrap" Classes="muted"
+                       Text="Recommended: choose a graphic whose tiles are not shared, or use a different palette. If you intentionally want every shared use to change, approve the shared replacement. The original game code, animation timing and tile placement are never modified." />
+          </Grid>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Name="FooterText" Classes="caption" VerticalAlignment="Center" Text="The build will stop if two different replacements target the same condition." />
+      <Button Grid.Column="2" Click="Cancel_Click" Content="Cancel" />
+      <Button Grid.Column="3" Classes="cta" Click="Allow_Click">
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <Path Classes="icon small" Data="{StaticResource Icon.Check}" />
+          <TextBlock Text="Allow shared replacement" />
+        </StackPanel>
+      </Button>
+    </Grid>
+  </Grid>
+</Window>
