@@ -7,6 +7,10 @@
 
 ## v0.3 Alpha — graphical editor redesign (2026-11-25)
 
+- **Media gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md>
+- **Game gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md>
+- **Full v0.3 report:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.3.md>
+
 The native Studio is now a graphical RetroArcDo editor. The complete report with
 screenshots and limits is in the documentation repository and in
 `FINAL_ENGINEERING_REPORT_v0.3.md` (docs repo).

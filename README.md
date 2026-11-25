@@ -1,8 +1,14 @@
-# Mesen Community Edition
+﻿# Mesen Community Edition
 
-> **Modified version.** This fork of MesenCE adds **HD Studio**, a tool to automate the creation of NES HD packs
-> (headless capture, object detection and a report of the PNG images to draw), plus a new HD icon.
-> Changes started on 2026-11-18. See [HDSTUDIO.md](HDSTUDIO.md). Distributed under the same GPLv3 license.
+> **Modified version.** This fork of MesenCE adds **RetroArcDo HD Studio**, a graphical
+> remastering workshop for NES games: discovery, a thumbnail asset library, an
+> interactive original/HD artwork canvas, animation timeline, real-emulator preview
+> and standard Mesen HD Pack export. The original ROM and gameplay are never modified.
+> Changes started on 2026-11-18. Distributed under the same GPLv3 license.
+>
+> **v0.3 Alpha:** [HDSTUDIO.md](HDSTUDIO.md) · [full engineering report](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.3.md) ·
+> [media gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md) ·
+> [game gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md)
 
 Mesen is a multi-system emulator for Windows, Linux, and macOS. It supports NES, SNES, Game Boy (GB/SGB/GBC), Game Boy Advance, PC Engine, SMS/Game Gear, and WonderSwan (WS/WSC).
 
