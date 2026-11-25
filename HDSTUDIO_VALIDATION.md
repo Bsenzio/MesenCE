@@ -131,9 +131,9 @@ python scripts\test_stock_mesen.py --rom ROM --pack PACK --shots OUTPUT
 ## Limitations confirmed in this pass
 
 - Live capture from an interactive Mesen session is not implemented.
-- The GUI sprite-sheet assignment path is implemented and shares the tested
-  slicer, but the automated end-to-end assignment through the GUI was not run;
-  the CLI slicer and frame assignment backend were tested.
+- The GUI sprite-sheet assignment path was exercised against a project copy: four
+  sliced frames were assigned to the first four sequence frames as drafts and
+  copied into project artwork. The automated CLI slicer test also passes.
 - Don Doko Don 2, Toki and Guardian Legend were captured deeply but no reliable
   visible authored replacement was proven for them in this pass.
 - Saturation is not completeness. Commercial semantic denominators remain
