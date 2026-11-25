@@ -136,6 +136,10 @@ public:
 	uint32_t GetCurrentCycle() { return _cycle; }
 	int32_t GetCurrentScanline() { return _scanline; }
 
+	//HD Studio live capture: a copy of the primary OAM used for the frame that just finished.
+	void CopySpriteRam(uint8_t* dest) { memcpy(dest, _spriteRam, 0x100); }
+	void CopyPaletteRam(uint8_t* dest) { memcpy(dest, _paletteRam, 0x20); }
+
 	//HD Studio: the current $2000/$2001 flags, so capture scripts can resolve the real
 	//sprite size and pattern-table base instead of assuming SMB3's 8x16 mode.
 	PpuControlFlags GetControlFlags() { return _control; }
@@ -147,6 +151,15 @@ public:
 	{
 		uint16_t addr = _tmpVideoRamAddr ? _tmpVideoRamAddr : _videoRamAddr;
 		return (((addr & 0x1F) << 3) | _xScroll | ((addr & 0x400) ? 0x100 : 0)) & 0x1FF;
+	}
+
+	//HD Studio: the vertical scroll (coarse Y + fine Y + nametable Y bit) of the frame that
+	//the PPU is drawing. Live capture uses it together with the nametable RAM to identify
+	//the exact visible background window instead of assuming scrollY == 0.
+	uint32_t GetVerticalScroll()
+	{
+		uint16_t addr = _tmpVideoRamAddr ? _tmpVideoRamAddr : _videoRamAddr;
+		return ((((addr >> 5) & 0x1F) << 3) | ((addr >> 12) & 0x07) | ((addr & 0x800) ? 0x100 : 0)) & 0x1FF;
 	}
 	int32_t GetScanlineCount() { return _vblankEnd + 2; }
 	uint32_t GetFrameCycle() { return ((_scanline + 1) * 341) + _cycle; }

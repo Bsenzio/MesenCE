@@ -34,6 +34,11 @@ struct HdStudioSprite
 	uint32_t PaletteColors;
 	bool HorizontalMirror;
 	bool VerticalMirror;
+	//OAM slot (0-63) and 8x16 half (0=top, 1=bottom). Sprites that come from the same
+	//hardware sprite always belong to one composition; OAM proximity is also evidence
+	//that neighbouring slots were authored as one metasprite.
+	uint8_t OamIndex;
+	uint8_t OamPart;
 };
 
 //HD Studio: direct access to the usage counters of the last processed tile, so the PPU can count the

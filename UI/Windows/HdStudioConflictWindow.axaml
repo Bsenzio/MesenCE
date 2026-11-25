@@ -67,6 +67,25 @@
           </Grid>
         </Border>
 
+        <Border Classes="card" Padding="0">
+          <Grid RowDefinitions="Auto,Auto">
+            <Grid Margin="14,12,14,6" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="section" Text="PROPOSED STANDARD RULES" />
+              <TextBlock Grid.Column="1" Name="RuleHintText" Classes="caption" Text="Verified against captured occurrences" />
+            </Grid>
+            <ListBox Grid.Row="1" Name="RuleList" Margin="8,0,8,8" MaxHeight="170">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="4,3">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Detail}" Classes="caption" TextWrapping="Wrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+
         <Border Background="#18E9B44C" BorderBrush="{DynamicResource StudioWarningBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
             <Path Classes="icon" Data="{StaticResource Icon.Info}" Stroke="{DynamicResource StudioWarningBrush}" VerticalAlignment="Top" />
@@ -77,15 +96,16 @@
       </StackPanel>
     </ScrollViewer>
 
-    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
-      <TextBlock Name="FooterText" Classes="caption" VerticalAlignment="Center" Text="The build will stop if two different replacements target the same condition." />
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8">
+      <TextBlock Name="FooterText" Classes="caption" VerticalAlignment="Center" Text="Rules use standard Mesen HD Pack conditions only." />
       <Button Grid.Column="2" Click="Cancel_Click" Content="Cancel" />
-      <Button Grid.Column="3" Classes="cta" Click="Allow_Click">
+      <Button Grid.Column="3" Classes="cta" Click="ApplyRule_Click">
         <StackPanel Orientation="Horizontal" Spacing="7">
           <Path Classes="icon small" Data="{StaticResource Icon.Check}" />
-          <TextBlock Text="Allow shared replacement" />
+          <TextBlock Text="Use selected rule" />
         </StackPanel>
       </Button>
+      <Button Grid.Column="4" Click="Allow_Click" Content="Replace all shared" />
     </Grid>
   </Grid>
 </Window>

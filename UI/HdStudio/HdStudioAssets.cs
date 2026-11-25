@@ -21,7 +21,7 @@ namespace Mesen.HdStudio
 	{
 		public const string SchemaVersion = "1.0.0";
 
-		private class TileRef
+		internal class TileRef
 		{
 			public int X;
 			public int Y;
@@ -35,7 +35,7 @@ namespace Mesen.HdStudio
 			public string ChrType = "";
 		}
 
-		private class Asset
+		internal class Asset
 		{
 			public string Id = "";
 			public string Kind = "";
@@ -74,6 +74,7 @@ namespace Mesen.HdStudio
 			ReadPlayerFormTiles(studio, romKey, assets, log);
 			ReadBackgroundBlocks(studio, romKey, assets, log);
 			ReadObservedBackgroundBlocks(studio, romKey, rom, assets, log);
+			HdStudioLiveAssets.Import(studio, romKey, rom, assets, log);
 
 			using(FileStream stream = File.Create(Path.Combine(assetsFolder, "assets.json"))) {
 				using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true });
@@ -92,6 +93,11 @@ namespace Mesen.HdStudio
 				json.WriteStartArray("assets");
 				foreach(Asset asset in assets.OrderBy(a => a.Kind).ThenBy(a => a.Id)) {
 					WriteAsset(json, asset);
+				}
+				//User selections made during live play are full asset records with stable ids.
+				//They are merged here so a later --assets pass never discards them.
+				foreach(JsonElement picked in HdStudioPicking.ReadPickedAssetElements(outFolder)) {
+					picked.WriteTo(json);
 				}
 				json.WriteEndArray();
 
@@ -619,9 +625,8 @@ namespace Mesen.HdStudio
 			}
 		}
 
-		private static void WriteAsset(Utf8JsonWriter json, Asset asset)
-		{
-			json.WriteStartObject();
+		internal static void WriteAsset(Utf8JsonWriter json, Asset asset)
+		{			json.WriteStartObject();
 			json.WriteString("id", asset.Id);
 			json.WriteString("kind", asset.Kind);
 			json.WriteString("name", asset.Name);

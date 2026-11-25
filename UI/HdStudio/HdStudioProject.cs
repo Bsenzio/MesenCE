@@ -401,6 +401,9 @@ namespace Mesen.HdStudio
 		public bool MirrorConditions;
 		public bool MatchBackgroundPriority;
 		public bool AllPaletteVariants = true;
+		/// <summary>Standard Mesen global condition(s) chosen to disambiguate a shared
+		/// pattern, e.g. "!hmirror" or "bgpriority". Empty means unconditional.</summary>
+		public string ExtraCondition = "";
 		public int CropLeft;
 		public int CropTop;
 		public int CropRight;
@@ -424,6 +427,7 @@ namespace Mesen.HdStudio
 			json.WriteBoolean("mirrorConditions", MirrorConditions);
 			json.WriteBoolean("matchBackgroundPriority", MatchBackgroundPriority);
 			json.WriteBoolean("allPaletteVariants", AllPaletteVariants);
+			json.WriteString("extraCondition", ExtraCondition);
 			json.WriteNumber("cropLeft", CropLeft);
 			json.WriteNumber("cropTop", CropTop);
 			json.WriteNumber("cropRight", CropRight);
@@ -451,6 +455,7 @@ namespace Mesen.HdStudio
 			MirrorConditions = a.TryGetProperty("mirrorConditions", out JsonElement mc) && mc.ValueKind == JsonValueKind.True;
 			MatchBackgroundPriority = a.TryGetProperty("matchBackgroundPriority", out JsonElement mbp) && mbp.ValueKind == JsonValueKind.True;
 			AllPaletteVariants = !a.TryGetProperty("allPaletteVariants", out JsonElement ap) || ap.ValueKind != JsonValueKind.False;
+			ExtraCondition = a.TryGetProperty("extraCondition", out JsonElement ec) && ec.ValueKind == JsonValueKind.String ? ec.GetString() ?? "" : "";
 			CropLeft = a.TryGetProperty("cropLeft", out JsonElement cl) && cl.TryGetInt32(out int clv) ? Math.Max(0, clv) : 0;
 			CropTop = a.TryGetProperty("cropTop", out JsonElement ct) && ct.TryGetInt32(out int ctv) ? Math.Max(0, ctv) : 0;
 			CropRight = a.TryGetProperty("cropRight", out JsonElement cr2) && cr2.TryGetInt32(out int crv) ? Math.Max(0, crv) : 0;

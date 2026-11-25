@@ -655,6 +655,7 @@
     <EmbeddedResource Include="HdStudio\Scripts\explore_level.lua" LogicalName="Mesen.HdStudio.explore_level.lua" />
     <EmbeddedResource Include="HdStudio\Scripts\explore_sweep.lua" LogicalName="Mesen.HdStudio.explore_sweep.lua" />
     <EmbeddedResource Include="HdStudio\Scripts\bg_observe.lua" LogicalName="Mesen.HdStudio.bg_observe.lua" />
+    <EmbeddedResource Include="HdStudio\Scripts\live_capture.lua" LogicalName="Mesen.HdStudio.live_capture.lua" />
     <EmbeddedResource Include="Localization\resources.en.xml" WithCulture="false" Type="Non-Resx" />
     <EmbeddedResource Include="Utilities\DipSwitchDefinitions.xml" />
   </ItemGroup>

@@ -5,7 +5,34 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
-## v0.3 Alpha — graphical editor redesign (2026-11-25)
+## v0.4 Alpha - generalized gameplay discovery and complete asset editing (2026-11-25)
+
+- **Full v0.4 report:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.4.md>
+- **Media gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md>
+
+Implemented in this release:
+
+- **Real live capture:** `UI/HdStudio/Scripts/live_capture.lua` samples the running
+  emulator (OAM, mapper-resolved CHR, palettes, flips, priority, scroll, mirroring,
+  visible nametable) with pause/resume/stop control and a frozen frame for picking.
+- **Hardware-aware picking:** OAM sprite, reconstructed composition, background
+  tile/block and manual grouping; persisted as editable assets with pattern
+  references, not screenshot crops (`HdStudioPicking.cs`).
+- **Live asset reconstruction:** palette-variant merging, temporal animation tracks
+  and scroll-aware background blocks (`HdStudioLiveAssets.cs`).
+- **Context resolution:** standard `hmirror`/`vmirror`/`bgpriority` proposals with
+  measured affected occurrences (`HdStudioContextResolver.cs`).
+- **Core fixes:** OAM is captured even when a game disables rendering during vblank
+  for OAM DMA; conservative composition grouping; explorer boot/gameplay detection.
+- **API additions:** `getOamInfo`, `getBackgroundTile`, extended `getPpuInfo`
+  (scroll, mirroring, CHR-RAM, pattern bases).
+
+Measured on the previously weak cases: Guardian Legend 1 → 200 compositions
+(6,000 frames), Don Doko Don 2 200, Little Mermaid 146, Toki 41. Guardian has a
+verified authored background replacement at 1024×960 with identical gameplay
+state hashes. Toki remains incomplete; see the report's limitations section.
+
+## v0.3 Alpha - graphical editor redesign (2026-11-25)
 
 - **Media gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md>
 - **Game gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md>

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace Mesen.Controls
@@ -20,8 +21,11 @@ namespace Mesen.Controls
 		public int NesWidth { get; set; } = 256;
 		public int NesHeight { get; set; } = 240;
 		public bool SelectMode { get; set; }
+		public bool PickMode { get; set; }
 		public Rect SelectedRegion { get; private set; }
 		public event EventHandler? RegionSelected;
+		public event EventHandler<Point>? PointPicked;
+		public List<(int X, int Y, int W, int H, string Label)> HardwareBoxes { get; } = new();
 
 		private Bitmap? _bitmap;
 		private string _loaded = "";
@@ -104,10 +108,9 @@ namespace Mesen.Controls
 		protected override void OnPointerPressed(PointerPressedEventArgs e)
 		{
 			base.OnPointerPressed(e);
-			if(!SelectMode || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) {
+			if((!SelectMode && !PickMode) || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) {
 				return;
-			}
-			Point p = e.GetPosition(this);
+			}			Point p = e.GetPosition(this);
 			if(!FrameRect().Contains(p)) {
 				return;
 			}
@@ -138,6 +141,21 @@ namespace Mesen.Controls
 			}
 			_dragging = false;
 			e.Pointer.Capture(null);
+			Point end = e.GetPosition(this);
+			if(PickMode && (Math.Abs(end.X - _start.X) < 3 && Math.Abs(end.Y - _start.Y) < 3)) {
+				//Hardware-aware pick: a click resolves the sprite/OAM and nametable cell at
+				//this exact NES pixel instead of an 8x8-aligned approximate region.
+				if(FrameRect().Contains(end)) {
+					Rect frame = FrameRect();
+					double px = (end.X - frame.X) / Math.Max(0.001, frame.Width / NesWidth);
+					double py = (end.Y - frame.Y) / Math.Max(0.001, frame.Height / NesHeight);
+					PointPicked?.Invoke(this, new Point(Math.Clamp((int)Math.Round(px), 0, NesWidth - 1),
+						Math.Clamp((int)Math.Round(py), 0, NesHeight - 1)));
+				}
+				InvalidateVisual();
+				e.Handled = true;
+				return;
+			}
 			//Snap the selection to the original 8x8 grid. The game object is never modified;
 			//this only improves the usefulness of the inspection region.
 			RectToNes(SelectedRegion, out int x, out int y, out int w, out int h);
@@ -230,6 +248,21 @@ namespace Mesen.Controls
 			}
 			for(int y = 8; y < NesHeight; y += 8) {
 				context.DrawLine(y % 16 == 0 ? major : minor, new Point(frame.Left, frame.Y + y * cell), new Point(frame.Right, frame.Y + y * cell));
+			}
+
+			//Hardware-aware overlay: exact OAM footprints from the paused frame. These are
+			//derived from the emulator's OAM, not from image recognition.
+			foreach((int hx, int hy, int hw, int hh, string label) in HardwareBoxes) {
+				Rect hr = NesToRect(new Rect(hx, hy, hw, hh)).Intersect(frame);
+				if(hr.Width <= 0 || hr.Height <= 0) {
+					continue;
+				}
+				context.DrawRectangle(null, new Pen(B("StudioInfo", "StudioInfo"), 1), hr, 2, 2);
+				if(!string.IsNullOrEmpty(label) && hw >= 16) {
+					FormattedText tag = new FormattedText(label, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+						new Typeface("Cascadia Mono, Consolas"), 9, B("StudioInfo", "StudioInfo"));
+					context.DrawText(tag, new Point(hr.X + 2, Math.Max(frame.Top, hr.Top - 12)));
+				}
 			}
 
 			if(SelectedRegion.Width > 0 && SelectedRegion.Height > 0) {

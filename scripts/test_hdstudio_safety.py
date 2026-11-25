@@ -109,6 +109,21 @@ def main():
         raise SystemExit("explicit shared approval was not reported")
     approved_hires = sha(hires_path)
 
+    # Context-specific replacement: a standard condition keeps other shared uses intact.
+    replacement["allowSharedReplacement"] = False
+    replacement.setdefault("adaptation", {})["extraCondition"] = "bgpriority"
+    json.dump(project, open(project_path, "w", encoding="utf-8"), indent=2)
+    code, log = run(args.mesen, args.home, ["--hdstudio", rom, "--compile", "--out=" + pack])
+    context_hires = open(hires_path, encoding="utf-8").read()
+    if "[hmirror&vmirror&bgpriority]<tile>" not in context_hires:
+        raise SystemExit("context condition was not compiled into the standard tile entry")
+    if "context condition" not in log:
+        raise SystemExit("context-specific replacement was not reported")
+    replacement["allowSharedReplacement"] = True
+    replacement["adaptation"].pop("extraCondition", None)
+    json.dump(project, open(project_path, "w", encoding="utf-8"), indent=2)
+    run(args.mesen, args.home, ["--hdstudio", rom, "--compile", "--out=" + pack])
+
     # A duplicate replacement with different pixels is a true context conflict.
     conflict = json.loads(json.dumps(replacement))
     conflict["id"] = conflict["id"] + "-conflict"

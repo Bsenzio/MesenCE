@@ -286,6 +286,9 @@ namespace Mesen.HdStudio
 			"animationSequence" => "Animation sequences",
 			"backgroundBlock" => "Backgrounds",
 			"backgroundTile" => "Background tiles",
+			"pickedObject" => "Objects",
+			"pickedBackground" => "Backgrounds",
+			"rawPattern" => "Raw patterns",
 			_ => "Other"
 		};
 

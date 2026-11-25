@@ -138,7 +138,7 @@ namespace Mesen.HdStudio
 					}
 
 					SKColor[] composed = HdStudioArtwork.Compose(image, bounds, targetWidth, targetHeight, replacement.Settings);
-					List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(specs, composed, targetWidth, targetHeight, scale, replacement.Settings.MirrorConditions, m => result.Warnings.Add(m), replacement.Settings.AllPaletteVariants && asset != null ? asset.PaletteVariants : null, replacement.Settings.MatchBackgroundPriority);
+					List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(specs, composed, targetWidth, targetHeight, scale, replacement.Settings.MirrorConditions, m => result.Warnings.Add(m), replacement.Settings.AllPaletteVariants && asset != null ? asset.PaletteVariants : null, replacement.Settings.MatchBackgroundPriority, replacement.Settings.ExtraCondition);
 					if(cells.Count == 0) {
 						result.Errors.Add($"{replacement.AssetName}: the artwork produced no replacement tiles.");
 						continue;
@@ -147,7 +147,13 @@ namespace Mesen.HdStudio
 					if(asset != null) {
 						List<HdStudioCatalogAsset> sharedAssets = HdStudioCatalog.FindAssetsSharingKeys(catalog, asset.Id,
 							cells.Select(c => (c.Key, c.Palette)));
-						if(sharedAssets.Count > 0) {
+						bool contextSpecific = !string.IsNullOrWhiteSpace(replacement.Settings.ExtraCondition);
+						if(sharedAssets.Count > 0 && contextSpecific) {
+							string names = string.Join(", ", sharedAssets.Take(4).Select(a => a.Name));
+							replacement.Warnings.Clear();
+							replacement.Warnings.Add($"Context-specific replacement ({cells[0].Condition}); {sharedAssets.Count} other asset(s) share the keys ({names}) and are left on their original graphics.");
+							result.Warnings.Add($"{replacement.AssetName}: context condition {cells[0].Condition} keeps {sharedAssets.Count} shared asset(s) unchanged ({names}).");
+						} else if(sharedAssets.Count > 0) {
 							string names = string.Join(", ", sharedAssets.Take(4).Select(a => a.Name));
 							if(sharedAssets.Count > 4) {
 								names += ", ...";

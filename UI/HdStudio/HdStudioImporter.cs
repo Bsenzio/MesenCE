@@ -135,7 +135,7 @@ namespace Mesen.HdStudio
 			HdStudioArtwork.WritePreviews(importsFolder, slug, original, Math.Max(8, asset.Width), Math.Max(8, asset.Height), replacementPixels, targetWidth, targetHeight, log);
 
 			//Segment the one composed image into replacement tiles.
-			List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(tileSpecs, composed, targetWidth, targetHeight, packScale, settings.MirrorConditions, log, settings.AllPaletteVariants ? asset.PaletteVariants : null, settings.MatchBackgroundPriority);
+			List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(tileSpecs, composed, targetWidth, targetHeight, packScale, settings.MirrorConditions, log, settings.AllPaletteVariants ? asset.PaletteVariants : null, settings.MatchBackgroundPriority, settings.ExtraCondition);
 			if(cells.Count == 0) {
 				log("Import: no replacement cells were produced.");
 				return 1;

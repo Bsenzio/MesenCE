@@ -32,6 +32,8 @@ local COOLDOWN_FRAMES = 90
 local MAX_CELLS = 400
 local MUTATION_CHANCE = 0.5      -- part of the episodes that start with a RAM mutation
 local MUTATION_CREDIT = { P = 20, S = 3, L = 1 }
+local BOOT_LIMIT_FRAMES = 3000   -- keep trying to leave the title/menu before Go-Explore saves cells
+local GAMEPLAY_CHECKS_NEEDED = 3
 
 local nesDebug = emu.memType.nesDebug
 local ramType = emu.memType.nesInternalRam
@@ -58,6 +60,9 @@ local currentCell = nil
 local pendingSave = nil   -- key of a cell to save at the next NMI
 local pendingLoad = nil   -- cell to restore at the next NMI
 local totalFrames = 0
+local gameplayStarted = false
+local gameplayChecks = 0
+local bootFrames = 0
 
 -- Input state
 local previousSample = nil
@@ -153,7 +158,7 @@ local function checkNovelty(buffer)
         addressCredit[addr] = (addressCredit[addr] or 0) + MUTATION_CREDIT[kind]
       end
     end
-    if #cells < MAX_CELLS then
+    if #cells < MAX_CELLS and gameplayStarted then
       pendingSave = key
     end
   end
@@ -164,16 +169,24 @@ end
 local function spritesMoved()
   local oam = {}
   local moved = false
+  local count = 0
   for i = 0, 63 do
-    local v = emu.read(i * 4, emu.memType.nesSpriteRam) * 256 + emu.read(i * 4 + 3, emu.memType.nesSpriteRam)
+    local y = emu.read(i * 4, emu.memType.nesSpriteRam)
+    local v = y * 256 + emu.read(i * 4 + 3, emu.memType.nesSpriteRam)
     oam[i] = v
+    if y < 0xEF then
+      count = count + 1
+    end
     if previousOam and previousOam[i] ~= v then
       moved = true
     end
   end
   previousOam = oam
-  return moved
+  return moved, count
 end
+
+local previousScrollX = nil
+local previousScrollY = nil
 
 local function look()
   local buffer = emu.getScreenBuffer()
@@ -181,7 +194,17 @@ local function look()
   for i = 1, #buffer, 61 do
     sample[#sample + 1] = buffer[i]
   end
-  local moved = spritesMoved()
+  local moved, spriteCount = spritesMoved()
+  local ppu = emu.getPpuInfo()
+  local scrollMoved = false
+  if ppu then
+    if previousScrollX ~= nil and (ppu.scrollX ~= previousScrollX or ppu.scrollY ~= previousScrollY) then
+      scrollMoved = true
+    end
+    previousScrollX = ppu.scrollX
+    previousScrollY = ppu.scrollY
+  end
+  local changedRatio = 0
   if previousSample and #previousSample == #sample then
     local changed = 0
     for i = 1, #sample do
@@ -189,13 +212,31 @@ local function look()
         changed = changed + 1
       end
     end
-    if not moved and changed / #sample < STILL_THRESHOLD then
+    changedRatio = changed / #sample
+    if not moved and changedRatio < STILL_THRESHOLD then
       stillChecks = stillChecks + 1
     else
       stillChecks = 0
     end
   end
   previousSample = sample
+
+  --Gameplay detection: a scrolling or clearly changing playfield with sprites.
+  --A minimum boot time keeps animated logos from being mistaken for gameplay.
+  local active = totalFrames >= 900 and (scrollMoved or changedRatio > 0.08 or (spriteCount >= 2 and changedRatio > 0.03))
+  if active then
+    gameplayChecks = gameplayChecks + 1
+  else
+    gameplayChecks = math.max(0, gameplayChecks - 1)
+  end
+  if not gameplayStarted and gameplayChecks >= GAMEPLAY_CHECKS_NEEDED then
+    gameplayStarted = true
+    episodeFrames = 0
+    stillChecks = 0
+    cooldown = 0
+    emu.log(string.format("HD Studio explorer: gameplay detected at frame %d (%d sprites)", totalFrames, spriteCount))
+  end
+
   checkNovelty(buffer)
 end
 
@@ -353,9 +394,43 @@ local function pickAction()
   actionFramesLeft = 12 + math.floor(rnd(4) * 34)
 end
 
+local function bootInput()
+  --Deterministic title/menu progression. Every 60 frames taps A, every 150 taps
+  --Start, every 240 taps Down, and a slower cycle presses Start then A. This is
+  --enough to clear logos, "PRESS START" screens and simple menus without any
+  --game-specific knowledge. It is not used once gameplay is detected.
+  bootFrames = bootFrames + 1
+  local input = { a = false, b = false, select = false, start = false, up = false, down = false, left = false, right = false }
+  --Aggressive, deterministic boot sequence: short Start taps every half second,
+  --A taps in between, and periodic Down/Right for menus. This clears "PRESS
+  --START" screens, logos and simple menus without game-specific knowledge.
+  if bootFrames % 30 < 8 then input.start = true end
+  if bootFrames % 60 >= 32 and bootFrames % 60 < 38 then input.a = true end
+  if bootFrames % 240 < 5 then input.down = true end
+  if bootFrames % 300 >= 150 and bootFrames % 300 < 156 then input.right = true end
+  if bootFrames % 360 >= 356 then input.select = true end
+  if bootFrames == BOOT_LIMIT_FRAMES then
+    emu.log("HD Studio explorer: no gameplay signature after " .. BOOT_LIMIT_FRAMES .. " boot frames; starting exploration from the current state")
+    gameplayStarted = true
+    episodeFrames = 0
+    stillChecks = 0
+    cooldown = 0
+  end
+  emu.setInput(input, 0)
+end
+
 local function onInputPolled()
   totalFrames = totalFrames + 1
   episodeFrames = episodeFrames + 1
+
+  if not gameplayStarted then
+    if episodeFrames % CHECK_INTERVAL == 0 then
+      look()
+    end
+    bootInput()
+    return
+  end
+
   local input = { a = false, b = false, select = false, start = false, up = false, down = false, left = false, right = false }
 
   if episodeFrames % CHECK_INTERVAL == 0 then

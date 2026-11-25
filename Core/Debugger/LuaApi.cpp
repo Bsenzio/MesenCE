@@ -172,6 +172,8 @@ int LuaApi::GetLibrary(lua_State* lua)
 		{ "getLogWindowLog", LuaApi::GetLogWindowLog },
 		{ "getChrTileInfo", LuaApi::GetChrTileInfo },
 		{ "getPpuInfo", LuaApi::GetPpuInfo },
+		{ "getBackgroundTile", LuaApi::GetBackgroundTile },
+		{ "getOamInfo", LuaApi::GetOamInfo },
 		{ NULL, NULL }
 	};
 
@@ -1239,6 +1241,107 @@ int LuaApi::GetPpuInfo(lua_State* lua)
 	lua_setfield(lua, -2, "backgroundEnabled");
 	LuaPushIntValue(lua, "frameCount", (int)ppu->GetFrameCount());
 	LuaPushIntValue(lua, "mapperId", mapper->GetRomInfo().MapperID);
+	LuaPushIntValue(lua, "scrollX", (int)ppu->GetHorizontalScroll());
+	LuaPushIntValue(lua, "scrollY", (int)ppu->GetVerticalScroll());
+	lua_pushboolean(lua, ppu->GetControlFlags().BackgroundPatternAddr != 0);
+	lua_setfield(lua, -2, "backgroundPatternHigh");
+	lua_pushboolean(lua, ppu->GetControlFlags().SpritePatternAddr != 0);
+	lua_setfield(lua, -2, "spritePatternHigh");
+	lua_pushboolean(lua, mask.Grayscale);
+	lua_setfield(lua, -2, "grayscale");
+	string mirroring = string(magic_enum::enum_name(mapper->GetState().Mirroring));
+	lua_pushstring(lua, mirroring.c_str());
+	lua_setfield(lua, -2, "mirroring");
+	lua_pushboolean(lua, mapper->HasChrRam());
+	lua_setfield(lua, -2, "hasChrRam");
+	return 1;
+}
+
+//HD Studio: resolve the background tile visible at an arbitrary NES pixel. The PPU scroll,
+//nametable mirroring (through the mapper) and attribute palette are applied exactly like the
+//renderer, so a click in the Studio maps to the real nametable cell, not a screenshot crop.
+int LuaApi::GetBackgroundTile(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	//LuaCallHelper pops from the top of the stack, so read y first.
+	int y = l.ReadInteger();
+	int x = l.ReadInteger();
+	checkparams();
+	errorCond(x < 0 || x > 255 || y < 0 || y > 239, "background coordinates out of range");
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	NesConsole* nesConsole = static_cast<NesConsole*>(console.get());
+	BaseNesPpu* ppu = nesConsole->GetPpu();
+	BaseMapper* mapper = nesConsole->GetMapper();
+	if(!ppu || !mapper) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	uint32_t scrollX = ppu->GetHorizontalScroll();
+	uint32_t scrollY = ppu->GetVerticalScroll();
+	uint32_t pixelX = (scrollX + (uint32_t)x) & 0x1FF;
+	uint32_t pixelY = (scrollY + (uint32_t)y) & 0x1FF;
+	uint16_t nametableBase = 0x2000;
+	if(pixelY & 0x100) {
+		nametableBase |= 0x0800;
+	}
+	if(pixelX & 0x100) {
+		nametableBase |= 0x0400;
+	}
+
+	uint16_t tileX = (pixelX & 0xFF) >> 3;
+	uint16_t tileY = (pixelY & 0xFF) >> 3;
+	uint16_t address = nametableBase + tileY * 32 + tileX;
+	uint8_t tileIndex = mapper->DebugReadVram(address);
+	uint16_t attributeAddress = (uint16_t)(0x23C0 | (nametableBase & 0x0C00) | ((tileY / 4) * 8) + (tileX / 4));
+	uint8_t attribute = mapper->DebugReadVram(attributeAddress);
+	int shift = ((tileY & 2) ? 4 : 0) | ((tileX & 2) ? 2 : 0);
+	uint8_t paletteIndex = (attribute >> shift) & 0x03;
+	uint16_t patternAddress = ppu->GetControlFlags().BackgroundPatternAddr + (tileIndex << 4);
+
+	AddressInfo info = mapper->GetPpuAbsoluteAddress(patternAddress);
+	lua_newtable(lua);
+	LuaPushIntValue(lua, "x", x);
+	LuaPushIntValue(lua, "y", y);
+	LuaPushIntValue(lua, "tile", tileIndex);
+	LuaPushIntValue(lua, "paletteIndex", paletteIndex);
+	LuaPushIntValue(lua, "nametableAddress", address);
+	LuaPushIntValue(lua, "attribute", attribute);
+	LuaPushIntValue(lua, "ppuAddress", patternAddress);
+	LuaPushIntValue(lua, "chrAddress", info.Address);
+	lua_pushstring(lua, string(magic_enum::enum_name(info.Type)).c_str());
+	lua_setfield(lua, -2, "chrType");
+	return 1;
+}
+
+//HD Studio: the primary OAM as a 256-byte Lua string. One call per sampled frame keeps the
+//live capture overhead low compared with 256 separate emu.read calls.
+int LuaApi::GetOamInfo(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	checkparams();
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	BaseNesPpu* ppu = static_cast<NesConsole*>(console.get())->GetPpu();
+	if(!ppu) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	uint8_t oam[0x100];
+	ppu->CopySpriteRam(oam);
+	lua_pushlstring(lua, (const char*)oam, 0x100);
 	return 1;
 }
 

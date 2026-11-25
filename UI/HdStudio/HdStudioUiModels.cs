@@ -130,5 +130,6 @@ namespace Mesen.HdStudio
 		public Bitmap? Thumbnail { get; init; }
 		public string Name => Asset.Name;
 		public string Category { get; init; } = "";
+		public HdStudioPicking.PickCandidate? Pick { get; init; }
 	}
 }

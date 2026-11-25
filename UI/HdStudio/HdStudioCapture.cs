@@ -153,6 +153,11 @@ namespace Mesen.HdStudio
 			public string? DisasmPath;
 			public bool FramesSpecified;
 			public int Shots = 4;
+			public bool Live;
+			public string? PickPoint;
+			public string? PickGroup;
+			public int PickSave = -1;
+			public string? PickName;
 			public List<string> Errors = new();
 		}
 
@@ -195,6 +200,57 @@ namespace Mesen.HdStudio
 					return 1;
 				}
 			}
+			if(opt.PickPoint != null || opt.PickGroup != null) {
+				//Offline hardware-aware picking: reads the paused live frame and resolves the
+				//real OAM/CHR data. No emulator instance is needed.
+				string folder = opt.OutFolder ?? (opt.RomPath != null
+					? Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(opt.RomPath))
+					: "");
+				HdStudioPicking.PauseFrame? frame = HdStudioPicking.PauseFrame.Load(folder);
+				if(frame == null) {
+					Log("Error: no paused live frame at " + Path.Combine(folder, HdStudioReport.StudioFolderName, "live", HdStudioPicking.PauseFileName));
+					return 1;
+				}
+				string point = opt.PickGroup ?? opt.PickPoint!;
+				string[] coords = point.Split(',');
+				if(coords.Length != 2 || !int.TryParse(coords[0], out int px) || !int.TryParse(coords[1], out int py)) {
+					Log("Error: the pick point must be X,Y in NES pixels.");
+					return 1;
+				}
+				List<HdStudioPicking.PickCandidate> candidates = HdStudioPicking.GetCandidates(frame, px, py, Array.Empty<uint>());
+				HdStudioCatalogAsset? target = null;
+				if(opt.PickGroup != null) {
+					HdStudioPicking.PickCandidate merged = new() {
+						Kind = "manualComposition",
+						Name = opt.PickName ?? ("Manual composition at " + px + "," + py),
+						Detail = "CLI grouped all sprite candidates at the point",
+						Confidence = 1.0
+					};
+					foreach(HdStudioPicking.PickCandidate candidate in candidates) {
+						merged.Sprites.AddRange(candidate.Sprites);
+						merged.Background.AddRange(candidate.Background);
+					}
+					target = HdStudioPicking.BuildManualComposition(merged, frame, Array.Empty<uint>());
+				} else if(opt.PickSave >= 0 && opt.PickSave < candidates.Count) {
+					target = candidates[opt.PickSave].Asset;
+				}
+
+				Log($"Pick frame {frame.Frame}: {frame.Sprites.Count} hardware sprite parts, {frame.Background.Count} background cells.");
+				for(int i = 0; i < candidates.Count; i++) {
+					HdStudioPicking.PickCandidate candidate = candidates[i];
+					Log($"  [{i}] {candidate.Kind}: {candidate.Name} - {candidate.Width}x{candidate.Height}, {candidate.Sprites.Count} sprite(s), {candidate.Background.Count} bg cell(s), confidence {candidate.Confidence:0.00}");
+				}
+				if(target == null) {
+					return candidates.Count > 0 ? 0 : 2;
+				}
+				if(!string.IsNullOrWhiteSpace(opt.PickName)) {
+					target.Name = opt.PickName!;
+				}
+				string saved = HdStudioPicking.SavePickedAsset(folder, target, Log);
+				Log("Picked asset: " + target.Id + " -> " + saved);
+				return 0;
+			}
+
 			if(opt.Errors.Count > 0 || opt.RomPath == null) {
 				foreach(string error in opt.Errors) {
 					Log("Error: " + error);
@@ -445,7 +501,7 @@ namespace Mesen.HdStudio
 					_scriptIds.Add(DebugApi.LoadScript(luaScript, path, script));
 					Log($"Lua script loaded: {luaScript}");
 				}
-			} else if(opt.Generate && opt.MoviePath == null) {
+			} else if(opt.Generate && opt.MoviePath == null && !opt.Live) {
 				//Generate mode without a movie/script: the built-in deep explorer plays the whole game with savestates
 				DebugWorkspaceManager.Load();
 				string explorer = GetBuiltInExplorer("explore_deep.lua");
@@ -458,8 +514,40 @@ namespace Mesen.HdStudio
 				Log("Built-in deep explorer loaded (explores the game automatically with savestates" + (opt.Seed > 0 ? ", seed " + opt.Seed : "") + ")");
 			}
 
-			if(opt.BgScan) {
-				//Runtime nametable observer: creates editable 16x16 background blocks from
+			if(opt.Live) {
+				//Automated validation / headless live capture: the same script the Studio
+				//loads into the interactive emulator. Control commands are written to
+				//HdStudio/live/control.txt by the caller (or by the test harness).
+				ConfigManager.Config.Debug.ScriptWindow.AllowIoOsAccess = true;
+				ConfigManager.Config.ApplyConfig();
+				DebugWorkspaceManager.Load();
+				string liveFolder = Path.Combine(outFolder, HdStudioReport.StudioFolderName, "live");
+				Directory.CreateDirectory(liveFolder);
+				string control = Path.Combine(liveFolder, "control.txt");
+				if(!File.Exists(control)) {
+					File.WriteAllText(control, "0|resume\n");
+				}
+				string liveScript = GetBuiltInExplorer("live_capture.lua")
+					.Replace("__OUTPUT__", liveFolder.Replace("\\", "/"))
+					.Replace("__CONTROL__", control.Replace("\\", "/"))
+					.Replace("__SAMPLE_EVERY__", "2")
+					.Replace("__BG_SAMPLE_EVERY__", "30");
+				_scriptIds.Add(DebugApi.LoadScript("live_capture.lua", Path.Combine(liveFolder, "live_capture.lua"), liveScript));
+				Log("Live capture script loaded -> " + liveFolder);
+
+				//Headless validation needs gameplay; load the deep explorer as an input
+				//driver only when there is no movie and no explicit user script.
+				if(opt.Generate && opt.MoviePath == null && opt.LuaScripts.Count == 0) {
+					string explorer = GetBuiltInExplorer("explore_deep.lua");
+					if(opt.Seed > 0) {
+						explorer = System.Text.RegularExpressions.Regex.Replace(explorer, @"local SEED = \d+", "local SEED = " + opt.Seed.ToString(CultureInfo.InvariantCulture));
+					}
+					_scriptIds.Add(DebugApi.LoadScript("explore_deep.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, explorer));
+					Log("Live validation: deep explorer loaded as an input driver.");
+				}
+			}
+
+			if(opt.BgScan) {				//Runtime nametable observer: creates editable 16x16 background blocks from
 				//observed nametable/attribute/CHR context, including CHR-RAM content keys.
 				//The built-in observer is the only script allowed to write a file; the rest of
 				//the Lua sandbox remains unchanged.
@@ -875,6 +963,15 @@ namespace Mesen.HdStudio
 						case "verify": opt.Verify = true; break;
 						case "generate": opt.Generate = true; break;
 						case "bgscan": opt.BgScan = true; break;
+						case "live": opt.Live = true; break;
+						case "pick": opt.PickPoint = value; break;
+						case "pick-group": opt.PickGroup = value; break;
+						case "pick-save":
+							if(!int.TryParse(value, out opt.PickSave)) {
+								opt.Errors.Add("invalid pick index: " + value);
+							}
+							break;
+						case "pick-name": opt.PickName = value; break;
 						case "levels": opt.Levels = true; break;
 						case "sweep": opt.Sweep = true; break;
 						case "maps": opt.Maps = true; break;

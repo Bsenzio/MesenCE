@@ -525,10 +525,23 @@ void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 		return;
 	}
 
-	//Group sprites that overlap or touch each other (union-find)
+	//Group sprites that overlap or touch each other (union-find).
+	//
+	//The v0.3 rule merged every touching sprite with the same palette. In games that
+	//draw rows of enemies, explosions or HUD sprites next to each other this produced
+	//one giant "object" whose signature changed on every frame -> catalog explosion.
+	//v0.4 uses hardware evidence instead:
+	//  * both halves of one 8x16 hardware sprite are always one composition;
+	//  * real overlap (shared pixels) is strong evidence, even across palettes;
+	//  * touching slots are only joined when they are OAM-adjacent, share a palette
+	//    and stay aligned, so unrelated neighbours keep their own identity;
+	//  * a composition is capped at 16 hardware parts.
+	const size_t MaxPartsPerComposition = 16;
 	vector<size_t> parent(count);
+	vector<size_t> clusterSize(count);
 	for(size_t i = 0; i < count; i++) {
 		parent[i] = i;
+		clusterSize[i] = 1;
 	}
 
 	auto findRoot = [&parent](size_t i) {
@@ -539,17 +552,55 @@ void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 		return i;
 	};
 
+	auto tryUnion = [&](size_t i, size_t j) {
+		size_t rootA = findRoot(i);
+		size_t rootB = findRoot(j);
+		if(rootA == rootB || clusterSize[rootA] + clusterSize[rootB] > MaxPartsPerComposition) {
+			return;
+		}
+		parent[rootA] = rootB;
+		clusterSize[rootB] += clusterSize[rootA];
+	};
+
+	auto overlapArea = [](const HdStudioSprite& a, const HdStudioSprite& b) {
+		int left = std::max<int>(a.X, b.X);
+		int right = std::min<int>(a.X + 8, b.X + 8);
+		int top = std::max<int>(a.Y, b.Y);
+		int bottom = std::min<int>(a.Y + 8, b.Y + 8);
+		if(right <= left || bottom <= top) {
+			return 0;
+		}
+		return (right - left) * (bottom - top);
+	};
+
 	for(size_t i = 0; i < count; i++) {
 		for(size_t j = i + 1; j < count; j++) {
 			HdStudioSprite& a = sprites[i];
 			HdStudioSprite& b = sprites[j];
-			//Sprites that touch belong to the same object when they use the same palette (an enemy or a shot
-			//touching the player usually has another palette); sprites that overlap are always grouped
-			//(characters drawn with 2 palettes layer one sprite over another)
-			bool touching = a.X <= b.X + 8 && b.X <= a.X + 8 && a.Y <= b.Y + 8 && b.Y <= a.Y + 8;
-			bool overlapping = a.X < b.X + 8 && b.X < a.X + 8 && a.Y < b.Y + 8 && b.Y < a.Y + 8;
-			if(overlapping || (touching && a.PaletteColors == b.PaletteColors)) {
-				parent[findRoot(i)] = findRoot(j);
+
+			//Both halves of the same hardware sprite (8x16) are one composition.
+			if(a.OamIndex == b.OamIndex && a.OamPart != b.OamPart) {
+				tryUnion(i, j);
+				continue;
+			}
+
+			int overlap = overlapArea(a, b);
+			if(overlap >= 2) {
+				//Characters drawn with two palettes layer overlapping sprites; keep them together.
+				tryUnion(i, j);
+				continue;
+			}
+
+			//Touching (0-1 pixel gap) needs additional evidence: same palette, adjacent OAM
+			//slots and a shared row/column edge. This keeps a row of enemies from collapsing
+			//into one object while still joining tightly packed metasprites.
+			int dx = std::abs(a.X - b.X);
+			int dy = std::abs(a.Y - b.Y);
+			bool aligned = dx <= 8 || dy <= 8;
+			int oamDistance = std::abs((int)a.OamIndex - (int)b.OamIndex);
+			bool touches = dx <= 9 && dy <= 9;
+			if(touches && aligned && a.PaletteColors == b.PaletteColors && oamDistance <= 6) {
+				tryUnion(i, j);
 			}
 		}
 	}

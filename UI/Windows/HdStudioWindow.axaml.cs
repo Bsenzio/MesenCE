@@ -90,6 +90,10 @@ namespace Mesen.Windows
 		private bool _captureActive;
 		private bool _capturePaused;
 		private string _captureState = "IDLE";
+		private HdStudioLiveSession? _liveSession;
+		private DispatcherTimer? _liveTimer;
+		private HdStudioPicking.PauseFrame? _pausedLiveFrame;
+		private readonly List<HdStudioPicking.PickCandidate> _pickCandidates = new();
 		private string _lastExportFolder = "";
 		private string _exactExportDestination = "";
 		private List<HdStudioSliceFrame> _lastSliceFrames = new();
@@ -510,6 +514,7 @@ namespace Mesen.Windows
 				MarkDirty();
 			};
 			_gameplayCanvas.RegionSelected += (_, _) => UpdateGameplayCandidates();
+			_gameplayCanvas.PointPicked += (_, point) => HandleGameplayPointPicked(point);
 			_animationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(140) };
 			_animationTimer.Tick += (_, _) => AdvanceAnimation(true);
 		}
@@ -737,9 +742,15 @@ namespace Mesen.Windows
 
 			string? captureImage = Option("capture-image");
 			if(!string.IsNullOrWhiteSpace(captureImage) && File.Exists(captureImage)) {
-				_gameplayCanvas.FramePath = captureImage;
-				_gameplayCanvas.Reload();
-				SetCaptureState("PAUSED");
+				if(HdStudioPicking.PauseFrame.Load(_packFolder) != null) {
+					LoadLivePauseFrame();
+					SetCaptureState("LIVE-PAUSED");
+					UpdateLiveCaptureStatusFromDisk();
+				} else {
+					_gameplayCanvas.FramePath = captureImage;
+					_gameplayCanvas.Reload();
+					SetCaptureState("PAUSED");
+				}
 			}
 			string? region = Option("select-region");
 			if(!string.IsNullOrWhiteSpace(region)) {
@@ -1113,13 +1124,15 @@ namespace Mesen.Windows
 			_statusAssetCountText.Text = _catalog.Assets.Count.ToString("N0") + " assets";
 			_statusApprovedText.Text = (_project?.Replacements.Count(r => r.Approved) ?? 0).ToString("N0") + " approved";
 			_statusCaptureText.Text = _captureState switch {
-				"RECORDING" => "Capture recording",
-				"PAUSED" => "Capture paused",
+				"LIVE" => "Live recording",
+				"LIVE-PAUSED" => "Live capture paused",
+				"RECORDING" => "Headless discovery",
+				"PAUSED" => "Discovery paused",
 				"COMPLETE" => "Capture complete",
 				_ => "Capture idle"
 			};
-			_captureStateBadge.Classes.Set("warning", _captureState == "RECORDING");
-			_captureStateBadge.Classes.Set("info", _captureState == "PAUSED");
+			_captureStateBadge.Classes.Set("warning", _captureState == "RECORDING" || _captureState == "LIVE");
+			_captureStateBadge.Classes.Set("info", _captureState == "PAUSED" || _captureState == "LIVE-PAUSED");
 			_captureStateBadge.Classes.Set("success", _captureState == "COMPLETE");
 			_recordButton.Classes.Set("active", _captureActive);
 			_pauseCaptureButton.IsEnabled = _captureActive;
@@ -1912,13 +1925,27 @@ namespace Mesen.Windows
 			HdStudioConflictWindow dialog = new(_selectedAsset.Name,
 				$"{FriendlyCategory(_selectedAsset)} · {_selectedAsset.Width}×{_selectedAsset.Height} NES pixels · {_selectedAsset.Tiles.Count} tiles",
 				shared.Select(a => new HdStudioConflictWindow.SharedAssetRow() { Name = a.Name, Category = FriendlyCategory(a) }).ToList(),
-				_settings.Theme.Equals("light", StringComparison.OrdinalIgnoreCase));
-			bool allow = await dialog.ShowDialog<bool>(this);
-			if(allow) {
+				_settings.Theme.Equals("light", StringComparison.OrdinalIgnoreCase),
+				HdStudioContextResolver.Analyze(_catalog, _selectedAsset));
+			bool accepted = await dialog.ShowDialog<bool>(this);
+			if(dialog.KeepOriginal) {
+				SetStatus("Original graphics preserved; no replacement was written for this object.");
+				return;
+			}
+			if(dialog.AllowShared) {
 				_allowSharedCheck.IsChecked = true;
+				_editSettings.ExtraCondition = "";
 				_sharedKeysText.Text = "Shared replacement approved explicitly for this asset.";
 				SetStatus("Shared replacement approved. Build to apply it.");
 				MarkDirty();
+			} else if(!string.IsNullOrWhiteSpace(dialog.ChosenRule)) {
+				_allowSharedCheck.IsChecked = false;
+				_editSettings.ExtraCondition = dialog.ChosenRule.Trim('[', ']');
+				_sharedKeysText.Text = "Context rule: " + dialog.ChosenRule + " - other occurrences keep their original graphics.";
+				SetStatus("Context rule selected: " + dialog.ChosenRule + ". Apply to compile it as a standard Mesen condition.");
+				MarkDirty();
+			} else if(accepted) {
+				SetStatus("No rule was selected.");
 			}
 		}
 
@@ -2024,7 +2051,8 @@ namespace Mesen.Windows
 				BackgroundTolerance = _editSettings.BackgroundTolerance,
 				KeepLargestComponent = _editSettings.KeepLargestComponent,
 				Crop = _editSettings.Crop,
-				AllPaletteVariants = _editSettings.AllPaletteVariants
+				AllPaletteVariants = _editSettings.AllPaletteVariants,
+				ExtraCondition = _editSettings.ExtraCondition
 			};
 			WriteEditorControlsFromSettings();
 			RefreshEditorCanvases();
@@ -2173,10 +2201,10 @@ namespace Mesen.Windows
 				SetStatus("Choose an existing artwork file first.");
 				return;
 			}
-			if(HasSharedRisk(_selectedAsset) && _allowSharedCheck.IsChecked != true) {
+			if(HasSharedRisk(_selectedAsset) && _allowSharedCheck.IsChecked != true && string.IsNullOrWhiteSpace(_editSettings.ExtraCondition)) {
 				await ShowSelectedConflictAsync();
-				if(_allowSharedCheck.IsChecked != true) {
-					SetStatus("Apply cancelled: the shared graphics replacement was not approved.");
+				if(_allowSharedCheck.IsChecked != true && string.IsNullOrWhiteSpace(_editSettings.ExtraCondition)) {
+					SetStatus("Apply cancelled: no shared replacement rule was chosen.");
 					return;
 				}
 			}
@@ -2361,6 +2389,7 @@ namespace Mesen.Windows
 			target.MirrorConditions = source.MirrorConditions;
 			target.MatchBackgroundPriority = source.MatchBackgroundPriority;
 			target.AllPaletteVariants = source.AllPaletteVariants;
+			target.ExtraCondition = source.ExtraCondition;
 			target.CropLeft = source.CropLeft;
 			target.CropTop = source.CropTop;
 			target.CropRight = source.CropRight;
@@ -2567,11 +2596,31 @@ namespace Mesen.Windows
 
 		private async void Record_Click(object? sender, RoutedEventArgs e)
 		{
+			if(_liveSession != null) {
+				if(_liveSession.Paused) {
+					ResumeLiveCapture();
+				} else {
+					SetStatus("Live capture is already recording.");
+				}
+				return;
+			}
 			if(_capturePaused && !_captureActive) {
 				await StartDiscoveryAsync(resume: true);
 				return;
 			}
 			await StartDiscoveryAsync(resume: _capturePaused);
+		}
+
+		private string SelectedDiscoveryMode()
+		{
+			return _discoveryModeBox.SelectedIndex switch {
+				0 => HdStudioDiscoveryModes.Live,
+				1 => HdStudioDiscoveryModes.Quick,
+				2 => HdStudioDiscoveryModes.Deep,
+				3 => HdStudioDiscoveryModes.Replay,
+				4 => HdStudioDiscoveryModes.Assisted,
+				_ => HdStudioDiscoveryModes.Deep
+			};
 		}
 
 		private async Task StartDiscoveryAsync(bool resume)
@@ -2584,13 +2633,11 @@ namespace Mesen.Windows
 				SetStatus("Another operation is already running.");
 				return;
 			}
-			string mode = _discoveryModeBox.SelectedIndex switch {
-				0 => HdStudioDiscoveryModes.Quick,
-				1 => HdStudioDiscoveryModes.Deep,
-				2 => HdStudioDiscoveryModes.Replay,
-				3 => HdStudioDiscoveryModes.Assisted,
-				_ => HdStudioDiscoveryModes.Deep
-			};
+			string mode = SelectedDiscoveryMode();
+			if(mode == HdStudioDiscoveryModes.Live) {
+				StartLiveCapture();
+				return;
+			}
 			HdStudioDiscoveryOptions options = new() {
 				Mode = mode,
 				Frames = IntValue(_discoveryBudgetBox, 18000),
@@ -2663,13 +2710,275 @@ namespace Mesen.Windows
 			_discoverCancelButton.IsEnabled = false;
 		}
 
+		//------------------------------------------------------------------ live capture
+
+		private void StartLiveCapture()
+		{
+			if(_project == null || string.IsNullOrWhiteSpace(_romPath)) {
+				SetStatus("Open a ROM first, start playing in Mesen, then press Record.");
+				return;
+			}
+			try {
+				_liveSession = HdStudioLiveCapture.Start(_project, 2, 30, Log);
+				_pausedLiveFrame = null;
+				_captureActive = true;
+				_capturePaused = false;
+				SetCaptureState("LIVE");
+				_discoverStartButton.IsEnabled = false;
+				_discoverCancelButton.IsEnabled = false;
+				_discoveryProgress.IsIndeterminate = true;
+				_animationTimer?.Stop();
+				_liveTimer?.Stop();
+				_liveTimer = new DispatcherTimer() { Interval = TimeSpan.FromMilliseconds(700) };
+				_liveTimer.Tick += (_, _) => UpdateLiveCaptureStatus();
+				_liveTimer.Start();
+				ShowWorkspace("discover");
+				_discoveryStatusText.Text = "Live capture is recording the real emulator frames. Play normally in the Mesen window.";
+				_gameplayHintText.Text = "Live: play the game, then press Pause capture to select an object in the frozen frame.";
+				_dockCaptureMode.Text = "Live gameplay";
+				_dockCaptureStatus.Text = "Live capture recording";
+				Log("Live capture: session started.");
+				SetStatus("Live capture running. Play the game normally in Mesen.");
+			} catch(Exception ex) {
+				_liveSession = null;
+				SetCaptureState("IDLE");
+				SetStatus("Live capture could not start: " + ex.Message);
+				Log("ERROR: live capture: " + ex);
+			}
+		}
+
+		private void UpdateLiveCaptureStatus()
+		{
+			if(_liveSession == null) {
+				return;
+			}
+			HdStudioLiveCapture.LiveStatus? status = HdStudioLiveCapture.ReadStatus(_liveSession);
+			if(status == null) {
+				return;
+			}
+			_captureFramesText.Text = status.Samples.ToString("N0");
+			_capturePatternsText.Text = status.Patterns.ToString("N0");
+			_captureNewText.Text = status.GameplayFrames.ToString("N0") + " live";
+			_captureAssetsText.Text = _catalog.Assets.Count.ToString("N0");
+			_captureSessionText.Text = "Live gameplay - frame " + status.Frame.ToString("N0");
+			_dockCaptureFrames.Text = status.Samples.ToString("N0");
+			_dockCaptureChunks.Text = "-";
+			_dockCaptureReason.Text = status.Paused ? "paused" : "recording";
+			string message = status.Paused
+				? $"Live capture paused at frame {status.Frame:N0}. The game keeps running; the frozen frame is ready for picking."
+				: $"Live: frame {status.Frame:N0}, {status.Samples:N0} samples, {status.SpriteOccurrences:N0} sprite occurrences, {status.Patterns:N0} patterns, {status.BackgroundBlocks:N0} background blocks.";
+			_discoveryStatusText.Text = message;
+			_dockCaptureStatus.Text = message;
+			if(status.Paused && _pausedLiveFrame == null) {
+				LoadLivePauseFrame();
+			}
+			if(status.Stopped) {
+				_liveTimer?.Stop();
+			}
+		}
+
+		private void UpdateLiveCaptureStatusFromDisk()
+		{
+			try {
+				string path = Path.Combine(HdStudioLiveCapture.GetFolder(_packFolder), "live-status.json");
+				if(!File.Exists(path)) return;
+				using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+				System.Text.Json.JsonElement root = doc.RootElement;
+				int Int(string name) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out int result) ? result : 0;
+				int samples = Int("samples");
+				int patterns = Int("patterns");
+				int occurrences = Int("spriteOccurrences");
+				int blocks = Int("backgroundBlocks");
+				int frame = Int("frame");
+				_captureFramesText.Text = samples.ToString("N0");
+				_capturePatternsText.Text = patterns.ToString("N0");
+				_captureAssetsText.Text = _catalog.Assets.Count.ToString("N0");
+				_captureNewText.Text = Int("gameplayFrames").ToString("N0") + " live";
+				_captureSessionText.Text = "Live gameplay - frame " + frame.ToString("N0");
+				_dockCaptureFrames.Text = samples.ToString("N0");
+				_dockCaptureMode.Text = "Live gameplay";
+				_dockCaptureReason.Text = "paused";
+				string message = $"Live capture paused at frame {frame:N0}: {samples:N0} samples, {occurrences:N0} sprite occurrences, {patterns:N0} patterns, {blocks:N0} background blocks.";
+				_discoveryStatusText.Text = message;
+				_dockCaptureStatus.Text = message;
+				_discoveryProgress.IsIndeterminate = false;
+				_discoveryProgress.Value = 0;
+			} catch { }
+		}
+
+		private async void PauseLiveCapture()
+		{
+			if(_liveSession == null) return;
+			HdStudioLiveCapture.SendCommand(_liveSession, "pause");
+			_capturePaused = true;
+			SetCaptureState("LIVE-PAUSED");
+			SetStatus("Live capture paused. Waiting for the frozen frame...");
+			await Task.Delay(800);
+			UpdateLiveCaptureStatus();
+			LoadLivePauseFrame();
+		}
+
+		private void ResumeLiveCapture()
+		{
+			if(_liveSession == null) return;
+			HdStudioLiveCapture.SendCommand(_liveSession, "resume");
+			_capturePaused = false;
+			_pausedLiveFrame = null;
+			_gameplayCanvas.PickMode = false;
+			_gameplayCanvas.HardwareBoxes.Clear();
+			SetCaptureState("LIVE");
+			SetStatus("Live capture resumed. Continue playing in Mesen.");
+		}
+
+		private async Task StopLiveCaptureAsync()
+		{
+			if(_liveSession == null) return;
+			HdStudioLiveCapture.SendCommand(_liveSession, "pause");
+			await Task.Delay(700);
+			HdStudioLiveCapture.SendCommand(_liveSession, "stop");
+			await Task.Delay(900);
+			HdStudioLiveCapture.Remove(_liveSession);
+			_liveTimer?.Stop();
+			_liveTimer = null;
+			_liveSession = null;
+			_captureActive = false;
+			_capturePaused = false;
+			_discoveryProgress.IsIndeterminate = false;
+			SetCaptureState("COMPLETE");
+			_discoverStartButton.IsEnabled = true;
+			try {
+				SetStatus("Live capture stopped. Importing observed assets...");
+				int code = await RunHeadlessAsync("--hdstudio", _romPath, "--assets", "--out=" + _packFolder);
+				RefreshFromDisk();
+				LoadLivePauseFrame();
+				int picked = HdStudioPicking.ReadPickedAssetElements(_packFolder).Count;
+				SetStatus($"Live capture imported (exit {code}): {_catalog.Assets.Count:N0} editable assets, {picked} manual pick(s). Approved artwork was preserved.");
+				_discoveryStatusText.Text = $"Live capture complete: {_catalog.Assets.Count:N0} assets. Frame picking stays available on the frozen frame.";
+				Log($"Live capture: imported {_catalog.Assets.Count} assets, {picked} manual picks.");
+			} catch(Exception ex) {
+				SetStatus("Live capture stopped, but asset import failed: " + ex.Message);
+				Log("ERROR: live import: " + ex);
+			}
+		}
+
+		private void LoadLivePauseFrame()
+		{
+			_pausedLiveFrame = HdStudioPicking.PauseFrame.Load(_packFolder);
+			if(_pausedLiveFrame == null) {
+				SetStatus("No paused live frame yet. Wait a moment and press Pause again.");
+				return;
+			}
+			if(!string.IsNullOrWhiteSpace(_pausedLiveFrame.ScreenshotPath) && File.Exists(_pausedLiveFrame.ScreenshotPath)) {
+				_gameplayCanvas.FramePath = _pausedLiveFrame.ScreenshotPath;
+				_gameplayCanvas.Reload();
+				ShowBitmap(_verifyOriginalImage, _pausedLiveFrame.ScreenshotPath);
+			}
+			_gameplayCanvas.SelectMode = true;
+			_gameplayCanvas.PickMode = true;
+			_gameplayCanvas.ClearSelection();
+			_gameplayCanvas.HardwareBoxes.Clear();
+			foreach(var group in _pausedLiveFrame.Sprites.GroupBy(s => s.Oam)) {
+				PauseSpriteBox(group.ToList());
+			}
+			_gameplayCanvas.InvalidateVisual();
+			_pickCandidates.Clear();
+			_candidateRows.Clear();
+			_gameplayCandidateList.ItemsSource = null;
+			_gameplayHintText.Text = $"Frame {_pausedLiveFrame.Frame} frozen. Click any object to resolve OAM sprites, palette and CHR patterns.";
+			_gameplaySelectionText.Text = $"Live frame {_pausedLiveFrame.Frame}: {_pausedLiveFrame.Sprites.Count} hardware sprite parts, scroll {_pausedLiveFrame.ScrollX},{_pausedLiveFrame.ScrollY}, {_pausedLiveFrame.Mirroring}.";
+			_candidateHintText.Text = "Click an object in the frame to list its hardware sprites, composition and nametable cell.";
+		}
+
+		private void PauseSpriteBox(List<HdStudioPicking.PauseSprite> parts)
+		{
+			int x = parts.Min(p => p.X);
+			int y = parts.Min(p => p.Y);
+			int w = parts.Max(p => p.X + 8) - x;
+			int h = parts.Max(p => p.Y + 8) - y;
+			_gameplayCanvas.HardwareBoxes.Add((x, y, Math.Max(8, w), Math.Max(8, h), "OAM " + parts[0].Oam));
+		}
+
+		private void HandleGameplayPointPicked(Point point)
+		{
+			if(_pausedLiveFrame == null) {
+				SetStatus("Pause live capture first; picking needs a frozen frame with OAM and pattern data.");
+				return;
+			}
+			_pickCandidates.Clear();
+			_pickCandidates.AddRange(HdStudioPicking.GetCandidates(_pausedLiveFrame, (int)point.X, (int)point.Y, _palette));
+			_candidateRows.Clear();
+			foreach(HdStudioPicking.PickCandidate candidate in _pickCandidates) {
+				if(candidate.Asset == null) continue;
+				_candidateRows.Add(new HdStudioCandidateRow() {
+					Asset = candidate.Asset,
+					Thumbnail = LoadBitmap(HdStudioCatalog.EnsureOriginalPreview(_catalog, candidate.Asset, _palette)),
+					Category = candidate.Kind + " - " + candidate.Width + "x" + candidate.Height + " - " + candidate.Confidence.ToString("0.00"),
+					Pick = candidate
+				});
+			}
+			_gameplayCandidateList.ItemsSource = _candidateRows.ToList();
+			if(_candidateRows.Count > 0) {
+				_gameplayCandidateList.SelectedIndex = 0;
+				HdStudioPicking.PickCandidate first = _pickCandidates[0];
+				_gameplayCanvas.SetSelectionNes(first.X, first.Y, first.Width, first.Height);
+			}
+			_gameplaySelectionText.Text = _pickCandidates.Count == 0
+				? $"No hardware sprite or background cell at {point.X},{point.Y}."
+				: $"{_pickCandidates.Count} candidate(s) at {point.X},{point.Y}. The first is the topmost hardware sprite (lowest OAM index).";
+			_candidateHintText.Text = _candidateRows.Count == 0
+				? "Nothing was drawn at that pixel in the frozen frame."
+				: "Choose a hardware sprite, the reconstructed composition, or the background tile. Group selection merges multiple picks.";
+		}
+
+		private void GroupCandidates_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_pausedLiveFrame == null) {
+				SetStatus("Pause live capture and pick objects first.");
+				return;
+			}
+			List<HdStudioPicking.PickCandidate> selected = _gameplayCandidateList.SelectedItems?
+				.OfType<HdStudioCandidateRow>()
+				.Where(r => r.Pick != null)
+				.Select(r => r.Pick!)
+				.ToList() ?? new List<HdStudioPicking.PickCandidate>();
+			if(selected.Count < 2) {
+				SetStatus("Select at least two candidate rows (hold Ctrl) to build a manual composition.");
+				return;
+			}
+			HdStudioPicking.PickCandidate merged = new() {
+				Kind = "manualComposition",
+				Name = "Manual composition (" + selected.Sum(c => c.Sprites.Count + c.Background.Count) + " cells)",
+				Detail = "user grouped " + selected.Count + " candidate(s)",
+				Confidence = 1.0
+			};
+			foreach(HdStudioPicking.PickCandidate candidate in selected) {
+				merged.Sprites.AddRange(candidate.Sprites);
+				merged.Background.AddRange(candidate.Background);
+			}
+			merged.Sprites.Sort((a, b) => a.Oam != b.Oam ? a.Oam.CompareTo(b.Oam) : a.Part.CompareTo(b.Part));
+			HdStudioCatalogAsset asset = HdStudioPicking.BuildManualComposition(merged, _pausedLiveFrame, _palette);
+			string path = HdStudioPicking.SavePickedAsset(_packFolder, asset, Log);
+			RefreshFromDisk();
+			HdStudioCatalogAsset? saved = _catalog.Find(asset.Id);
+			if(saved != null) {
+				_newAssetIds.Add(saved.Id);
+				SelectAsset(saved);
+				ShowWorkspace("artwork");
+				SetStatus($"Manual composition saved to {asset.Name} ({path}).");
+			}
+		}
+
 		private void PauseCapture_Click(object? sender, RoutedEventArgs e)
 		{
+			if(_liveSession != null) {
+				PauseLiveCapture();
+				return;
+			}
 			if(_captureActive && _discoveryCancellation != null) {
 				_discoveryCancellation.Cancel();
 				_capturePaused = true;
 				SetCaptureState("PAUSED");
-				SetStatus("Capture paused. Progress is preserved; Resume continues a new chunk.");
+				SetStatus("Headless discovery paused: the current chunk was cancelled, not the emulator. Progress is preserved; Resume starts a new chunk.");
 			} else if(_capturePaused) {
 				SetStatus("Capture is already paused.");
 			}
@@ -2677,6 +2986,10 @@ namespace Mesen.Windows
 
 		private async void ResumeCapture_Click(object? sender, RoutedEventArgs e)
 		{
+			if(_liveSession != null) {
+				ResumeLiveCapture();
+				return;
+			}
 			if(_capturePaused) {
 				await StartDiscoveryAsync(resume: true);
 			} else {
@@ -2684,29 +2997,41 @@ namespace Mesen.Windows
 			}
 		}
 
-		private void StopCapture_Click(object? sender, RoutedEventArgs e)
+		private async void StopCapture_Click(object? sender, RoutedEventArgs e)
 		{
+			if(_liveSession != null) {
+				await StopLiveCaptureAsync();
+				return;
+			}
 			_discoveryCancellation?.Cancel();
 			_capturePaused = false;
 			_captureActive = false;
 			SetCaptureState("IDLE");
 			UpdateStatusBar();
-			SetStatus("Capture stopped. Existing chunks and approved artwork are preserved.");
+			SetStatus("Headless discovery stopped. Existing chunks and approved artwork are preserved.");
 		}
 
 		private void SetCaptureState(string state)
 		{
 			_captureState = state;
 			_captureStateText.Text = state;
-			_captureStateBadge.Classes.Set("warning", state == "RECORDING");
-			_captureStateBadge.Classes.Set("info", state == "PAUSED");
+			_captureStateBadge.Classes.Set("warning", state == "RECORDING" || state == "LIVE");
+			_captureStateBadge.Classes.Set("info", state == "PAUSED" || state == "LIVE-PAUSED");
 			_captureStateBadge.Classes.Set("success", state == "COMPLETE");
 			_captureSessionText.Text = state switch {
-				"RECORDING" => "Recording gameplay...",
-				"PAUSED" => "Paused",
+				"LIVE" => "Live gameplay recording",
+				"LIVE-PAUSED" => "Live capture paused",
+				"RECORDING" => "Headless discovery running",
+				"PAUSED" => "Headless discovery paused",
 				"COMPLETE" => "Capture complete",
 				_ => "No session yet"
 			};
+			_captureStateText.Text = state switch {
+				"LIVE" => "LIVE",
+				"LIVE-PAUSED" => "PAUSED",
+				_ => state
+			};
+			_capturePaused = state == "LIVE-PAUSED" || state == "PAUSED";
 			UpdateStatusBar();
 		}
 
@@ -2872,36 +3197,57 @@ namespace Mesen.Windows
 			_gameplayHintText.Text = "Capture a frame, then use Select object to mark an 8×8-aligned region.";
 		}
 
+		private HdStudioCatalogAsset? EnsurePickedAsset(HdStudioCandidateRow? row)
+		{
+			if(row == null) {
+				return null;
+			}
+			if(row.Pick?.Asset == null) {
+				return row.Asset;
+			}
+			HdStudioPicking.SavePickedAsset(_packFolder, row.Pick.Asset, Log);
+			RefreshFromDisk();
+			HdStudioCatalogAsset? saved = _catalog.Find(row.Pick.Asset.Id);
+			if(saved != null) {
+				_newAssetIds.Add(saved.Id);
+				return saved;
+			}
+			return row.Pick.Asset;
+		}
+
 		private void OpenSelectionInWorkshop_Click(object? sender, RoutedEventArgs e)
 		{
-			HdStudioCatalogAsset? asset = _gameplayCandidateList.SelectedItem is HdStudioCandidateRow row ? row.Asset : _candidateRows.FirstOrDefault()?.Asset;
+			HdStudioCandidateRow? row = _gameplayCandidateList.SelectedItem as HdStudioCandidateRow ?? _candidateRows.FirstOrDefault();
+			HdStudioCatalogAsset? asset = EnsurePickedAsset(row);
 			if(asset == null) {
-				SetStatus("No matching asset was found. Capture a frame and mark a region first.");
+				SetStatus("No matching asset was found. Pause live capture and click an object first.");
 				return;
 			}
 			SelectAsset(asset);
 			ShowWorkspace("artwork");
-			SetStatus("Opened " + asset.Name + " in the Artwork Workshop.");
+			SetStatus("Opened " + asset.Name + " in the Artwork Workshop with its original hardware patterns.");
 		}
 
 		private void AddDiscovered_Click(object? sender, RoutedEventArgs e)
 		{
-			HdStudioCatalogAsset? asset = _gameplayCandidateList.SelectedItem is HdStudioCandidateRow row ? row.Asset : _candidateRows.FirstOrDefault()?.Asset;
+			HdStudioCandidateRow? row = _gameplayCandidateList.SelectedItem as HdStudioCandidateRow ?? _candidateRows.FirstOrDefault();
+			HdStudioCatalogAsset? asset = EnsurePickedAsset(row);
 			if(asset == null || !_gameplayCanvas.TryGetSelectionNes(out int x, out int y, out int w, out int h)) {
 				SetStatus("Select a gameplay region and a matching asset first.");
 				return;
 			}
 			try {
+				//The crop is only a starting artwork preview. The asset itself keeps the
+				//mapper-resolved pattern/palette references and can compile a real HD Pack.
 				string crop = CropGameplayRegion(x, y, w, h);
 				if(crop.Length == 0) {
 					SetStatus("The selected region could not be cropped.");
 					return;
 				}
-				_newAssetIds.Add(asset.Id);
 				SelectAsset(asset);
 				SetSourceArtwork(crop);
 				ShowWorkspace("artwork");
-				SetStatus($"Added discovered region to {asset.Name} as source artwork. Save a draft or approve it.");
+				SetStatus($"Added {asset.Name} to the workshop. The replacement uses the picked hardware patterns, not a screenshot crop.");
 			} catch(Exception ex) {
 				SetStatus("Could not add the discovered region: " + ex.Message);
 				Log("ERROR: " + ex);

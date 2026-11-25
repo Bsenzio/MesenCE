@@ -65,7 +65,11 @@ public:
 	void CaptureSpriteFrame()
 	{
 		vector<HdStudioSprite> sprites;
-		if(_mask.SpritesEnabled && IsRenderingEnabled()) {
+		//Do not require the PPU enable bits here: SendFrame happens at the end of the
+		//frame, when many games have already disabled rendering for OAM DMA. The primary
+		//OAM still describes the sprites that were displayed. This was the reason CHR-RAM
+		//games such as The Guardian Legend produced almost no compositions.
+		{
 			BaseMapper* mapper = _console->GetMapper();
 			bool isChrRam = !mapper->HasChrRom();
 			bool largeSprites = _control.LargeSprites;
@@ -110,6 +114,8 @@ public:
 					sprite.PaletteColors = paletteColors;
 					sprite.HorizontalMirror = horizontalMirror;
 					sprite.VerticalMirror = verticalMirror;
+					sprite.OamIndex = (uint8_t)i;
+					sprite.OamPart = (uint8_t)part;
 					sprites.push_back(sprite);
 				}
 			}

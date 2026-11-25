@@ -601,14 +601,23 @@
                         <TextBlock Classes="section" Text="OBJECT MATCHES" />
                         <TextBlock Grid.Column="1" Name="CandidateFilterText" Classes="caption" Text="All objects" />
                       </Grid>
-                      <ListBox Name="GameplayCandidateList" MaxHeight="190" ItemTemplate="{StaticResource CandidateTemplate}" />
-                      <TextBlock Name="CandidateHintText" Classes="caption" TextWrapping="Wrap" Text="Capture a frame and mark a region to find candidate assets." />
+                      <ListBox Name="GameplayCandidateList" MaxHeight="190" SelectionMode="Multiple" ItemTemplate="{StaticResource CandidateTemplate}" />
+                      <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                        <Button Name="GroupCandidatesButton" Classes="subtle" Click="GroupCandidates_Click" ToolTip.Tip="Merge the selected hardware sprites into one manual composition">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Path Classes="icon small" Data="{StaticResource Icon.Layers}" />
+                            <TextBlock Text="Group selection" />
+                          </StackPanel>
+                        </Button>
+                      </StackPanel>
+                      <TextBlock Name="CandidateHintText" Classes="caption" TextWrapping="Wrap" Text="Capture a frame and click an object to resolve its hardware sprites." />
                     </StackPanel>
                   </Border>
 
                   <Expander Header="Discovery options" IsExpanded="True">
                     <StackPanel Spacing="7">
-                      <ComboBox Name="DiscoveryModeBox" SelectedIndex="1" HorizontalAlignment="Stretch">
+                      <ComboBox Name="DiscoveryModeBox" SelectedIndex="2" HorizontalAlignment="Stretch">
+                        <ComboBoxItem Content="Live gameplay capture (play in Mesen)" />
                         <ComboBoxItem Content="Quick scan (incomplete)" />
                         <ComboBoxItem Content="Deep scan" />
                         <ComboBoxItem Content="Replay capture (movie)" />

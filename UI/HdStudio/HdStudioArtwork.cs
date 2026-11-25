@@ -288,7 +288,7 @@ namespace Mesen.HdStudio
 		/// unflipped because Mesen flips the replacement at render time; conditional entries are
 		/// ordered before unconditional ones for the same hardware tile.
 		/// </summary>
-		public static List<Cell> BuildCells(IReadOnlyList<TileSpec> tiles, SKColor[] composed, int targetWidth, int targetHeight, int packScale, bool mirrorConditions, Action<string> log, IReadOnlyList<string>? paletteVariants = null, bool matchBackgroundPriority = false)
+		public static List<Cell> BuildCells(IReadOnlyList<TileSpec> tiles, SKColor[] composed, int targetWidth, int targetHeight, int packScale, bool mirrorConditions, Action<string> log, IReadOnlyList<string>? paletteVariants = null, bool matchBackgroundPriority = false, string extraCondition = "")
 		{
 			int tileSize = 8 * packScale;
 			List<Cell> cells = new();
@@ -307,7 +307,7 @@ namespace Mesen.HdStudio
 				if(string.IsNullOrEmpty(key)) {
 					continue;
 				}
-				string condition = GetCondition(tile, mirrorConditions, matchBackgroundPriority);
+				string condition = GetCondition(tile, mirrorConditions, matchBackgroundPriority, extraCondition);
 
 				//The same original object can be drawn with several sprite/background palettes.
 				//A user replacement is visual content, not a palette, so it applies to every
@@ -405,7 +405,7 @@ namespace Mesen.HdStudio
 			return tile.Pattern.ToUpperInvariant();
 		}
 
-		public static string GetCondition(TileSpec tile, bool mirrorConditions, bool matchBackgroundPriority = false)
+		public static string GetCondition(TileSpec tile, bool mirrorConditions, bool matchBackgroundPriority = false, string extraCondition = "")
 		{
 			List<string> conditions = new();
 			if(mirrorConditions) {
@@ -422,6 +422,13 @@ namespace Mesen.HdStudio
 			}
 			if(matchBackgroundPriority && tile.BackgroundPriority) {
 				conditions.Add("bgpriority");
+			}
+			if(!string.IsNullOrWhiteSpace(extraCondition)) {
+				foreach(string token in extraCondition.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+					if(!conditions.Contains(token, StringComparer.OrdinalIgnoreCase)) {
+						conditions.Add(token);
+					}
+				}
 			}
 			return conditions.Count == 0 ? "" : "[" + string.Join("&", conditions) + "]";
 		}
