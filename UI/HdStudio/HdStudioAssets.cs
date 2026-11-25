@@ -73,6 +73,7 @@ namespace Mesen.HdStudio
 			ReadPlayerAtlas(studio, romKey, assets, log);
 			ReadPlayerFormTiles(studio, romKey, assets, log);
 			ReadBackgroundBlocks(studio, romKey, assets, log);
+			ReadObservedBackgroundBlocks(studio, romKey, rom, assets, log);
 
 			using(FileStream stream = File.Create(Path.Combine(assetsFolder, "assets.json"))) {
 				using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true });
@@ -516,6 +517,105 @@ namespace Mesen.HdStudio
 				}
 			} catch(Exception ex) {
 				log("Assets: background blocks could not be read: " + ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// Runtime background blocks from bg_observe.lua. Each block is four nametable cells
+		/// observed together with their attribute palette and mapper-resolved pattern bytes.
+		/// For CHR-RAM the identity is the 32-byte runtime content, not a cartridge index.
+		/// </summary>
+		private static void ReadObservedBackgroundBlocks(string studio, string romKey, NesRomData rom, List<Asset> assets, Action<string> log)
+		{
+			string path = Path.Combine(studio, "bg_observed.tsv");
+			if(!File.Exists(path)) {
+				return;
+			}
+			int added = 0;
+			HashSet<string> existing = new(assets.Where(a => a.Kind == "backgroundBlock").Select(a => a.Id), StringComparer.OrdinalIgnoreCase);
+			try {
+				foreach(string line in File.ReadLines(path)) {
+					if(line.Length == 0 || line[0] == '#') {
+						continue;
+					}
+					string[] parts = line.Split('\t');
+					if(parts.Length < 10 || !int.TryParse(parts[0], out int uses)) {
+						continue;
+					}
+					string palette = parts[1].Trim().ToUpperInvariant();
+					if(palette.Length != 8) {
+						continue;
+					}
+					List<string> keys = new();
+					List<string> data = new();
+					bool complete = true;
+					for(int i = 0; i < 4; i++) {
+						string key = parts[2 + i].Trim();
+						string tileData = parts[6 + i].Trim();
+						if(key.Length == 0) {
+							complete = false;
+							break;
+						}
+						keys.Add(key.ToUpperInvariant());
+						data.Add(tileData.ToUpperInvariant());
+					}
+					if(!complete) {
+						continue;
+					}
+					string signature = palette + "|" + string.Join("|", keys);
+					string id = "backgroundBlock:" + romKey + ":rt:" + ShortHash(signature);
+					if(!existing.Add(id)) {
+						continue;
+					}
+					Asset asset = new() {
+						Id = id,
+						Kind = "backgroundBlock",
+						Name = "Runtime background block " + ShortHash(signature).Substring(0, 6) + " (" + palette + ")",
+						Source = "runtime-observation",
+						Provenance = $"bg_observed.tsv, four nametable cells, observed {uses} sample(s)",
+						Confidence = 0.75,
+						Validation = rom.HasChrRom ? "observed-runtime" : "observed-chr-ram",
+						Width = 16,
+						Height = 16
+					};
+					int[] posX = { 0, 8, 0, 8 };
+					int[] posY = { 0, 0, 8, 8 };
+					for(int i = 0; i < 4; i++) {
+						//A blank cell is shared by every empty area of the game. Emitting a
+						//replacement for it would paint the sky/background globally, so the
+						//observed block keeps only its non-blank cells. The original blank cells
+						//stay untouched.
+						if(data[i] == new string('0', 32)) {
+							continue;
+						}
+						asset.Tiles.Add(new TileRef() {
+							X = posX[i],
+							Y = posY[i],
+							Pattern = keys[i],
+							TileData = data[i].Length == 32 ? data[i] : null,
+							Palette = palette,
+							ChrType = rom.HasChrRom ? "NesChrRom" : "NesChrRam"
+						});
+					}
+					if(asset.Tiles.Count == 0) {
+						continue;
+					}
+					asset.PaletteVariants.Add(palette);
+					asset.ValidationNotes.Add("Observed as a 2x2 nametable block with one attribute palette; positions are the original NES cells.");
+					if(asset.Tiles.Count < 4) {
+						asset.ValidationNotes.Add($"{4 - asset.Tiles.Count} blank cell(s) were left untouched: blank patterns are shared across the screen and cannot be replaced privately.");
+					}
+					if(!rom.HasChrRom) {
+						asset.ValidationNotes.Add("CHR-RAM identity is the runtime pattern content. If the game writes different bytes at the same address, this replacement will not match that different content.");
+					}
+					assets.Add(asset);
+					added++;
+				}
+				if(added > 0) {
+					log($"Assets: {added} runtime background blocks from bg_observed.tsv");
+				}
+			} catch(Exception ex) {
+				log("Assets: runtime background blocks could not be read: " + ex.Message);
 			}
 		}
 

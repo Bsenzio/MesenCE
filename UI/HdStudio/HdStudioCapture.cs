@@ -40,13 +40,34 @@ namespace Mesen.HdStudio
 	///   --assets          Export HdStudio/assets/assets.json (versioned semantic asset schema)
 	///   --compile         Rebuild HdStudio/project.hdstudio.json into a standard Mesen pack
 	///   --validate        Check the project (dry-run compile) without modifying the pack
+	///   --export          Export the project to a distributable pack (see --export-root/--export-to)
+	///   --export-root=DIR Export below DIR/<pack name> (default: Documents/RetroArcDo HD Studio/Exports)
+	///   --export-to=DIR   Export to an exact destination folder
+	///   --export-name=NAME  Proposed pack folder name below the export root
+	///   --install         Copy the finished pack into Mesen's HdPacks folder (named after the ROM)
+	///   --overwrite       Allow replacing an existing destination (a backup is kept by default)
+	///   --no-backup       Do not keep the previous destination after a successful replacement
+	///   --discover=MODE   Progressive discovery: quick|deep|replay|assisted (resumable, chunked)
+	///   --discover-budget=N  Frames added by this discovery run (default 18000; deep)
+	///   --discover-chunk=N   Frames per capture chunk (default 1800)
+	///   --discover-seed=N    First deterministic explorer seed (chunks derive further seeds)
+	///   --discover-saturation=N  Stop after N chunks without measured growth (deep/quick)
+	///   --discover-restart   Ignore the existing discovery session and start again
+	///   --slice-sheet=FILE   Slice a sprite sheet into frames (no ROM required)
+	///   --grid=COLSxROWS     Sheet grid; frame size can be derived from the sheet
+	///   --slice-frame=WxH    Frame size; grid can be derived from the sheet
+	///   --slice-margin=N|XxY Sheet outer margin
+	///   --slice-spacing=N|XxY Spacing between frames
+	///   --slice-trim         Trim fully transparent frame borders (anchors are reported)
+	///   --slice-out=DIR      Output folder for sliced frames
 	///   --import          Import a user image into one selected asset (requires --asset/--image)
 	///   --asset=ID        Semantic asset id, name or atlas id (e.g. 114 for the SMB3 Goomba)
 	///   --image=FILE      Any PNG/JPEG/WebP image used as the new appearance
 	///   --remove-background / --keep-largest / --bg-tolerance=N / --no-crop
 	///   --fit=contain|stretch  --anchor=center|bottom|top|left|right  --padding=N
 	///   --import-scale=N  Output scale (2-6); a different scale needs --minimal
-	///   --mirror-conditions  Add standard hmirror/vmirror conditions when exactly one axis is flipped
+	///   --mirror-conditions  Add standard hmirror/vmirror conditions for flipped occurrences (both axes uses &)
+	///   --match-bgpriority  Add the standard bgpriority condition for tiles captured with background priority
 	///   --all-palettes    Replace every observed palette variant of the asset (default: first palette only)
 	///   --minimal         Write a standalone minimal pack instead of adding to an existing hires.txt
 	///   --dry-run         Write previews/sheet/manifest without changing hires.txt
@@ -67,6 +88,7 @@ namespace Mesen.HdStudio
 			public uint Scale = 4;
 			public ScaleFilterType Filter = ScaleFilterType.xBRZ;
 			public int Frames = 18000;
+			public int Seed;
 			public string? OutFolder;
 			public string? ProjectFolder;
 			public int TimeoutSeconds = 1800;
@@ -97,9 +119,36 @@ namespace Mesen.HdStudio
 			public bool ImportKeepLargest;
 			public bool ImportCrop = true;
 			public bool ImportMirrorConditions;
+			public bool ImportMatchBgPriority;
 			public bool ImportAllPalettes;
 			public bool ImportMinimal;
 			public bool ImportDryRun;
+			public bool Export;
+			public string? ExportRoot;
+			public string? ExportTo;
+			public string? ExportName;
+			public bool ExportInstall;
+			public bool ExportOverwrite;
+			public bool ExportNoBackup;
+			public bool ExportFull;
+			public bool BgScan;
+			public string? DiscoverMode;
+			public int DiscoverFrames = 18000;
+			public int DiscoverChunk = 1800;
+			public int DiscoverSeed = 20261124;
+			public int DiscoverSaturation = 3;
+			public bool DiscoverRestart;
+			public string? SheetSlicePath;
+			public int SliceColumns;
+			public int SliceRows;
+			public int SliceFrameWidth;
+			public int SliceFrameHeight;
+			public int SliceMarginX;
+			public int SliceMarginY;
+			public int SliceSpacingX;
+			public int SliceSpacingY;
+			public bool SliceTrim;
+			public string? SliceOut;
 			public int SpriteId = -1;
 			public string? DisasmPath;
 			public bool FramesSpecified;
@@ -121,6 +170,31 @@ namespace Mesen.HdStudio
 				//No ROM/emulator is involved: verify geometry, segmentation and adaptation rules.
 				return HdStudioSelfTest.Run(Log);
 			}
+			if(opt.SheetSlicePath != null) {
+				//Offline sprite-sheet slicing: no ROM or emulator is involved.
+				try {
+					List<HdStudioSliceFrame> frames = HdStudioSheetSlicer.Slice(new HdStudioSliceOptions() {
+						ImagePath = opt.SheetSlicePath,
+						OutputFolder = opt.SliceOut ?? "",
+						Columns = opt.SliceColumns,
+						Rows = opt.SliceRows,
+						FrameWidth = opt.SliceFrameWidth,
+						FrameHeight = opt.SliceFrameHeight,
+						MarginX = opt.SliceMarginX,
+						MarginY = opt.SliceMarginY,
+						SpacingX = opt.SliceSpacingX,
+						SpacingY = opt.SliceSpacingY,
+						TrimTransparent = opt.SliceTrim
+					}, Log);
+					foreach(HdStudioSliceFrame frame in frames) {
+						Log($"  frame {frame.Index}: {frame.Width}x{frame.Height} from ({frame.X},{frame.Y}) -> {frame.Path}");
+					}
+					return 0;
+				} catch(Exception ex) {
+					Log("Error: " + ex.Message);
+					return 1;
+				}
+			}
 			if(opt.Errors.Count > 0 || opt.RomPath == null) {
 				foreach(string error in opt.Errors) {
 					Log("Error: " + error);
@@ -139,6 +213,36 @@ namespace Mesen.HdStudio
 			}
 			string outFolder = opt.OutFolder ?? Path.Combine(ConfigManager.HdPackFolder, packName);
 			Directory.CreateDirectory(outFolder);
+
+			if(opt.DiscoverMode != null) {
+				//Progressive discovery scheduler: runs resumable capture chunks, exports the
+				//catalog after each chunk and records coverage growth and the stopping reason.
+				string projectPath = HdStudioProject.GetDefaultPath(outFolder);
+				HdStudioProject project = File.Exists(projectPath)
+					? HdStudioProject.Load(projectPath)
+					: HdStudioProject.Create(opt.RomPath!, outFolder, (int)opt.Scale, Log);
+				if(!File.Exists(projectPath)) {
+					project.Save(projectPath);
+				}
+				HdStudioDiscoveryOptions discovery = new() {
+					Mode = opt.DiscoverMode!,
+					Frames = opt.DiscoverFrames,
+					ChunkFrames = opt.DiscoverChunk,
+					Seed = opt.DiscoverSeed,
+					SaturationChunks = opt.DiscoverSaturation,
+					TimeoutSeconds = opt.TimeoutSeconds,
+					Scale = (int)opt.Scale,
+					MoviePath = opt.MoviePath ?? "",
+					LuaScriptPath = opt.LuaScripts.FirstOrDefault() ?? "",
+					Restart = opt.DiscoverRestart
+				};
+				HdStudioDiscoveryResult discoveryResult = HdStudioDiscovery.RunAsync(project, discovery, Log, null, CancellationToken.None).GetAwaiter().GetResult();
+				foreach(string error in discoveryResult.Errors) {
+					Log("Discovery error: " + error);
+				}
+				Log("Discovery session: " + discoveryResult.SessionPath);
+				return discoveryResult.Success ? 0 : 1;
+			}
 
 			if(opt.SpriteId >= 0) {
 				//Internal mode for the sprite atlas: one object per run, no HD recording/report.
@@ -189,6 +293,44 @@ namespace Mesen.HdStudio
 				}
 			}
 
+			if(opt.Export) {
+				//Offline: compile the project into a distributable pack in a user-selected folder.
+				//The build is staged and validated before it replaces anything.
+				string projectFolder = opt.ProjectFolder ?? outFolder;
+				if(!File.Exists(HdStudioProject.GetDefaultPath(projectFolder))) {
+					projectFolder = Path.Combine(ConfigManager.HdPackFolder, packName);
+				}
+				string projectPath = HdStudioProject.GetDefaultPath(projectFolder);
+				if(!File.Exists(projectPath)) {
+					Log("Error: no HD Studio project was found: " + projectPath);
+					return -1;
+				}
+				try {
+					HdStudioProject project = HdStudioProject.Load(projectPath);
+					HdStudioExportOptions exportOptions = new() {
+						RootFolder = opt.ExportRoot ?? "",
+						DestinationFolder = opt.ExportTo ?? "",
+						PackName = opt.ExportName ?? "",
+						Minimal = opt.ImportMinimal && !opt.ExportFull,
+						InstallIntoMesen = opt.ExportInstall,
+						OverwriteExisting = opt.ExportOverwrite,
+						KeepBackup = !opt.ExportNoBackup,
+						DryRun = opt.ImportDryRun
+					};
+					HdStudioExportResult exportResult = HdStudioExport.Export(project, exportOptions, Log);
+					if(exportResult.Success) {
+						Log("Export destination: " + exportResult.FinalFolder);
+						if(!string.IsNullOrWhiteSpace(exportResult.InstalledFolder)) {
+							Log("Installed pack: " + exportResult.InstalledFolder);
+						}
+					}
+					return exportResult.Success ? 0 : 1;
+				} catch(Exception ex) {
+					Log("Error: the project could not be exported: " + ex.Message);
+					return -1;
+				}
+			}
+
 			if(opt.Import) {
 				//Offline: process one whole object image, segment it into its original tile grid
 				//and write standard Mesen HD-pack tile entries.
@@ -205,6 +347,7 @@ namespace Mesen.HdStudio
 					Padding = opt.ImportPadding,
 					PackScale = opt.ImportScale,
 					MirrorConditions = opt.ImportMirrorConditions,
+					MatchBackgroundPriority = opt.ImportMatchBgPriority,
 					AllPaletteVariants = opt.ImportAllPalettes,
 					Minimal = opt.ImportMinimal,
 					DryRun = opt.ImportDryRun
@@ -305,8 +448,30 @@ namespace Mesen.HdStudio
 			} else if(opt.Generate && opt.MoviePath == null) {
 				//Generate mode without a movie/script: the built-in deep explorer plays the whole game with savestates
 				DebugWorkspaceManager.Load();
-				_scriptIds.Add(DebugApi.LoadScript("explore_deep.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, GetBuiltInExplorer("explore_deep.lua")));
-				Log("Built-in deep explorer loaded (explores the game automatically with savestates)");
+				string explorer = GetBuiltInExplorer("explore_deep.lua");
+				if(opt.Seed > 0) {
+					//The explorer is deterministic. A different seed explores a different but
+					//reproducible sequence, which is how resumable discovery chunks add coverage.
+					explorer = System.Text.RegularExpressions.Regex.Replace(explorer, @"local SEED = \d+", "local SEED = " + opt.Seed.ToString(CultureInfo.InvariantCulture));
+				}
+				_scriptIds.Add(DebugApi.LoadScript("explore_deep.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, explorer));
+				Log("Built-in deep explorer loaded (explores the game automatically with savestates" + (opt.Seed > 0 ? ", seed " + opt.Seed : "") + ")");
+			}
+
+			if(opt.BgScan) {
+				//Runtime nametable observer: creates editable 16x16 background blocks from
+				//observed nametable/attribute/CHR context, including CHR-RAM content keys.
+				//The built-in observer is the only script allowed to write a file; the rest of
+				//the Lua sandbox remains unchanged.
+				ConfigManager.Config.Debug.ScriptWindow.AllowIoOsAccess = true;
+				ConfigManager.Config.ApplyConfig();
+				DebugWorkspaceManager.Load();
+				string studioFolder = Path.Combine(outFolder, HdStudioReport.StudioFolderName);
+				Directory.CreateDirectory(studioFolder);
+				string observedPath = Path.Combine(studioFolder, "bg_observed.tsv");
+				string observer = GetBuiltInExplorer("bg_observe.lua").Replace("__OUTPUT__", observedPath.Replace("\\", "/"));
+				_scriptIds.Add(DebugApi.LoadScript("bg_observe.lua", ConfigManager.HomeFolder + Path.DirectorySeparatorChar, observer));
+				Log("Runtime background observer loaded -> " + observedPath);
 			}
 
 			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
@@ -709,6 +874,7 @@ namespace Mesen.HdStudio
 						case "reportonly": opt.ReportOnly = true; break;
 						case "verify": opt.Verify = true; break;
 						case "generate": opt.Generate = true; break;
+						case "bgscan": opt.BgScan = true; break;
 						case "levels": opt.Levels = true; break;
 						case "sweep": opt.Sweep = true; break;
 						case "maps": opt.Maps = true; break;
@@ -761,9 +927,112 @@ namespace Mesen.HdStudio
 							}
 							break;
 						case "mirror-conditions": opt.ImportMirrorConditions = true; break;
+						case "match-bgpriority": opt.ImportMatchBgPriority = true; break;
 						case "all-palettes": opt.ImportAllPalettes = true; break;
 						case "minimal": opt.ImportMinimal = true; break;
 						case "dry-run": opt.ImportDryRun = true; break;
+						case "export": opt.Export = true; break;
+						case "export-root":
+							opt.Export = true;
+							opt.ExportRoot = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
+						case "export-to":
+							opt.Export = true;
+							opt.ExportTo = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
+						case "export-name":
+							opt.Export = true;
+							opt.ExportName = value;
+							break;
+						case "export-full": opt.Export = true; opt.ExportFull = true; break;
+						case "install": opt.Export = true; opt.ExportInstall = true; break;
+						case "overwrite": opt.Export = true; opt.ExportOverwrite = true; break;
+						case "no-backup": opt.Export = true; opt.ExportNoBackup = true; break;
+						case "discover":
+							opt.DiscoverMode = value.ToLowerInvariant() switch {
+								"quick" => HdStudioDiscoveryModes.Quick,
+								"deep" => HdStudioDiscoveryModes.Deep,
+								"replay" => HdStudioDiscoveryModes.Replay,
+								"assisted" => HdStudioDiscoveryModes.Assisted,
+								_ => ""
+							};
+							if(opt.DiscoverMode.Length == 0) {
+								opt.Errors.Add("invalid discovery mode (quick|deep|replay|assisted): " + value);
+								opt.DiscoverMode = null;
+							}
+							break;
+						case "discover-budget":
+							if(!int.TryParse(value, out opt.DiscoverFrames) || opt.DiscoverFrames < 300) {
+								opt.Errors.Add("invalid discovery budget (>=300): " + value);
+							}
+							break;
+						case "discover-chunk":
+							if(!int.TryParse(value, out opt.DiscoverChunk) || opt.DiscoverChunk < 300) {
+								opt.Errors.Add("invalid discovery chunk (>=300): " + value);
+							}
+							break;
+						case "discover-seed":
+							if(!int.TryParse(value, out opt.DiscoverSeed) || opt.DiscoverSeed <= 0) {
+								opt.Errors.Add("invalid discovery seed: " + value);
+							}
+							break;
+						case "discover-saturation":
+							if(!int.TryParse(value, out opt.DiscoverSaturation) || opt.DiscoverSaturation < 1) {
+								opt.Errors.Add("invalid saturation window (>=1): " + value);
+							}
+							break;
+						case "discover-restart": opt.DiscoverRestart = true; break;
+						case "slice-sheet": opt.SheetSlicePath = Path.GetFullPath(value, Program.OriginalFolder); break;
+						case "slice-out": opt.SliceOut = Path.GetFullPath(value, Program.OriginalFolder); break;
+						case "grid":
+							{
+								string[] parts = value.Split('x', 'X');
+								if(parts.Length == 2 && int.TryParse(parts[0], out int columns) && int.TryParse(parts[1], out int rows) && columns > 0 && rows > 0) {
+									opt.SliceColumns = columns;
+									opt.SliceRows = rows;
+								} else {
+									opt.Errors.Add("invalid grid (COLSxROWS): " + value);
+								}
+							}
+							break;
+						case "slice-frame":
+							{
+								string[] parts = value.Split('x', 'X');
+								if(parts.Length == 2 && int.TryParse(parts[0], out int frameWidth) && int.TryParse(parts[1], out int frameHeight) && frameWidth > 0 && frameHeight > 0) {
+									opt.SliceFrameWidth = frameWidth;
+									opt.SliceFrameHeight = frameHeight;
+								} else {
+									opt.Errors.Add("invalid frame size (WxH): " + value);
+								}
+							}
+							break;
+						case "slice-margin":
+							{
+								string[] parts = value.Split('x', ',');
+								if(parts.Length == 1 && int.TryParse(parts[0], out int margin) && margin >= 0) {
+									opt.SliceMarginX = opt.SliceMarginY = margin;
+								} else if(parts.Length == 2 && int.TryParse(parts[0], out int mx) && int.TryParse(parts[1], out int my) && mx >= 0 && my >= 0) {
+									opt.SliceMarginX = mx;
+									opt.SliceMarginY = my;
+								} else {
+									opt.Errors.Add("invalid margin (N or XxY): " + value);
+								}
+							}
+							break;
+						case "slice-spacing":
+							{
+								string[] parts = value.Split('x', ',');
+								if(parts.Length == 1 && int.TryParse(parts[0], out int spacing) && spacing >= 0) {
+									opt.SliceSpacingX = opt.SliceSpacingY = spacing;
+								} else if(parts.Length == 2 && int.TryParse(parts[0], out int sx) && int.TryParse(parts[1], out int sy) && sx >= 0 && sy >= 0) {
+									opt.SliceSpacingX = sx;
+									opt.SliceSpacingY = sy;
+								} else {
+									opt.Errors.Add("invalid spacing (N or XxY): " + value);
+								}
+							}
+							break;
+						case "slice-trim": opt.SliceTrim = true; break;
 						case "catalog":
 							opt.CatalogPath = Path.GetFullPath(value, Program.OriginalFolder);
 							break;
@@ -803,6 +1072,11 @@ namespace Mesen.HdStudio
 								opt.Errors.Add("invalid frame count: " + value);
 							}
 							opt.FramesSpecified = true;
+							break;
+						case "seed":
+							if(!int.TryParse(value, out opt.Seed) || opt.Seed <= 0) {
+								opt.Errors.Add("invalid seed: " + value);
+							}
 							break;
 						case "timeout":
 							if(!int.TryParse(value, out opt.TimeoutSeconds) || opt.TimeoutSeconds <= 0) {
@@ -878,6 +1152,8 @@ namespace Mesen.HdStudio
 			Log("  --assets: export the versioned asset schema to HdStudio/assets/assets.json.");
 			Log("  --selftest: run offline geometry, segmentation, mirroring and adaptation checks (no ROM needed).");
 			Log("  --compile: rebuild HdStudio/project.hdstudio.json as a standard Mesen pack (--validate checks it without writing).");
+			Log("  --export [--export-root=DIR|--export-to=DIR] [--minimal] [--install]: stage, validate and install a distributable pack.");
+			Log("  --discover=quick|deep|replay|assisted [--discover-budget=N]: resumable, chunked discovery with a session file.");
 			Log("  --demo: records a short real-Mesen GIF with the HD pack active (SMB3 1-1).");
 		}
 

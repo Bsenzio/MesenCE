@@ -764,6 +764,11 @@ namespace Mesen.HdStudio
 			//Tiles of the pack per palette, to find complete 2x2 blocks
 			Dictionary<uint, HashSet<int>> byPalette = new();
 			foreach((string tile, uint palette) in _packTiles) {
+				//Background blocks are a background-only structure. A sprite palette
+				//(alpha byte FF) would group unrelated sprite tiles into fake scenery.
+				if(IsSpritePalette(palette)) {
+					continue;
+				}
 				if(int.TryParse(tile, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int index) && index < _rom.ChrTileCount) {
 					if(!byPalette.TryGetValue(palette, out HashSet<int>? set)) {
 						byPalette[palette] = set = new HashSet<int>();

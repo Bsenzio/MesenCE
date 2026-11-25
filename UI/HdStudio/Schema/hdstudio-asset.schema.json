@@ -52,13 +52,15 @@
             "animationFrame",
             "animationSequence",
             "graphicalVariant",
+            "backgroundBlock",
+            "backgroundTile",
             "hdReplacementAsset",
             "replacementCondition"
           ]
         },
         "name": { "type": "string" },
         "label": { "type": "string" },
-        "source": { "enum": ["automatic", "gameProfile", "manual"] },
+        "source": { "enum": ["automatic", "gameProfile", "manual", "runtime-observation"] },
         "provenance": { "type": "string" },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "validation": { "$ref": "#/$defs/validation" },
@@ -138,6 +140,8 @@
             "verified-chr-ram",
             "verified-composition",
             "verified-pattern",
+            "observed-runtime",
+            "observed-chr-ram",
             "unverified",
             "ambiguous",
             "rejected"

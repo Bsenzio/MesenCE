@@ -36,6 +36,7 @@ namespace Mesen.HdStudio
 			public int Padding;
 			public int PackScale;
 			public bool MirrorConditions;
+			public bool MatchBackgroundPriority;
 			public bool AllPaletteVariants;
 			public bool Minimal;
 			public bool DryRun;
@@ -95,6 +96,7 @@ namespace Mesen.HdStudio
 				Anchor = options.Anchor,
 				Padding = options.Padding,
 				MirrorConditions = options.MirrorConditions,
+				MatchBackgroundPriority = options.MatchBackgroundPriority,
 				AllPaletteVariants = options.AllPaletteVariants
 			};
 
@@ -124,6 +126,7 @@ namespace Mesen.HdStudio
 				Y = t.Y,
 				FlipH = t.FlipH,
 				FlipV = t.FlipV,
+				BackgroundPriority = t.BackgroundPriority,
 				Palette = t.Palette
 			}).ToList();
 
@@ -132,7 +135,7 @@ namespace Mesen.HdStudio
 			HdStudioArtwork.WritePreviews(importsFolder, slug, original, Math.Max(8, asset.Width), Math.Max(8, asset.Height), replacementPixels, targetWidth, targetHeight, log);
 
 			//Segment the one composed image into replacement tiles.
-			List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(tileSpecs, composed, targetWidth, targetHeight, packScale, settings.MirrorConditions, log, settings.AllPaletteVariants ? asset.PaletteVariants : null);
+			List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(tileSpecs, composed, targetWidth, targetHeight, packScale, settings.MirrorConditions, log, settings.AllPaletteVariants ? asset.PaletteVariants : null, settings.MatchBackgroundPriority);
 			if(cells.Count == 0) {
 				log("Import: no replacement cells were produced.");
 				return 1;
@@ -210,6 +213,7 @@ namespace Mesen.HdStudio
 				replacement.TargetWidth = targetWidth;
 				replacement.TargetHeight = targetHeight;
 				replacement.Approval = "approved";
+				replacement.AllowSharedReplacement = sharedAssets.Count > 0;
 				replacement.UpdatedAtUtc = DateTime.UtcNow.ToString("O");
 				//A managed import is emitted by the compiler, so it is not part of the immutable
 				//base snapshot. A legacy/minimal import was written straight into hires.txt and
@@ -223,6 +227,7 @@ namespace Mesen.HdStudio
 				replacement.Settings.Anchor = settings.Anchor;
 				replacement.Settings.Padding = settings.Padding;
 				replacement.Settings.MirrorConditions = settings.MirrorConditions;
+				replacement.Settings.MatchBackgroundPriority = settings.MatchBackgroundPriority;
 				replacement.Settings.AllPaletteVariants = settings.AllPaletteVariants;
 				replacement.Warnings.Clear();
 				if(sharedAssets.Count > 0) {

@@ -26,12 +26,14 @@ namespace Mesen.HdStudio
 		public string CreatedAtUtc = "";
 		public string UpdatedAtUtc = "";
 		public string RomPath = "";
+		public string RomPathAbsolute = "";
 		public string RomSha1 = "";
 		public string RomSha1NoHeader = "";
 		public int Mapper;
 		public string ChrMode = "";
 		public long ChrBytes;
 		public string PackFolder = "";
+		public string OriginalPackFolder = "";
 		public int OutputScale = 4;
 		public string CaptureStatus = "";
 		public int CaptureFrames;
@@ -52,12 +54,14 @@ namespace Mesen.HdStudio
 				CreatedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
 				UpdatedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
 				RomPath = Path.GetFullPath(romPath),
+				RomPathAbsolute = Path.GetFullPath(romPath),
 				RomSha1 = rom.Sha1,
 				RomSha1NoHeader = rom.Sha1NoHeader,
 				Mapper = rom.Mapper,
 				ChrMode = rom.HasChrRom ? "CHR-ROM" : "CHR-RAM",
 				ChrBytes = rom.ChrSize,
 				PackFolder = Path.GetFullPath(packFolder),
+				OriginalPackFolder = Path.GetFullPath(packFolder),
 				OutputScale = Math.Clamp(scale, 1, 10)
 			};
 			log?.Invoke($"Project: {project.ProjectName}, mapper {project.Mapper}, {project.ChrMode}, scale {project.OutputScale}x.");
@@ -82,12 +86,14 @@ namespace Mesen.HdStudio
 				CreatedAtUtc = GetString(root, "createdAtUtc"),
 				UpdatedAtUtc = GetString(root, "updatedAtUtc"),
 				RomPath = GetString(root, "romPath"),
+				RomPathAbsolute = GetString(root, "romPathAbsolute"),
 				RomSha1 = GetString(root, "romSha1"),
 				RomSha1NoHeader = GetString(root, "romSha1NoHeader"),
 				Mapper = GetInt(root, "mapper"),
 				ChrMode = GetString(root, "chrMode"),
 				ChrBytes = GetLong(root, "chrBytes"),
 				PackFolder = rebasedPack,
+				OriginalPackFolder = GetString(root, "packFolder"),
 				OutputScale = Math.Clamp(GetInt(root, "outputScale", 4), 1, 10),
 				CaptureStatus = GetString(root, "captureStatus"),
 				CaptureFrames = GetInt(root, "captureFrames"),
@@ -109,7 +115,10 @@ namespace Mesen.HdStudio
 				}
 			}
 
-			project.RomPath = ResolveRomPath(project.RomPath, project.PackFolder);
+			project.RomPath = ResolveRomPath(project.RomPath, project.RomPathAbsolute, project.PackFolder, project.OriginalPackFolder);
+			if(string.IsNullOrWhiteSpace(project.RomPathAbsolute) && Path.IsPathFullyQualified(project.RomPath)) {
+				project.RomPathAbsolute = project.RomPath;
+			}
 
 			//Make relative artwork paths usable regardless of the current directory.
 			foreach(HdStudioReplacement replacement in project.Replacements) {
@@ -140,6 +149,7 @@ namespace Mesen.HdStudio
 						}
 					}
 					json.WriteString("romPath", storedRom);
+					json.WriteString("romPathAbsolute", RomPathAbsolute.Length > 0 ? RomPathAbsolute : (Path.IsPathFullyQualified(RomPath) ? RomPath : ""));
 					json.WriteString("romSha1", RomSha1);
 					json.WriteString("romSha1NoHeader", RomSha1NoHeader);
 					json.WriteNumber("mapper", Mapper);
@@ -175,21 +185,31 @@ namespace Mesen.HdStudio
 		/// projects store an absolute path; if that file is gone, the same filename is
 		/// searched in the usual portable locations near the pack.
 		/// </summary>
-		private static string ResolveRomPath(string stored, string packFolder)
+		private static string ResolveRomPath(string stored, string storedAbsolute, string packFolder, string originalPackFolder)
 		{
-			if(string.IsNullOrWhiteSpace(stored)) {
-				return stored;
-			}
-			if(!Path.IsPathFullyQualified(stored)) {
-				return Path.GetFullPath(Path.Combine(packFolder, stored.Replace('/', Path.DirectorySeparatorChar)));
+			if(!string.IsNullOrWhiteSpace(stored) && !Path.IsPathFullyQualified(stored)) {
+				foreach(string baseFolder in new[] { packFolder, originalPackFolder }) {
+					if(string.IsNullOrWhiteSpace(baseFolder)) {
+						continue;
+					}
+					string relative = Path.GetFullPath(Path.Combine(baseFolder, stored.Replace('/', Path.DirectorySeparatorChar)));
+					if(File.Exists(relative)) {
+						return relative;
+					}
+				}
 			}
 			if(File.Exists(stored)) {
 				return stored;
 			}
+			if(!string.IsNullOrWhiteSpace(storedAbsolute) && File.Exists(storedAbsolute)) {
+				return storedAbsolute;
+			}
 
-			string fileName = Path.GetFileName(stored);
+			//A copied/moved project may no longer resolve either path. Search the usual
+			//portable locations by filename so a project and its ROM can still be reunited.
+			string fileName = Path.GetFileName(!string.IsNullOrWhiteSpace(stored) ? stored : storedAbsolute);
 			string? folder = packFolder;
-			for(int i = 0; i < 4 && !string.IsNullOrEmpty(folder); i++) {
+			for(int i = 0; i < 6 && !string.IsNullOrEmpty(folder); i++) {
 				foreach(string candidate in new[] {
 					Path.Combine(folder, fileName),
 					Path.Combine(folder, "examples", fileName),
@@ -201,7 +221,7 @@ namespace Mesen.HdStudio
 				}
 				folder = Path.GetDirectoryName(folder);
 			}
-			return stored;
+			return !string.IsNullOrWhiteSpace(stored) ? stored : storedAbsolute;
 		}
 
 		public string ResolvePath(string path)
@@ -363,6 +383,7 @@ namespace Mesen.HdStudio
 		public bool FlipH;
 		public bool FlipV;
 		public bool MirrorConditions;
+		public bool MatchBackgroundPriority;
 		public bool AllPaletteVariants = true;
 
 		public void WriteJson(Utf8JsonWriter json)
@@ -381,6 +402,7 @@ namespace Mesen.HdStudio
 			json.WriteBoolean("flipH", FlipH);
 			json.WriteBoolean("flipV", FlipV);
 			json.WriteBoolean("mirrorConditions", MirrorConditions);
+			json.WriteBoolean("matchBackgroundPriority", MatchBackgroundPriority);
 			json.WriteBoolean("allPaletteVariants", AllPaletteVariants);
 			json.WriteEndObject();
 		}
@@ -403,6 +425,7 @@ namespace Mesen.HdStudio
 			FlipH = a.TryGetProperty("flipH", out JsonElement fh) && fh.ValueKind == JsonValueKind.True;
 			FlipV = a.TryGetProperty("flipV", out JsonElement fv) && fv.ValueKind == JsonValueKind.True;
 			MirrorConditions = a.TryGetProperty("mirrorConditions", out JsonElement mc) && mc.ValueKind == JsonValueKind.True;
+			MatchBackgroundPriority = a.TryGetProperty("matchBackgroundPriority", out JsonElement mbp) && mbp.ValueKind == JsonValueKind.True;
 			AllPaletteVariants = !a.TryGetProperty("allPaletteVariants", out JsonElement ap) || ap.ValueKind != JsonValueKind.False;
 		}
 	}
@@ -429,6 +452,7 @@ namespace Mesen.HdStudio
 		public int TargetWidth;
 		public int TargetHeight;
 		public string Approval = "draft";
+		public bool AllowSharedReplacement;
 		public string CreatedAtUtc = "";
 		public string UpdatedAtUtc = "";
 		public string LegacyManifest = "";
@@ -459,6 +483,7 @@ namespace Mesen.HdStudio
 			json.WriteNumber("targetWidth", TargetWidth);
 			json.WriteNumber("targetHeight", TargetHeight);
 			json.WriteString("approval", Approval);
+			json.WriteBoolean("allowSharedReplacement", AllowSharedReplacement);
 			json.WriteString("createdAtUtc", CreatedAtUtc);
 			json.WriteString("updatedAtUtc", UpdatedAtUtc);
 			if(!string.IsNullOrEmpty(LegacyManifest)) {
@@ -504,6 +529,7 @@ namespace Mesen.HdStudio
 				TargetWidth = root.TryGetProperty("targetWidth", out JsonElement tw) && tw.TryGetInt32(out int tWidth) ? tWidth : 0,
 				TargetHeight = root.TryGetProperty("targetHeight", out JsonElement th) && th.TryGetInt32(out int tHeight) ? tHeight : 0,
 				Approval = root.TryGetProperty("approval", out JsonElement ap) && ap.ValueKind == JsonValueKind.String ? ap.GetString() ?? "draft" : "draft",
+				AllowSharedReplacement = !root.TryGetProperty("allowSharedReplacement", out JsonElement asr) || asr.ValueKind == JsonValueKind.True,
 				CreatedAtUtc = root.TryGetProperty("createdAtUtc", out JsonElement ca) && ca.ValueKind == JsonValueKind.String ? ca.GetString() ?? "" : "",
 				UpdatedAtUtc = root.TryGetProperty("updatedAtUtc", out JsonElement ua) && ua.ValueKind == JsonValueKind.String ? ua.GetString() ?? "" : "",
 				LegacyManifest = root.TryGetProperty("legacyManifest", out JsonElement lm) && lm.ValueKind == JsonValueKind.String ? lm.GetString() ?? "" : ""

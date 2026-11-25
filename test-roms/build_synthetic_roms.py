@@ -5,6 +5,8 @@ Variants (all NROM, legally distributable, generated from this source):
   hdstudio_test_8x16.nes    8x16 sprite mode, CHR-ROM
   hdstudio_test_mirror.nes  8x8 sprites with horizontal / vertical / both-axis flips
   hdstudio_test_chrram.nes  8x8 sprites, CHR-RAM initialized at runtime, animated CHR update
+  hdstudio_holdout.nes      8x16 sprites, three shared-key flip contexts, reserved holdout
+                             (generated after discovery parameters are frozen; do not tune on it)
 
 The scene intentionally uses simple geometric graphics so wrong dimensions, flips or
 tile segmentation are visible without any game-specific knowledge.
@@ -149,8 +151,8 @@ def build_chr_8x16():
 
 def build(variant, out_dir):
     chr_ram = variant == "chrram"
-    chr_data = build_chr_8x16() if variant == "8x16" else build_chr()
-    sprite_size_8x16 = variant == "8x16"
+    chr_data = build_chr_8x16() if variant in ("8x16", "holdout") else build_chr()
+    sprite_size_8x16 = variant in ("8x16", "holdout")
 
     # OAM tile indices differ between 8x8 and 8x16 sprite modes.
     p_tile_a = (2, 4) if sprite_size_8x16 else (1, 2)
@@ -159,24 +161,27 @@ def build(variant, out_dir):
     player_y = PLAYER_Y
     enemy_y = PLAYER_Y - 40
 
-    # Optional per-enemy OAM flips for the mirroring scene.
-    e1_attr, e2_attr = 0, 0
-    if variant == "mirror":
-        #Same pattern and palette, opposite flip axes: the only distinguishing context
-        #is the OAM flip, which standard hmirror/vmirror conditions can express.
-        e1_attr, e2_attr = 0x40, 0x80
+    # Optional per-enemy OAM flips for the mirroring/holdout scenes.
+    e1_attr, e2_attr, e3_attr = 0, 0, 0
+    if variant in ("mirror", "holdout"):
+        #Same pattern and palette, three flip contexts: H only, V only, both axes.
+        #A hardware tile key cannot distinguish them without standard conditions.
+        e1_attr, e2_attr, e3_attr = 0x40, 0x80, 0xC0
 
     sprites = []
     if sprite_size_8x16:
         sprites += [player_y, p_tile_a[0], 0, 40, player_y, p_tile_a[1], 0, 48]
-        sprites += [enemy_y, e_tile[0], 1 | e1_attr, 80, enemy_y, e_tile[1], 1 | e1_attr, 88]
-        sprites += [enemy_y, e_tile[0], 1 | e2_attr, 170, enemy_y, e_tile[1], 1 | e2_attr, 178]
+        sprites += [enemy_y, e_tile[0], 1 | e1_attr, 70, enemy_y, e_tile[1], 1 | e1_attr, 78]
+        sprites += [enemy_y, e_tile[0], 1 | e2_attr, 150, enemy_y, e_tile[1], 1 | e2_attr, 158]
+        sprites += [enemy_y, e_tile[0], 1 | e3_attr, 230, enemy_y, e_tile[1], 1 | e3_attr, 238]
     else:
         sprites += [player_y, 1, 0, 40, player_y, 2, 0, 48, player_y + 8, 3, 0, 40, player_y + 8, 4, 0, 48]
-        sprites += [enemy_y, 5, 1 | e1_attr, 80, enemy_y, 6, 1 | e1_attr, 88,
-                    enemy_y + 8, 7, 1 | e1_attr, 80, enemy_y + 8, 8, 1 | e1_attr, 88]
-        sprites += [enemy_y, 5, 1 | e2_attr, 170, enemy_y, 6, 1 | e2_attr, 178,
-                    enemy_y + 8, 7, 1 | e2_attr, 170, enemy_y + 8, 8, 1 | e2_attr, 178]
+        sprites += [enemy_y, 5, 1 | e1_attr, 70, enemy_y, 6, 1 | e1_attr, 78,
+                    enemy_y + 8, 7, 1 | e1_attr, 70, enemy_y + 8, 8, 1 | e1_attr, 78]
+        sprites += [enemy_y, 5, 1 | e2_attr, 150, enemy_y, 6, 1 | e2_attr, 158,
+                    enemy_y + 8, 7, 1 | e2_attr, 150, enemy_y + 8, 8, 1 | e2_attr, 158]
+        sprites += [enemy_y, 5, 1 | e3_attr, 230, enemy_y, 6, 1 | e3_attr, 238,
+                    enemy_y + 8, 7, 1 | e3_attr, 230, enemy_y + 8, 8, 1 | e3_attr, 238]
 
     ppu_ctrl = 0xB0 if sprite_size_8x16 else 0x90
 
@@ -296,6 +301,7 @@ def build(variant, out_dir):
         "8x16": "hdstudio_test_8x16.nes",
         "mirror": "hdstudio_test_mirror.nes",
         "chrram": "hdstudio_test_chrram.nes",
+        "holdout": "hdstudio_holdout.nes",
     }[variant]
     path = os.path.join(out_dir, name)
     with open(path, "wb") as f:
@@ -309,10 +315,10 @@ def build(variant, out_dir):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.dirname(os.path.abspath(__file__)))
-    ap.add_argument("--variant", choices=["nrom", "8x16", "mirror", "chrram", "all"], default="all")
+    ap.add_argument("--variant", choices=["nrom", "8x16", "mirror", "chrram", "holdout", "all"], default="all")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
-    variants = ["nrom", "8x16", "mirror", "chrram"] if args.variant == "all" else [args.variant]
+    variants = ["nrom", "8x16", "mirror", "chrram", "holdout"] if args.variant == "all" else [args.variant]
     for variant in variants:
         build(variant, args.out)
 

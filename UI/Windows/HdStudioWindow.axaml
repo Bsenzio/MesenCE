@@ -3,86 +3,179 @@
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-	mc:Ignorable="d" d:DesignWidth="1240" d:DesignHeight="820"
+	mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="860"
 	x:Class="Mesen.Windows.HdStudioWindow"
-	Width="1240" Height="820" MinWidth="980" MinHeight="640"
+	Width="1360" Height="860" MinWidth="1020" MinHeight="660"
 	Title="RetroArcDo HD Studio"
 	Icon="/Assets/HdPack.png"
 	Name="root"
 >
-	<Grid RowDefinitions="Auto,Auto,*,Auto" Margin="6">
-		<Border Grid.Row="0" BorderThickness="1" BorderBrush="#40808080" Padding="8,5" CornerRadius="3">
+	<Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="6">
+		<Border Grid.Row="0" BorderThickness="1" BorderBrush="#40808080" Padding="9,6" CornerRadius="3">
 			<DockPanel LastChildFill="True">
 				<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
 					<Button Name="OpenRomButton" Content="Open ROM..." Click="OpenRom_Click" ToolTip.Tip="Choose a NES ROM and open its HD pack project" />
-					<Button Name="TopCaptureButton" Content="Capture..." Click="Capture_Click" ToolTip.Tip="Run a headless exploration capture for the current ROM" />
 					<Button Name="TopCompileButton" Content="Build Pack" Click="Compile_Click" ToolTip.Tip="Compile the project into a standard Mesen hires.txt pack" />
-					<Button Name="TopValidateButton" Content="Validate" Click="Validate_Click" ToolTip.Tip="Check ROM identity, sources, scales and context conflicts" />
+					<Button Name="TopExportButton" Content="Export HD Pack..." Click="Navigate_Click" Tag="export" ToolTip.Tip="Export a validated, distributable pack to a folder of your choice" />
 				</StackPanel>
-				<StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-					<TextBlock Name="RomText" FontWeight="Bold" Text="No ROM loaded" />
-					<TextBlock Name="ProjectText" Opacity="0.8" Text="" />
+				<StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+					<TextBlock Text="RetroArcDo HD Studio" FontWeight="Bold" FontSize="15" />
+					<TextBlock Name="RomText" FontWeight="SemiBold" Text="No ROM loaded" VerticalAlignment="Center" />
+					<TextBlock Name="ProjectText" Opacity="0.75" Text="" VerticalAlignment="Center" />
 				</StackPanel>
 			</DockPanel>
 		</Border>
 
-		<TextBlock Grid.Row="1" Name="StatusText" Margin="2,4,2,4" Text="Ready." TextWrapping="Wrap" />
+		<Border Grid.Row="1" BorderThickness="0,0,0,1" BorderBrush="#30808080" Padding="2,4">
+			<WrapPanel>
+				<Button Content="Welcome" Click="Navigate_Click" Tag="welcome" Margin="0,0,4,0" />
+				<Button Content="Discover" Click="Navigate_Click" Tag="discover" Margin="0,0,4,0" />
+				<Button Content="Artwork" Click="Navigate_Click" Tag="workshop" Margin="0,0,4,0" />
+				<Button Content="Animations" Click="Navigate_Click" Tag="animations" Margin="0,0,4,0" />
+				<Button Content="Backgrounds" Click="Navigate_Click" Tag="backgrounds" Margin="0,0,4,0" />
+				<Button Content="Replacements" Click="Navigate_Click" Tag="replacements" Margin="0,0,4,0" />
+				<Button Content="Preview" Click="Navigate_Click" Tag="preview" Margin="0,0,4,0" />
+				<Button Content="Export" Click="Navigate_Click" Tag="export" Margin="0,0,4,0" />
+				<Button Content="Project" Click="Navigate_Click" Tag="project" Margin="0,0,4,0" />
+				<Button Content="Diagnostics" Click="Navigate_Click" Tag="build" Margin="0,0,4,0" />
+			</WrapPanel>
+		</Border>
 
-		<Grid Grid.Row="2" ColumnDefinitions="360,6,*">
+		<TextBlock Grid.Row="2" Name="StatusText" Margin="3,4,3,4" Text="Ready." TextWrapping="Wrap" />
+
+		<Grid Grid.Row="3" ColumnDefinitions="370,6,*">
 			<Border Grid.Column="0" BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="6">
-				<Grid RowDefinitions="Auto,Auto,*,Auto">
-					<TextBlock Text="Asset browser" FontWeight="Bold" Margin="0,0,0,4" />
+				<Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+					<TextBlock Text="Asset catalog" FontWeight="Bold" Margin="0,0,0,4" />
 					<StackPanel Grid.Row="1" Spacing="4">
-						<TextBox Name="AssetSearchBox" PlaceholderText="Search name, label or id..." TextChanged="AssetSearch_TextChanged" />
-						<ComboBox Name="CategoryBox" SelectedIndex="0" SelectionChanged="Category_SelectionChanged" HorizontalAlignment="Stretch">
-							<ComboBoxItem Content="All assets" />
-							<ComboBoxItem Content="Objects" />
-							<ComboBoxItem Content="Rendered metasprites" />
-							<ComboBoxItem Content="Animation frames" />
-							<ComboBoxItem Content="Animation sequences" />
-							<ComboBoxItem Content="Backgrounds" />
-							<ComboBoxItem Content="Background tiles" />
-							<ComboBoxItem Content="Other" />
-						</ComboBox>
+						<TextBox Name="AssetSearchBox" PlaceholderText="Search name, label, id or context..." TextChanged="AssetSearch_TextChanged" />
+						<Grid ColumnDefinitions="*,6,*">
+							<ComboBox Grid.Column="0" Name="CategoryBox" SelectedIndex="0" SelectionChanged="Category_SelectionChanged" HorizontalAlignment="Stretch" ToolTip.Tip="Graphical asset category">
+								<ComboBoxItem Content="All assets" />
+								<ComboBoxItem Content="Objects" />
+								<ComboBoxItem Content="Rendered metasprites" />
+								<ComboBoxItem Content="Animation frames" />
+								<ComboBoxItem Content="Animation sequences" />
+								<ComboBoxItem Content="Backgrounds" />
+								<ComboBoxItem Content="Background tiles" />
+								<ComboBoxItem Content="Other" />
+							</ComboBox>
+							<ComboBox Grid.Column="2" Name="StatusFilterBox" SelectedIndex="0" SelectionChanged="StatusFilter_SelectionChanged" HorizontalAlignment="Stretch" ToolTip.Tip="Filter by replacement state">
+								<ComboBoxItem Content="Any status" />
+								<ComboBoxItem Content="Replaced" />
+								<ComboBoxItem Content="Missing replacement" />
+								<ComboBoxItem Content="Shared-key risk" />
+							</ComboBox>
+						</Grid>
 					</StackPanel>
 					<ListBox Grid.Row="2" Name="AssetList" Margin="0,6,0,0" SelectionChanged="AssetList_SelectionChanged" />
-					<StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+					<StackPanel Grid.Row="3" Spacing="5" Margin="0,6,0,0">
 						<TextBlock Name="AssetCountText" VerticalAlignment="Center" Opacity="0.7" Text="0 assets" />
-						<Button Name="OpenWorkshopButton" Content="Open in Workshop" Click="OpenWorkshop_Click" HorizontalAlignment="Right" />
+						<Button Name="OpenWorkshopButton" Content="Open selected asset in Artwork" Click="OpenWorkshop_Click" HorizontalAlignment="Left" />
 					</StackPanel>
+					<TextBlock Grid.Row="4" Opacity="0.65" TextWrapping="Wrap" Margin="0,6,0,0" Text="Names are discovery labels. Stable IDs are shown in details. Unknown assets stay visible under Other." />
 				</Grid>
 			</Border>
 
 			<GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" />
 
 			<TabControl Grid.Column="2" Name="Tabs" Margin="4,0,0,0">
-				<TabItem Header="Artwork Workshop">
+				<TabItem x:Name="WelcomeTab" Header="Welcome">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel Spacing="10" Margin="12">
+							<TextBlock Text="A graphical workshop for standard Mesen HD Packs" FontSize="22" FontWeight="Bold" />
+							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="Open any NES ROM, discover its graphics, replace them with your artwork, preview the result in the original game and export a pack to a folder you choose. The original ROM and gameplay are never modified." />
+							<WrapPanel>
+								<Button Content="Open ROM..." Click="OpenRom_Click" Margin="0,0,8,6" />
+								<Button Content="Open project..." Click="OpenProject_Click" Margin="0,0,8,6" />
+								<Button Content="Open synthetic example" Click="OpenExample_Click" Margin="0,0,8,6" />
+								<Button Content="Open HD Packs folder" Click="OpenPackFolder_Click" Margin="0,0,8,6" />
+							</WrapPanel>
+							<TextBlock Text="Recent projects" FontWeight="Bold" />
+							<ListBox Name="RecentProjectsList" Height="150" DoubleTapped="RecentProjectsList_DoubleTapped" />
+							<Border BorderThickness="1" BorderBrush="#30808080" Padding="10" CornerRadius="4">
+								<StackPanel Spacing="4">
+									<TextBlock Text="First-run workflow" FontWeight="Bold" />
+									<TextBlock Text="1. Open ROM  →  2. Discover graphics  →  3. Select an asset  →  4. Import artwork  →  5. Adjust and apply  →  6. Preview in game  →  7. Export HD Pack" TextWrapping="Wrap" />
+									<TextBlock Text="The synthetic example in the portable package is a legally distributable NES ROM with its own project and HD pack. Use it to try the complete workflow without commercial game files." TextWrapping="Wrap" Opacity="0.75" />
+								</StackPanel>
+							</Border>
+							<TextBlock Name="WelcomeStatusText" TextWrapping="Wrap" Opacity="0.8" />
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
+
+				<TabItem x:Name="DiscoverTab" Header="Discover">
+					<Grid RowDefinitions="Auto,Auto,*,Auto" Margin="4">
+						<StackPanel Grid.Row="0" Spacing="8">
+							<TextBlock Text="Progressive graphics discovery" FontWeight="Bold" FontSize="15" />
+							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="Discovery runs in separate headless Mesen processes. Each chunk adds observations to the same pack; approved artwork is preserved. A session file lets you resume later. Saturation means no measured growth, not proof of completeness." />
+							<WrapPanel>
+								<TextBlock Text="Mode" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<ComboBox Name="DiscoveryModeBox" SelectedIndex="1" Width="210" Margin="0,0,12,6">
+									<ComboBoxItem Content="Quick scan (incomplete)" />
+									<ComboBoxItem Content="Deep scan" />
+									<ComboBoxItem Content="Replay capture (movie)" />
+									<ComboBoxItem Content="Assisted exploration (script)" />
+								</ComboBox>
+								<TextBlock Text="Frames to add" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="DiscoveryBudgetBox" Minimum="300" Maximum="3600000" Value="18000" Increment="1800" Width="120" Margin="0,0,12,6" />
+								<TextBlock Text="Chunk" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="DiscoveryChunkBox" Minimum="300" Maximum="36000" Value="1800" Increment="300" Width="100" Margin="0,0,12,6" />
+								<TextBlock Text="Seed" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="DiscoverySeedBox" Minimum="1" Maximum="2000000000" Value="20261124" Increment="1" Width="130" Margin="0,0,12,6" />
+								<CheckBox Name="DiscoveryRestartCheck" Content="Start new session" VerticalAlignment="Center" Margin="0,0,12,6" />
+								<CheckBox Name="DiscoveryObserveBgCheck" Content="Observe background blocks" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,6" />
+								<Button Name="DiscoverStartButton" Content="Start / resume discovery" Click="DiscoverStart_Click" Margin="0,0,6,6" />
+								<Button Name="DiscoverCancelButton" Content="Cancel" Click="DiscoverCancel_Click" Margin="0,0,6,6" IsEnabled="False" />
+							</WrapPanel>
+							<Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="6">
+								<TextBlock Text="Movie" VerticalAlignment="Center" />
+								<TextBox Grid.Column="1" Name="DiscoveryMovieBox" PlaceholderText="Optional .fm2 / .mmo / .bk2 replay (replay capture)" />
+								<Button Grid.Column="2" Content="Browse..." Click="BrowseMovie_Click" />
+								<TextBox Grid.Column="3" Name="DiscoveryScriptBox" PlaceholderText="Optional Lua script (assisted)" />
+							</Grid>
+							<Button Content="Browse Lua script..." Click="BrowseScript_Click" HorizontalAlignment="Left" />
+							<ProgressBar Name="DiscoveryProgress" Height="8" Minimum="0" Maximum="100" Value="0" />
+						</StackPanel>
+						<TextBlock Grid.Row="1" Name="DiscoveryStatusText" TextWrapping="Wrap" Margin="0,8,0,8" Opacity="0.85" />
+						<Grid Grid.Row="2" ColumnDefinitions="*,6,340">
+							<TextBox Grid.Column="0" Name="DiscoveryMetricsText" AcceptsReturn="True" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas, Cascadia Mono, monospace" />
+							<ListBox Grid.Column="2" Name="DiscoverySessionList" />
+						</Grid>
+						<TextBlock Grid.Row="3" Opacity="0.7" TextWrapping="Wrap" Margin="0,6,0,0" Text="Quick scan is labelled incomplete. Deep scan uses a larger budget and different deterministic seeds per chunk. Replay needs a matching ROM movie. Live capture from an already-running Mesen window is not claimed in this version." />
+					</Grid>
+				</TabItem>
+
+				<TabItem x:Name="WorkshopTab" Header="Artwork Workshop">
 					<ScrollViewer VerticalScrollBarVisibility="Auto">
 						<StackPanel Spacing="8" Margin="4">
-							<Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+							<Grid ColumnDefinitions="*,8,*">
 								<StackPanel Grid.Column="0" Spacing="4">
 									<TextBlock Text="Original NES appearance" FontWeight="Bold" />
-									<Border BorderThickness="1" BorderBrush="#40808080" Height="210" Background="#18808080">
+									<Border BorderThickness="1" BorderBrush="#40808080" Height="250" Background="#18808080">
 										<Image Name="OriginalImage" Stretch="Uniform" Margin="4" />
 									</Border>
 								</StackPanel>
-								<StackPanel Grid.Column="1" Spacing="4">
+								<StackPanel Grid.Column="2" Spacing="4">
 									<TextBlock Text="HD replacement preview" FontWeight="Bold" />
-									<Border BorderThickness="1" BorderBrush="#40808080" Height="210" Background="#18808080">
+									<Border BorderThickness="1" BorderBrush="#40808080" Height="250" Background="#18808080">
 										<Image Name="ReplacementImage" Stretch="Uniform" Margin="4" />
 									</Border>
 								</StackPanel>
 							</Grid>
 
-							<TextBlock Name="AssetInfoText" TextWrapping="Wrap" Opacity="0.85" Text="Select an asset from the browser." />
+							<TextBlock Name="AssetInfoText" TextWrapping="Wrap" Opacity="0.85" Text="Select an asset from the catalog." />
+							<TextBlock Name="SharedKeysText" TextWrapping="Wrap" Foreground="#C98A00" />
 
 							<TextBlock Text="Source artwork" FontWeight="Bold" />
 							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
 								<TextBox Name="SourcePathBox" PlaceholderText="PNG, JPEG or WebP artwork..." />
 								<Button Grid.Column="1" Content="Browse..." Click="Browse_Click" />
 							</Grid>
+							<TextBlock Text="Drop an image file on the window to use it as source artwork." Opacity="0.65" />
 
-							<TextBlock Text="Adaptation (whole object is composed once, then segmented into the original 8x8 grid)" FontWeight="Bold" TextWrapping="Wrap" />
+							<TextBlock Text="Adaptation (the whole object is composed once, then segmented into the original 8x8 grid)" FontWeight="Bold" TextWrapping="Wrap" />
 							<WrapPanel>
 								<CheckBox Name="RemoveBackgroundCheck" Content="Remove background" Margin="0,0,14,0" />
 								<TextBlock Text="Tolerance" VerticalAlignment="Center" Margin="0,0,4,0" />
@@ -116,8 +209,12 @@
 								<NumericUpDown Name="ZoomBox" Minimum="10" Maximum="400" Value="100" Increment="5" Width="90" Margin="0,0,14,0" />
 								<CheckBox Name="FlipHCheck" Content="Flip H" Margin="0,0,10,0" />
 								<CheckBox Name="FlipVCheck" Content="Flip V" Margin="0,0,10,0" />
+							</WrapPanel>
+							<WrapPanel>
 								<CheckBox Name="AllPalettesCheck" Content="All observed palettes" IsChecked="True" Margin="0,0,10,0" />
-								<CheckBox Name="MirrorCheck" Content="Mirror-specific variants (advanced)" IsChecked="False" />
+								<CheckBox Name="MirrorCheck" Content="Mirror-specific variants (advanced)" IsChecked="False" Margin="0,0,10,0" />
+								<CheckBox Name="MatchBgPriorityCheck" Content="Match background priority (advanced)" IsChecked="False" Margin="0,0,10,0" />
+								<CheckBox Name="AllowSharedCheck" Content="Apply to shared hardware keys (explicit)" IsChecked="False" />
 							</WrapPanel>
 
 							<StackPanel Orientation="Horizontal" Spacing="8">
@@ -130,24 +227,57 @@
 					</ScrollViewer>
 				</TabItem>
 
-				<TabItem Header="Animations">
-					<Grid ColumnDefinitions="360,6,*" Margin="4">
-						<StackPanel Spacing="6">
-							<TextBlock Text="Animation sequences and frames" FontWeight="Bold" />
-							<ListBox Name="AnimationList" SelectionChanged="AnimationList_SelectionChanged" />
-						</StackPanel>
-						<GridSplitter Grid.Column="1" Background="Transparent" />
-						<StackPanel Grid.Column="2" Spacing="6">
-							<Border BorderThickness="1" BorderBrush="#40808080" Height="260" Background="#18808080">
-								<Image Name="AnimationPreview" Stretch="Uniform" Margin="4" />
-							</Border>
-							<TextBlock Name="AnimationInfoText" TextWrapping="Wrap" />
-							<Button Name="OpenAnimationButton" Content="Open frame in Workshop" Click="OpenAnimation_Click" HorizontalAlignment="Left" />
-						</StackPanel>
+				<TabItem x:Name="AnimationsTab" Header="Animations">
+					<Grid RowDefinitions="Auto,*" Margin="4">
+						<Border BorderThickness="1" BorderBrush="#30808080" Padding="8" Margin="0,0,0,6" CornerRadius="3">
+							<StackPanel Spacing="5">
+								<TextBlock Text="Sprite-sheet slicing" FontWeight="Bold" />
+								<Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+									<TextBlock Text="Sheet" VerticalAlignment="Center" />
+									<TextBox Grid.Column="1" Name="SheetPathBox" PlaceholderText="PNG sprite sheet..." />
+									<Button Grid.Column="2" Content="Browse..." Click="BrowseSheet_Click" />
+								</Grid>
+								<WrapPanel>
+									<TextBlock Text="Columns" VerticalAlignment="Center" Margin="0,0,4,0" />
+									<NumericUpDown Name="SliceColumnsBox" Minimum="0" Maximum="128" Value="4" Increment="1" Width="90" Margin="0,0,12,4" />
+									<TextBlock Text="Rows" VerticalAlignment="Center" Margin="0,0,4,0" />
+									<NumericUpDown Name="SliceRowsBox" Minimum="0" Maximum="128" Value="1" Increment="1" Width="90" Margin="0,0,12,4" />
+									<TextBlock Text="Frame W" VerticalAlignment="Center" Margin="0,0,4,0" />
+									<NumericUpDown Name="SliceFrameWidthBox" Minimum="0" Maximum="4096" Value="64" Increment="8" Width="90" Margin="0,0,12,4" />
+									<TextBlock Text="Frame H" VerticalAlignment="Center" Margin="0,0,4,0" />
+									<NumericUpDown Name="SliceFrameHeightBox" Minimum="0" Maximum="4096" Value="64" Increment="8" Width="90" Margin="0,0,12,4" />
+									<TextBlock Text="Margin" VerticalAlignment="Center" Margin="0,0,4,0" />
+									<NumericUpDown Name="SliceMarginBox" Minimum="0" Maximum="512" Value="0" Increment="1" Width="80" Margin="0,0,12,4" />
+									<TextBlock Text="Spacing" VerticalAlignment="Center" Margin="0,0,4,0" />
+									<NumericUpDown Name="SliceSpacingBox" Minimum="0" Maximum="512" Value="0" Increment="1" Width="80" Margin="0,0,12,4" />
+									<CheckBox Name="SliceTrimCheck" Content="Trim transparent borders" VerticalAlignment="Center" Margin="0,0,12,4" />
+									<Button Content="Slice preview" Click="SlicePreview_Click" Margin="0,0,6,4" />
+									<Button Content="Assign frames to selected sequence" Click="SliceAssign_Click" Margin="0,0,6,4" />
+								</WrapPanel>
+								<TextBlock Name="SliceStatusText" TextWrapping="Wrap" Opacity="0.8" />
+								<Border BorderThickness="1" BorderBrush="#30808080" Height="90" Background="#18808080">
+									<Image Name="SlicePreviewImage" Stretch="Uniform" Margin="3" />
+								</Border>
+							</StackPanel>
+						</Border>
+						<Grid Grid.Row="1" ColumnDefinitions="360,6,*" Margin="4">
+							<StackPanel Spacing="6">
+								<TextBlock Text="Animation sequences and frames" FontWeight="Bold" />
+								<ListBox Name="AnimationList" SelectionChanged="AnimationList_SelectionChanged" />
+							</StackPanel>
+							<GridSplitter Grid.Column="1" Background="Transparent" />
+							<StackPanel Grid.Column="2" Spacing="6">
+								<Border BorderThickness="1" BorderBrush="#40808080" Height="260" Background="#18808080">
+									<Image Name="AnimationPreview" Stretch="Uniform" Margin="4" />
+								</Border>
+								<TextBlock Name="AnimationInfoText" TextWrapping="Wrap" />
+								<Button Name="OpenAnimationButton" Content="Open frame in Artwork" Click="OpenAnimation_Click" HorizontalAlignment="Left" />
+							</StackPanel>
+						</Grid>
 					</Grid>
 				</TabItem>
 
-				<TabItem Header="Backgrounds">
+				<TabItem x:Name="BackgroundsTab" Header="Backgrounds">
 					<Grid ColumnDefinitions="360,6,*" Margin="4">
 						<StackPanel Spacing="6">
 							<TextBlock Text="Background blocks and tiles" FontWeight="Bold" />
@@ -159,13 +289,13 @@
 								<Image Name="BackgroundPreview" Stretch="Uniform" Margin="4" />
 							</Border>
 							<TextBlock Name="BackgroundInfoText" TextWrapping="Wrap" />
-							<Button Name="OpenBackgroundButton" Content="Open block in Workshop" Click="OpenBackground_Click" HorizontalAlignment="Left" />
+							<Button Name="OpenBackgroundButton" Content="Open block in Artwork" Click="OpenBackground_Click" HorizontalAlignment="Left" />
 						</StackPanel>
 					</Grid>
 				</TabItem>
 
-				<TabItem Header="Replacements">
-					<Grid ColumnDefinitions="380,6,*" Margin="4">
+				<TabItem x:Name="ReplacementsTab" Header="Replacements">
+					<Grid ColumnDefinitions="400,6,*" Margin="4">
 						<StackPanel Spacing="6">
 							<TextBlock Text="Project replacements" FontWeight="Bold" />
 							<ListBox Name="ReplacementList" SelectionChanged="ReplacementList_SelectionChanged" />
@@ -179,12 +309,98 @@
 								<Button Name="ApplyReplacementButton" Content="Apply Selected" Click="ApplyReplacement_Click" />
 								<Button Name="RemoveReplacementButton" Content="Remove" Click="RemoveReplacement_Click" />
 							</StackPanel>
-							<TextBlock Text="Approved replacements are written to the pack on Build. Drafts stay in the project and are never exported." TextWrapping="Wrap" Opacity="0.75" />
+							<TextBlock Text="Approved replacements are written to the pack on Build. Drafts stay in the project and are never exported. Shared-key approvals are explicit and listed." TextWrapping="Wrap" Opacity="0.75" />
 						</StackPanel>
 					</Grid>
 				</TabItem>
 
-				<TabItem Header="Build &amp; Capture">
+				<TabItem x:Name="PreviewTab" Header="Preview">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel Spacing="8" Margin="6">
+							<TextBlock Text="Preview in the real emulator" FontWeight="Bold" FontSize="15" />
+							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="A valid preview uses the actual Mesen renderer. Build and install the pack, then launch the ROM. Verify runs the game twice with identical deterministic input and compares CPU RAM, nametables, OAM, palette and PPU memory." />
+							<WrapPanel>
+								<Button Name="PreviewBuildInstallButton" Content="Build &amp; install pack" Click="PreviewBuildInstall_Click" Margin="0,0,6,6" />
+								<Button Name="PreviewLaunchButton" Content="Launch in Mesen" Click="PreviewLaunch_Click" Margin="0,0,6,6" />
+								<Button Name="VerifyButton" Content="Verify original vs HD" Click="Verify_Click" Margin="0,0,6,6" />
+								<Button Content="Open pack folder" Click="OpenPackFolder_Click" Margin="0,0,6,6" />
+							</WrapPanel>
+							<TextBlock Name="PreviewStatusText" TextWrapping="Wrap" Opacity="0.85" />
+							<Grid ColumnDefinitions="*,8,*">
+								<StackPanel Grid.Column="0" Spacing="4">
+									<TextBlock Text="Original" FontWeight="Bold" />
+									<Border BorderThickness="1" BorderBrush="#30808080" Height="260" Background="#18808080"><Image Name="VerifyOriginalImage" Stretch="Uniform" Margin="3" /></Border>
+								</StackPanel>
+								<StackPanel Grid.Column="2" Spacing="4">
+									<TextBlock Text="HD render" FontWeight="Bold" />
+									<Border BorderThickness="1" BorderBrush="#30808080" Height="260" Background="#18808080"><Image Name="VerifyHdImage" Stretch="Uniform" Margin="3" /></Border>
+								</StackPanel>
+							</Grid>
+							<TextBlock Name="VerifySummaryText" TextWrapping="Wrap" />
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
+
+				<TabItem x:Name="ExportTab" Header="Export">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel Spacing="8" Margin="6">
+							<TextBlock Text="Export HD Pack" FontWeight="Bold" FontSize="16" />
+							<TextBlock TextWrapping="Wrap" Opacity="0.8" Text="The export is built in a staging folder, validated there, and only then moved into place. A failed build never destroys the previous working pack. The original ROM is never included." />
+							<TextBlock Text="Current project folder" FontWeight="Bold" />
+							<TextBlock Name="ExportProjectFolderText" TextWrapping="Wrap" />
+							<TextBlock Text="Current preview / build pack" FontWeight="Bold" Margin="0,6,0,0" />
+							<TextBlock Name="ExportCurrentPackText" TextWrapping="Wrap" />
+							<TextBlock Text="Export destination" FontWeight="Bold" Margin="0,6,0,0" />
+							<Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+								<TextBlock Text="Root" VerticalAlignment="Center" />
+								<TextBox Grid.Column="1" Name="ExportRootBox" PlaceholderText="Default: Documents\RetroArcDo HD Studio\Exports" TextChanged="ExportPath_TextChanged" />
+								<Button Grid.Column="2" Content="Browse root..." Click="BrowseExportRoot_Click" />
+							</Grid>
+							<Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+								<TextBlock Text="Pack name" VerticalAlignment="Center" />
+								<TextBox Grid.Column="1" Name="ExportNameBox" TextChanged="ExportPath_TextChanged" />
+								<Button Grid.Column="2" Content="Use ROM name" Click="UseRomName_Click" />
+							</Grid>
+							<TextBlock Name="ExportDestinationText" TextWrapping="Wrap" Opacity="0.85" />
+							<WrapPanel>
+								<CheckBox Name="ExportMinimalCheck" Content="Minimal pack (only authored replacements)" Margin="0,0,14,0" />
+								<CheckBox Name="ExportInstallCheck" Content="Install into Mesen HD Packs folder" IsChecked="True" Margin="0,0,14,0" />
+								<CheckBox Name="ExportOverwriteCheck" Content="Allow replacing an existing destination" Margin="0,0,14,0" />
+								<CheckBox Name="ExportBackupCheck" Content="Keep previous destination as backup" IsChecked="True" />
+							</WrapPanel>
+							<WrapPanel>
+								<Button Name="ExportRunButton" Content="Export now" Click="ExportRun_Click" Margin="0,0,6,6" />
+								<Button Name="ExportOpenButton" Content="Open folder" Click="ExportOpen_Click" Margin="0,0,6,6" />
+								<Button Name="ExportCopyButton" Content="Copy path" Click="ExportCopy_Click" Margin="0,0,6,6" />
+								<Button Name="ExportPlayButton" Content="Play in Mesen" Click="PreviewLaunch_Click" Margin="0,0,6,6" />
+							</WrapPanel>
+							<TextBlock Name="ExportResultText" TextWrapping="Wrap" />
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
+
+				<TabItem x:Name="ProjectTab" Header="Project">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel Spacing="8" Margin="4">
+							<TextBlock Text="Project file" FontWeight="Bold" />
+							<TextBlock Name="ProjectPathText" TextWrapping="Wrap" />
+							<WrapPanel>
+								<TextBlock Text="Output scale" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="ScaleBox" Minimum="1" Maximum="10" Value="4" Increment="1" Width="90" Margin="0,0,14,0" />
+								<Button Name="SaveProjectButton" Content="Save project" Click="SaveProject_Click" Margin="0,0,6,0" />
+								<Button Name="ReloadProjectButton" Content="Reload project" Click="ReloadProject_Click" Margin="0,0,6,0" />
+								<Button Name="RebuildBaseButton" Content="Re-snapshot base pack" Click="RebuildBase_Click" />
+							</WrapPanel>
+							<TextBlock Name="BaseStatusText" TextWrapping="Wrap" Opacity="0.8" />
+							<TextBlock Text="The base snapshot preserves capture-generated hires.txt content. Managed replacements are rebuilt on top of it, so builds are repeatable and never accumulate duplicate entries. Projects store the ROM relative to the pack folder whenever possible." TextWrapping="Wrap" Opacity="0.75" />
+							<TextBlock Name="ProjectSummaryText" TextWrapping="Wrap" />
+							<TextBlock Text="Validation" FontWeight="Bold" Margin="0,8,0,0" />
+							<TextBlock Name="ValidationText" TextWrapping="Wrap" />
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
+
+				<TabItem x:Name="BuildTab" Header="Diagnostics">
 					<Grid RowDefinitions="Auto,*" Margin="4">
 						<StackPanel Grid.Row="0" Spacing="6">
 							<WrapPanel>
@@ -193,45 +409,18 @@
 								<Button Name="CaptureButton" Content="Run headless capture" Click="Capture_Click" Margin="0,0,6,0" />
 								<Button Name="CompileButton" Content="Build standard pack" Click="Compile_Click" Margin="0,0,6,0" />
 								<Button Name="ValidateButton" Content="Validate project" Click="Validate_Click" Margin="0,0,6,0" />
-								<Button Name="MinimalExportButton" Content="Export minimal pack..." Click="MinimalExport_Click" Margin="0,0,6,0" />
 								<Button Name="OpenPackFolderButton" Content="Open pack folder" Click="OpenPackFolder_Click" />
 							</WrapPanel>
 							<ProgressBar Name="BuildProgress" Height="6" IsIndeterminate="False" Minimum="0" Maximum="100" Value="0" />
-							<TextBlock Text="Capture runs in a separate headless Mesen process; the Studio stays responsive. Build writes only standard hires.txt and PNG files." TextWrapping="Wrap" Opacity="0.75" />
+							<TextBlock Text="Technical log. Capture runs in a separate headless Mesen process; the Studio stays responsive. Build writes only standard hires.txt and PNG files." TextWrapping="Wrap" Opacity="0.75" />
 						</StackPanel>
 						<TextBox Grid.Row="1" Name="LogBox" Margin="0,8,0,0" AcceptsReturn="True" IsReadOnly="True" TextWrapping="NoWrap" FontFamily="Consolas, Cascadia Mono, monospace" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
 					</Grid>
 				</TabItem>
-
-				<TabItem Header="Validation">
-					<ScrollViewer VerticalScrollBarVisibility="Auto">
-						<StackPanel Spacing="6" Margin="4">
-							<Button Name="RefreshValidationButton" Content="Run validation" Click="Validate_Click" HorizontalAlignment="Left" />
-							<TextBlock Name="ValidationText" TextWrapping="Wrap" />
-						</StackPanel>
-					</ScrollViewer>
-				</TabItem>
-
-				<TabItem Header="Project">
-					<StackPanel Spacing="8" Margin="4">
-						<TextBlock Text="Project file" FontWeight="Bold" />
-						<TextBlock Name="ProjectPathText" TextWrapping="Wrap" />
-						<WrapPanel>
-							<TextBlock Text="Output scale" VerticalAlignment="Center" Margin="0,0,4,0" />
-							<NumericUpDown Name="ScaleBox" Minimum="1" Maximum="10" Value="4" Increment="1" Width="90" Margin="0,0,14,0" />
-							<Button Name="SaveProjectButton" Content="Save project" Click="SaveProject_Click" Margin="0,0,6,0" />
-							<Button Name="ReloadProjectButton" Content="Reload project" Click="ReloadProject_Click" Margin="0,0,6,0" />
-							<Button Name="RebuildBaseButton" Content="Re-snapshot base pack" Click="RebuildBase_Click" />
-						</WrapPanel>
-						<TextBlock Name="BaseStatusText" TextWrapping="Wrap" Opacity="0.8" />
-						<TextBlock Text="The base snapshot keeps capture-generated hires.txt content. Managed replacements are rebuilt on top of it, so builds are repeatable and never accumulate duplicate entries." TextWrapping="Wrap" Opacity="0.75" />
-						<TextBlock Name="ProjectSummaryText" TextWrapping="Wrap" />
-					</StackPanel>
-				</TabItem>
 			</TabControl>
 		</Grid>
 
-		<Border Grid.Row="3" BorderThickness="0,1,0,0" BorderBrush="#40808080" Margin="0,6,0,0" Padding="4,4,0,0">
+		<Border Grid.Row="4" BorderThickness="0,1,0,0" BorderBrush="#40808080" Margin="0,6,0,0" Padding="4,4,0,0">
 			<TextBlock Name="FooterText" Opacity="0.7" Text="RetroArcDo HD Studio - original NES geometry is preserved; only appearance changes." />
 		</Border>
 	</Grid>

@@ -58,7 +58,7 @@ def main():
         print("==> " + name, flush=True)
 
         code, output, seconds = run_command(args.mesen, args.home, [
-            "--hdstudio", rom, "--generate", f"--frames={args.frames}",
+            "--hdstudio", rom, "--generate", "--bgscan", f"--frames={args.frames}",
             "--timeout=" + str(args.timeout), "--out=" + pack
         ], args.timeout + 60)
         status = "ok" if code == 0 else ("timeout" if code is None else f"capture-exit-{code}")

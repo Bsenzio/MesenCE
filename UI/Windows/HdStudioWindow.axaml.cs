@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
@@ -10,8 +12,10 @@ using Mesen.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Mesen.Windows
@@ -37,6 +41,7 @@ namespace Mesen.Windows
 		private readonly List<HdStudioCatalogAsset> _animationRows = new();
 		private readonly List<HdStudioCatalogAsset> _backgroundRows = new();
 		private readonly List<HdStudioReplacement> _replacementRows = new();
+		private readonly Dictionary<string, bool> _sharedRiskCache = new();
 		private HdStudioCatalogAsset? _selectedAsset;
 		private HdStudioCatalogAsset? _animationAsset;
 		private HdStudioCatalogAsset? _backgroundAsset;
@@ -87,6 +92,67 @@ namespace Mesen.Windows
 		private TextBlock _baseStatusText = null!;
 		private TextBlock _projectSummaryText = null!;
 		private TabControl _tabs = null!;
+		private TabItem _welcomeTab = null!;
+		private TabItem _discoverTab = null!;
+		private TabItem _workshopTab = null!;
+		private TabItem _animationsTab = null!;
+		private TabItem _backgroundsTab = null!;
+		private TabItem _replacementsTab = null!;
+		private TabItem _previewTab = null!;
+		private TabItem _exportTab = null!;
+		private TabItem _projectTab = null!;
+		private TabItem _buildTab = null!;
+		private ComboBox _statusFilterBox = null!;
+		private TextBlock _sharedKeysText = null!;
+		private CheckBox _matchBgPriorityCheck = null!;
+		private CheckBox _allowSharedCheck = null!;
+		private TextBlock _welcomeStatusText = null!;
+		private ListBox _recentProjectsList = null!;
+		private ComboBox _discoveryModeBox = null!;
+		private NumericUpDown _discoveryBudgetBox = null!;
+		private NumericUpDown _discoveryChunkBox = null!;
+		private NumericUpDown _discoverySeedBox = null!;
+		private CheckBox _discoveryRestartCheck = null!;
+		private CheckBox _discoveryObserveBgCheck = null!;
+		private Button _discoverStartButton = null!;
+		private Button _discoverCancelButton = null!;
+		private TextBox _discoveryMovieBox = null!;
+		private TextBox _discoveryScriptBox = null!;
+		private ProgressBar _discoveryProgress = null!;
+		private TextBlock _discoveryStatusText = null!;
+		private TextBox _discoveryMetricsText = null!;
+		private ListBox _discoverySessionList = null!;
+		private TextBox _exportRootBox = null!;
+		private TextBox _exportNameBox = null!;
+		private TextBlock _exportDestinationText = null!;
+		private TextBlock _exportProjectFolderText = null!;
+		private TextBlock _exportCurrentPackText = null!;
+		private TextBlock _exportResultText = null!;
+		private CheckBox _exportMinimalCheck = null!;
+		private CheckBox _exportInstallCheck = null!;
+		private CheckBox _exportOverwriteCheck = null!;
+		private CheckBox _exportBackupCheck = null!;
+		private Button _exportOpenButton = null!;
+		private TextBlock _previewStatusText = null!;
+		private TextBlock _verifySummaryText = null!;
+		private Image _verifyOriginalImage = null!;
+		private Image _verifyHdImage = null!;
+		private TextBox _sheetPathBox = null!;
+		private NumericUpDown _sliceColumnsBox = null!;
+		private NumericUpDown _sliceRowsBox = null!;
+		private NumericUpDown _sliceFrameWidthBox = null!;
+		private NumericUpDown _sliceFrameHeightBox = null!;
+		private NumericUpDown _sliceMarginBox = null!;
+		private NumericUpDown _sliceSpacingBox = null!;
+		private CheckBox _sliceTrimCheck = null!;
+		private TextBlock _sliceStatusText = null!;
+		private Image _slicePreviewImage = null!;
+
+		private HdStudioSettings _settings = new();
+		private CancellationTokenSource? _discoveryCancellation;
+		private string _lastExportFolder = "";
+		private List<HdStudioSliceFrame> _lastSliceFrames = new();
+		private string _lastSliceFolder = "";
 
 		public HdStudioWindow() : this("", "") { }
 
@@ -96,6 +162,175 @@ namespace Mesen.Windows
 			_packFolder = packFolder ?? "";
 			AvaloniaXamlLoader.Load(this);
 			BindControls();
+			LoadSettings();
+			Avalonia.Input.DragDrop.SetAllowDrop(this, true);
+			AddHandler(Avalonia.Input.DragDrop.DropEvent, Window_Drop);
+		}
+
+		private void Window_Drop(object? sender, Avalonia.Input.DragEventArgs e)
+		{
+			var files = e.DataTransfer.TryGetFiles();
+			string? path = files?.Select(f => f.Path.LocalPath).FirstOrDefault(File.Exists);
+			if(path == null) {
+				return;
+			}
+			if(Path.GetExtension(path).Equals(".nes", StringComparison.OrdinalIgnoreCase) ||
+				Path.GetExtension(path).Equals(".fds", StringComparison.OrdinalIgnoreCase) ||
+				Path.GetExtension(path).Equals(".unf", StringComparison.OrdinalIgnoreCase) ||
+				Path.GetExtension(path).Equals(".unif", StringComparison.OrdinalIgnoreCase)) {
+				_romPath = path;
+				_packFolder = Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(path));
+				_palette = ConfigManager.Config.Nes.UserPalette;
+				_romText.Text = Path.GetFileName(path);
+				_projectText.Text = Path.GetFileNameWithoutExtension(path);
+				RefreshFromDisk();
+				SetStatus("ROM opened by drag and drop: " + path);
+				return;
+			}
+			_sourcePathBox.Text = path;
+			_workshopStatusText.Text = "Artwork selected by drag and drop. Use Preview to check the composition.";
+			_tabs.SelectedItem = _workshopTab;
+		}
+
+		private void LoadSettings()
+		{
+			try {
+				_settings = HdStudioSettings.Load();
+				_exportRootBox.Text = string.IsNullOrWhiteSpace(_settings.ExportRoot) ? HdStudioExport.GetDefaultExportRoot() : _settings.ExportRoot;
+				_exportMinimalCheck.IsChecked = _settings.LastExportMinimal;
+				_exportInstallCheck.IsChecked = _settings.LastExportInstall;
+				_exportBackupCheck.IsChecked = _settings.LastExportBackup;
+				_lastExportFolder = _settings.LastExportFolder;
+				RefreshRecentProjects();
+				UpdateExportPaths();
+			} catch(Exception ex) {
+				Log("Settings: " + ex.Message);
+			}
+		}
+
+		private void RefreshRecentProjects()
+		{
+			List<string> rows = new();
+			foreach(string project in _settings.RecentProjects) {
+				if(File.Exists(project)) {
+					rows.Add(project);
+				}
+			}
+			_recentProjectsList.ItemsSource = rows;
+			_recentProjectsList.SelectedIndex = rows.Count > 0 ? 0 : -1;
+			_welcomeStatusText.Text = rows.Count == 0
+				? "No recent project yet. Open a ROM to create one."
+				: "Double-click a recent project to continue where you left off.";
+		}
+
+		private void Navigate_Click(object? sender, RoutedEventArgs e)
+		{
+			string target = (sender as Button)?.Tag?.ToString() ?? "";
+			TabItem? tab = target switch {
+				"welcome" => _welcomeTab,
+				"discover" => _discoverTab,
+				"workshop" => _workshopTab,
+				"animations" => _animationsTab,
+				"backgrounds" => _backgroundsTab,
+				"replacements" => _replacementsTab,
+				"preview" => _previewTab,
+				"export" => _exportTab,
+				"project" => _projectTab,
+				"build" => _buildTab,
+				_ => null
+			};
+			if(tab != null) {
+				_tabs.SelectedItem = tab;
+			}
+		}
+
+		private void UpdateExportPaths()
+		{
+			string projectFolder = string.IsNullOrWhiteSpace(_packFolder) ? "" : Path.Combine(_packFolder, HdStudioReport.StudioFolderName);
+			_exportProjectFolderText.Text = string.IsNullOrWhiteSpace(projectFolder) ? "No project folder loaded." : projectFolder;
+			_exportCurrentPackText.Text = string.IsNullOrWhiteSpace(_packFolder) ? "No pack folder loaded." : _packFolder;
+			if(string.IsNullOrWhiteSpace(_exportNameBox.Text) && !string.IsNullOrWhiteSpace(_romPath)) {
+				_exportNameBox.Text = HdStudioExport.SanitizePackName(Path.GetFileNameWithoutExtension(_romPath));
+			}
+			string root = _exportRootBox.Text?.Trim() ?? "";
+			if(root.Length == 0) {
+				root = HdStudioExport.GetDefaultExportRoot();
+			}
+			string name = HdStudioExport.SanitizePackName(_exportNameBox.Text ?? "");
+			_exportDestinationText.Text = "Final destination: " + Path.GetFullPath(Path.Combine(root, name));
+		}
+
+		private async void OpenProject_Click(object? sender, RoutedEventArgs e)
+		{
+			var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions() {
+				Title = "Open an HD Studio project",
+				AllowMultiple = false,
+				FileTypeFilter = new[] {
+					new Avalonia.Platform.Storage.FilePickerFileType("HD Studio projects") { Patterns = new List<string>() { "project.hdstudio.json", "*.hdstudio.json", "*.json" } }
+				}
+			});
+			if(files.Count == 0) {
+				return;
+			}
+			OpenProjectFile(files[0].Path.LocalPath);
+		}
+
+		private void OpenProjectFile(string projectPath)
+		{
+			try {
+				HdStudioProject project = HdStudioProject.Load(projectPath);
+				if(string.IsNullOrWhiteSpace(project.RomPath) || !File.Exists(project.RomPath)) {
+					SetStatus("The project ROM is missing: " + project.RomPath);
+					return;
+				}
+				_romPath = project.RomPath;
+				_packFolder = project.PackFolder;
+				_palette = ConfigManager.Config.Nes.UserPalette;
+				_romText.Text = Path.GetFileName(_romPath);
+				_projectText.Text = project.ProjectName + "  |  " + project.ChrMode;
+				RefreshFromDisk();
+				_settings.RememberProject(projectPath);
+				_settings.Save();
+				RefreshRecentProjects();
+				_tabs.SelectedItem = _workshopTab;
+				SetStatus("Project opened: " + projectPath);
+			} catch(Exception ex) {
+				SetStatus("The project could not be opened: " + ex.Message);
+				Log("ERROR: " + ex);
+			}
+		}
+
+		private void RecentProjectsList_DoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
+		{
+			if(_recentProjectsList.SelectedItem is string projectPath) {
+				OpenProjectFile(projectPath);
+			}
+		}
+
+		private void OpenExample_Click(object? sender, RoutedEventArgs e)
+		{
+			string[] candidates = {
+				Path.Combine(Program.OriginalFolder, "examples", "hdstudio_test.nes"),
+				Path.Combine(AppContext.BaseDirectory, "examples", "hdstudio_test.nes"),
+				@"D:\MesenHighWork\dist\RetroArcDoHDStudio\examples\hdstudio_test.nes"
+			};
+			string? rom = candidates.FirstOrDefault(File.Exists);
+			if(rom == null) {
+				SetStatus("The synthetic example is not installed next to this build. Use Open ROM instead.");
+				return;
+			}
+			_romPath = rom;
+			_packFolder = Path.Combine(ConfigManager.HdPackFolder, "hdstudio_test");
+			_palette = ConfigManager.Config.Nes.UserPalette;
+			_romText.Text = Path.GetFileName(rom);
+			_projectText.Text = "hdstudio_test";
+			try {
+				RefreshFromDisk();
+				_tabs.SelectedItem = _workshopTab;
+				SetStatus("Synthetic example opened. The example pack is a legal, generated NES ROM project.");
+			} catch(Exception ex) {
+				SetStatus("The example could not be opened: " + ex.Message);
+			}
 		}
 
 		private void BindControls()
@@ -144,7 +379,62 @@ namespace Mesen.Windows
 			_baseStatusText = this.GetControl<TextBlock>("BaseStatusText");
 			_projectSummaryText = this.GetControl<TextBlock>("ProjectSummaryText");
 			_tabs = this.GetControl<TabControl>("Tabs");
-			_footerText.Text = "RetroArcDo HD Studio - " + (typeof(HdStudioWindow).Assembly.GetName().Version?.ToString() ?? "dev") + " - original NES geometry is preserved; only appearance changes.";
+			_welcomeTab = this.GetControl<TabItem>("WelcomeTab");
+			_discoverTab = this.GetControl<TabItem>("DiscoverTab");
+			_workshopTab = this.GetControl<TabItem>("WorkshopTab");
+			_animationsTab = this.GetControl<TabItem>("AnimationsTab");
+			_backgroundsTab = this.GetControl<TabItem>("BackgroundsTab");
+			_replacementsTab = this.GetControl<TabItem>("ReplacementsTab");
+			_previewTab = this.GetControl<TabItem>("PreviewTab");
+			_exportTab = this.GetControl<TabItem>("ExportTab");
+			_projectTab = this.GetControl<TabItem>("ProjectTab");
+			_buildTab = this.GetControl<TabItem>("BuildTab");
+			_statusFilterBox = this.GetControl<ComboBox>("StatusFilterBox");
+			_sharedKeysText = this.GetControl<TextBlock>("SharedKeysText");
+			_matchBgPriorityCheck = this.GetControl<CheckBox>("MatchBgPriorityCheck");
+			_allowSharedCheck = this.GetControl<CheckBox>("AllowSharedCheck");
+			_welcomeStatusText = this.GetControl<TextBlock>("WelcomeStatusText");
+			_recentProjectsList = this.GetControl<ListBox>("RecentProjectsList");
+			_discoveryModeBox = this.GetControl<ComboBox>("DiscoveryModeBox");
+			_discoveryBudgetBox = this.GetControl<NumericUpDown>("DiscoveryBudgetBox");
+			_discoveryChunkBox = this.GetControl<NumericUpDown>("DiscoveryChunkBox");
+			_discoverySeedBox = this.GetControl<NumericUpDown>("DiscoverySeedBox");
+			_discoveryRestartCheck = this.GetControl<CheckBox>("DiscoveryRestartCheck");
+			_discoveryObserveBgCheck = this.GetControl<CheckBox>("DiscoveryObserveBgCheck");
+			_discoverStartButton = this.GetControl<Button>("DiscoverStartButton");
+			_discoverCancelButton = this.GetControl<Button>("DiscoverCancelButton");
+			_discoveryMovieBox = this.GetControl<TextBox>("DiscoveryMovieBox");
+			_discoveryScriptBox = this.GetControl<TextBox>("DiscoveryScriptBox");
+			_discoveryProgress = this.GetControl<ProgressBar>("DiscoveryProgress");
+			_discoveryStatusText = this.GetControl<TextBlock>("DiscoveryStatusText");
+			_discoveryMetricsText = this.GetControl<TextBox>("DiscoveryMetricsText");
+			_discoverySessionList = this.GetControl<ListBox>("DiscoverySessionList");
+			_exportRootBox = this.GetControl<TextBox>("ExportRootBox");
+			_exportNameBox = this.GetControl<TextBox>("ExportNameBox");
+			_exportDestinationText = this.GetControl<TextBlock>("ExportDestinationText");
+			_exportProjectFolderText = this.GetControl<TextBlock>("ExportProjectFolderText");
+			_exportCurrentPackText = this.GetControl<TextBlock>("ExportCurrentPackText");
+			_exportResultText = this.GetControl<TextBlock>("ExportResultText");
+			_exportMinimalCheck = this.GetControl<CheckBox>("ExportMinimalCheck");
+			_exportInstallCheck = this.GetControl<CheckBox>("ExportInstallCheck");
+			_exportOverwriteCheck = this.GetControl<CheckBox>("ExportOverwriteCheck");
+			_exportBackupCheck = this.GetControl<CheckBox>("ExportBackupCheck");
+			_exportOpenButton = this.GetControl<Button>("ExportOpenButton");
+			_previewStatusText = this.GetControl<TextBlock>("PreviewStatusText");
+			_verifySummaryText = this.GetControl<TextBlock>("VerifySummaryText");
+			_verifyOriginalImage = this.GetControl<Image>("VerifyOriginalImage");
+			_verifyHdImage = this.GetControl<Image>("VerifyHdImage");
+			_sheetPathBox = this.GetControl<TextBox>("SheetPathBox");
+			_sliceColumnsBox = this.GetControl<NumericUpDown>("SliceColumnsBox");
+			_sliceRowsBox = this.GetControl<NumericUpDown>("SliceRowsBox");
+			_sliceFrameWidthBox = this.GetControl<NumericUpDown>("SliceFrameWidthBox");
+			_sliceFrameHeightBox = this.GetControl<NumericUpDown>("SliceFrameHeightBox");
+			_sliceMarginBox = this.GetControl<NumericUpDown>("SliceMarginBox");
+			_sliceSpacingBox = this.GetControl<NumericUpDown>("SliceSpacingBox");
+			_sliceTrimCheck = this.GetControl<CheckBox>("SliceTrimCheck");
+			_sliceStatusText = this.GetControl<TextBlock>("SliceStatusText");
+			_slicePreviewImage = this.GetControl<Image>("SlicePreviewImage");
+			_footerText.Text = "RetroArcDo HD Studio v0.2 Alpha - original NES geometry is preserved; only appearance changes.";
 		}
 
 		protected override void OnOpened(EventArgs e)
@@ -195,6 +485,10 @@ namespace Mesen.Windows
 			RefreshFromDisk();
 			Log("Studio opened for " + _romPath);
 			Log("Pack folder: " + _packFolder);
+			UpdateExportPaths();
+			if(_catalog.Assets.Count > 0) {
+				_tabs.SelectedItem = _workshopTab;
+			}
 		}
 
 		private void RefreshFromDisk()
@@ -206,9 +500,27 @@ namespace Mesen.Windows
 			RefreshReplacements();
 			RefreshProjectSummary();
 			if(_catalog.Assets.Count == 0) {
-				SetStatus("No semantic asset catalog yet. Run Capture to build one, or export assets from an existing capture.");
+				SetStatus("No semantic asset catalog yet. Run Discover to build one, or export assets from an existing capture.");
 			} else {
 				SetStatus($"{_catalog.Assets.Count} assets loaded from {_catalog.AssetsPath}");
+			}
+			UpdateExportPaths();
+			try {
+				HdStudioDiscoverySession? session = HdStudioDiscoverySession.Load(_packFolder);
+				if(session != null) {
+					ShowDiscoverySession(session, session.StopReason);
+				}
+				string verifyFolder = Path.Combine(_packFolder, HdStudioReport.StudioFolderName, "verify");
+				if(Directory.Exists(verifyFolder)) {
+					string? original = Directory.GetFiles(verifyFolder, "frame_*_original.png").OrderBy(f => f).FirstOrDefault();
+					string? hd = Directory.GetFiles(verifyFolder, "frame_*_hd.png").OrderBy(f => f).FirstOrDefault();
+					if(original != null) ShowBitmap(_verifyOriginalImage, original);
+					if(hd != null) ShowBitmap(_verifyHdImage, hd);
+					if(original != null || hd != null) {
+						_verifySummaryText.Text = "Last verification images loaded from " + verifyFolder + ". Use Verify to run a new deterministic comparison.";
+					}
+				}
+			} catch {
 			}
 		}
 
@@ -231,6 +543,9 @@ namespace Mesen.Windows
 					_scaleBox.Value = Math.Clamp(_project.OutputScale, 1, 10);
 					_projectPathText.Text = projectPath;
 					_projectText.Text = _project.ProjectName + "  |  " + _project.ChrMode;
+					_settings.RememberProject(projectPath);
+					_settings.Save();
+					RefreshRecentProjects();
 				}
 			} catch(Exception ex) {
 				_project = null;
@@ -264,8 +579,10 @@ namespace Mesen.Windows
 		private void RefreshAssetLists()
 		{
 			_assetRows.Clear();
+			_sharedRiskCache.Clear();
 			string search = _assetSearchBox.Text?.Trim() ?? "";
 			string category = SelectedCategory();
+			string status = SelectedStatus();
 			IEnumerable<HdStudioCatalogAsset> query = _catalog.Assets;
 			if(category != "All assets") {
 				query = query.Where(a => string.Equals(a.Category, category, StringComparison.OrdinalIgnoreCase));
@@ -274,17 +591,26 @@ namespace Mesen.Windows
 				query = query.Where(a =>
 					a.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
 					a.Label.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-					a.Id.Contains(search, StringComparison.OrdinalIgnoreCase));
+					a.Id.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+					a.Provenance.Contains(search, StringComparison.OrdinalIgnoreCase));
+			}
+			if(status == "Replaced") {
+				query = query.Where(a => FindReplacement(a.Id) != null);
+			} else if(status == "Missing replacement") {
+				query = query.Where(a => FindReplacement(a.Id) == null);
+			} else if(status == "Shared-key risk") {
+				query = query.Where(HasSharedRisk);
 			}
 			_assetRows.AddRange(query.OrderBy(a => a.Category).ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase));
 			_assetList.ItemsSource = _assetRows.Select(a => FormatAssetRow(a)).ToList();
-			_assetCountText.Text = _assetRows.Count + " assets";
+			_assetCountText.Text = _assetRows.Count + " of " + _catalog.Assets.Count + " assets";
 			if(_assetRows.Count > 0) {
 				_assetList.SelectedIndex = 0;
 			} else {
 				_selectedAsset = null;
 				_originalImage.Source = null;
 				_assetInfoText.Text = _catalog.Assets.Count == 0 ? "No assets captured yet." : "No asset matches the filter.";
+				_sharedKeysText.Text = "";
 			}
 
 			_animationRows.Clear();
@@ -310,16 +636,44 @@ namespace Mesen.Windows
 			}
 		}
 
+		private string SelectedStatus()
+		{
+			return (_statusFilterBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Any status";
+		}
+
+		private bool HasSharedRisk(HdStudioCatalogAsset asset)
+		{
+			if(_sharedRiskCache.TryGetValue(asset.Id, out bool cached)) {
+				return cached;
+			}
+			bool risk = false;
+			if(asset.Tiles.Count > 0) {
+				risk = HdStudioCatalog.FindAssetsSharingKeys(_catalog, asset.Id,
+					asset.Tiles.Select(t => (HdStudioCatalog.GetTileKey(t), t.Palette))).Count > 0;
+			}
+			_sharedRiskCache[asset.Id] = risk;
+			return risk;
+		}
+
 		private string SelectedCategory()
 		{
 			return (_categoryBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "All assets";
 		}
 
-		private static string FormatAssetRow(HdStudioCatalogAsset asset)
+		private string FormatAssetRow(HdStudioCatalogAsset asset)
 		{
-			string status = string.IsNullOrWhiteSpace(asset.ValidationStatus) ? "" : ", " + asset.ValidationStatus;
-			string tiles = asset.Tiles.Count == 1 ? "1 tile" : asset.Tiles.Count + " tiles";
-			return $"{asset.Name}  [{asset.Kind}, {tiles}{status}]";
+			HdStudioReplacement? replacement = FindReplacement(asset.Id);
+			string replaced = replacement == null ? "" : replacement.Approved ? "  [replaced]" : "  [draft]";
+			string tag = asset.Kind switch {
+				"semanticObject" => "OBJ",
+				"metasprite" => "SPR",
+				"animationFrame" => "FRM",
+				"animationSequence" => "SEQ",
+				"backgroundBlock" => "BG",
+				"backgroundTile" => "TILE",
+				_ => "?"
+			};
+			return $"{tag}  {asset.Name}{replaced}";
 		}
 
 		private static string FormatAnimationRow(HdStudioCatalogAsset asset)
@@ -368,6 +722,17 @@ namespace Mesen.Windows
 			ShowBitmap(_originalImage, original);
 			SetStatus($"Selected {asset.Name} ({asset.Kind}).");
 			_assetInfoText.Text = DescribeAsset(asset, previewAsset);
+			List<HdStudioCatalogAsset> shared = asset.Tiles.Count == 0 ? new() : HdStudioCatalog.FindAssetsSharingKeys(_catalog, asset.Id,
+				asset.Tiles.Select(t => (HdStudioCatalog.GetTileKey(t), t.Palette)));
+			if(shared.Count == 0) {
+				_sharedKeysText.Text = "";
+			} else {
+				string names = string.Join(", ", shared.Take(5).Select(a => a.Name));
+				if(shared.Count > 5) {
+					names += ", ...";
+				}
+				_sharedKeysText.Text = $"Shared hardware keys: {shared.Count} other captured asset(s) use the same pattern+palette ({names}). Standard Mesen replaces them together unless a condition distinguishes them. Enable the explicit shared approval only if that is intended.";
+			}
 			HdStudioReplacement? replacement = FindReplacement(asset.Id);
 			if(replacement != null) {
 				FillWorkshop(replacement);
@@ -438,6 +803,8 @@ namespace Mesen.Windows
 			//Whole-object replacements normally apply to both orientations; Mesen mirrors
 			//the replacement at render time. Conditional variants are for asymmetric art.
 			_mirrorCheck.IsChecked = false;
+			_matchBgPriorityCheck.IsChecked = false;
+			_allowSharedCheck.IsChecked = false;
 		}
 
 		private void FillWorkshop(HdStudioReplacement replacement)
@@ -466,6 +833,8 @@ namespace Mesen.Windows
 			_flipVCheck.IsChecked = s.FlipV;
 			_allPalettesCheck.IsChecked = s.AllPaletteVariants;
 			_mirrorCheck.IsChecked = s.MirrorConditions;
+			_matchBgPriorityCheck.IsChecked = s.MatchBackgroundPriority;
+			_allowSharedCheck.IsChecked = replacement.AllowSharedReplacement;
 		}
 
 		private HdStudioAdaptationSettings ReadSettings()
@@ -562,6 +931,7 @@ namespace Mesen.Windows
 			replacement.TargetWidth = asset.Width * scale;
 			replacement.TargetHeight = asset.Height * scale;
 			replacement.Approval = approve ? "approved" : "draft";
+			replacement.AllowSharedReplacement = _allowSharedCheck.IsChecked == true;
 			replacement.LegacyManifest = "";
 			replacement.UpdatedAtUtc = DateTime.UtcNow.ToString("O");
 			replacement.Settings.RemoveBackground = _removeBackgroundCheck.IsChecked == true;
@@ -578,6 +948,7 @@ namespace Mesen.Windows
 			replacement.Settings.FlipV = _flipVCheck.IsChecked == true;
 			replacement.Settings.AllPaletteVariants = _allPalettesCheck.IsChecked == true;
 			replacement.Settings.MirrorConditions = _mirrorCheck.IsChecked == true;
+			replacement.Settings.MatchBackgroundPriority = _matchBgPriorityCheck.IsChecked == true;
 			return replacement;
 		}
 
@@ -640,7 +1011,9 @@ namespace Mesen.Windows
 				RefreshProjectSummary();
 				_validationText.Text = FormatCompileResult(result);
 				SetStatus(result.Success ? $"Build OK: {result.CompiledReplacements} replacements, {result.TileEntries} tile entries." : "Build failed; see Validation.");
-				_tabs.SelectedIndex = result.Success ? _tabs.SelectedIndex : 5;
+				if(!result.Success) {
+					_tabs.SelectedItem = _projectTab;
+				}
 			});
 		}
 
@@ -695,7 +1068,7 @@ namespace Mesen.Windows
 				SetStatus("Capture running in a separate process...");
 				//Prescale keeps untouched tiles visually identical to the original NES frame at
 				//the project scale; authored replacements are layered on top by the compiler.
-				int code = await RunHeadlessAsync("--hdstudio", _romPath, "--generate", "--frames=" + frames, "--scale=" + scale, "--filter=prescale", "--out=" + _packFolder);
+				int code = await RunHeadlessAsync("--hdstudio", _romPath, "--generate", "--bgscan", "--frames=" + frames, "--scale=" + scale, "--filter=prescale", "--out=" + _packFolder);
 				if(code != 0) {
 					SetStatus("Capture failed with exit code " + code + ". See the log.");
 					return;
@@ -796,6 +1169,7 @@ namespace Mesen.Windows
 				RefreshFromDisk();
 				Log("Studio opened for " + path);
 				Log("Pack folder: " + _packFolder);
+				_tabs.SelectedItem = _catalog.Assets.Count > 0 ? _workshopTab : _discoverTab;
 			} catch(Exception ex) {
 				SetStatus("The ROM could not be opened: " + ex.Message);
 				Log("ERROR: " + ex);
@@ -832,10 +1206,45 @@ namespace Mesen.Windows
 			}
 		}
 
+		private void StatusFilter_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+		{
+			if(_initialized) {
+				RefreshAssetLists();
+			}
+		}
+
+		private async void BrowseMovie_Click(object? sender, RoutedEventArgs e)
+		{
+			var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions() {
+				Title = "Select an input movie",
+				AllowMultiple = false,
+				FileTypeFilter = new[] {
+					new Avalonia.Platform.Storage.FilePickerFileType("NES movies") { Patterns = new List<string>() { "*.fm2", "*.mmo", "*.bk2" } }
+				}
+			});
+			if(files.Count > 0) {
+				_discoveryMovieBox.Text = files[0].Path.LocalPath;
+			}
+		}
+
+		private async void BrowseScript_Click(object? sender, RoutedEventArgs e)
+		{
+			var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions() {
+				Title = "Select a Lua input script",
+				AllowMultiple = false,
+				FileTypeFilter = new[] {
+					new Avalonia.Platform.Storage.FilePickerFileType("Lua scripts") { Patterns = new List<string>() { "*.lua" } }
+				}
+			});
+			if(files.Count > 0) {
+				_discoveryScriptBox.Text = files[0].Path.LocalPath;
+			}
+		}
+
 		private void OpenWorkshop_Click(object? sender, RoutedEventArgs e)
 		{
 			if(_selectedAsset != null) {
-				_tabs.SelectedIndex = 0;
+				_tabs.SelectedItem = _workshopTab;
 				SelectAsset(_selectedAsset);
 			}
 		}
@@ -865,7 +1274,7 @@ namespace Mesen.Windows
 			if(_animationAsset == null) {
 				return;
 			}
-			_tabs.SelectedIndex = 0;
+			_tabs.SelectedItem = _workshopTab;
 			if(_animationAsset.Tiles.Count > 0) {
 				SelectAsset(_animationAsset);
 			} else {
@@ -899,7 +1308,7 @@ namespace Mesen.Windows
 			if(_backgroundAsset == null) {
 				return;
 			}
-			_tabs.SelectedIndex = 0;
+			_tabs.SelectedItem = _workshopTab;
 			SelectAsset(_backgroundAsset);
 		}
 
@@ -1033,6 +1442,425 @@ namespace Mesen.Windows
 				_validationText.Text = FormatCompileResult(result);
 				SetStatus(result.Success ? "Minimal pack exported to " + folder : "Minimal export failed.");
 			});
+		}
+
+		private async void DiscoverStart_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_project == null || string.IsNullOrWhiteSpace(_romPath)) {
+				SetStatus("Open a ROM and create a project before discovery.");
+				return;
+			}
+			if(_busy) {
+				SetStatus("Another operation is already running.");
+				return;
+			}
+			string mode = _discoveryModeBox.SelectedIndex switch {
+				0 => HdStudioDiscoveryModes.Quick,
+				1 => HdStudioDiscoveryModes.Deep,
+				2 => HdStudioDiscoveryModes.Replay,
+				3 => HdStudioDiscoveryModes.Assisted,
+				_ => HdStudioDiscoveryModes.Deep
+			};
+			HdStudioDiscoveryOptions options = new() {
+				Mode = mode,
+				Frames = IntValue(_discoveryBudgetBox, 18000),
+				ChunkFrames = IntValue(_discoveryChunkBox, 1800),
+				Seed = IntValue(_discoverySeedBox, 20261124),
+				Scale = _project.OutputScale,
+				MoviePath = _discoveryMovieBox.Text?.Trim() ?? "",
+				LuaScriptPath = _discoveryScriptBox.Text?.Trim() ?? "",
+				ObserveBackgrounds = _discoveryObserveBgCheck.IsChecked == true,
+				Restart = _discoveryRestartCheck.IsChecked == true
+			};
+			if(mode == HdStudioDiscoveryModes.Replay && !File.Exists(options.MoviePath)) {
+				SetStatus("Replay capture needs an existing movie file.");
+				return;
+			}
+			if(mode == HdStudioDiscoveryModes.Assisted && !File.Exists(options.LuaScriptPath) && !File.Exists(options.MoviePath)) {
+				SetStatus("Assisted exploration needs an existing Lua script or movie.");
+				return;
+			}
+
+			_busy = true;
+			_discoverStartButton.IsEnabled = false;
+			_discoverCancelButton.IsEnabled = true;
+			_discoveryProgress.Value = 0;
+			_discoveryCancellation = new CancellationTokenSource();
+			SetStatus(HdStudioDiscoveryModes.DisplayName(mode) + " running...");
+			Progress<HdStudioDiscoveryProgress> progress = new(p => {
+				_discoveryProgress.Value = p.RequestedFrames > 0 ? Math.Clamp(100.0 * p.FramesCaptured / p.RequestedFrames, 0, 100) : 0;
+				_discoveryStatusText.Text = p.Message;
+			});
+			try {
+				HdStudioDiscoveryResult result = await Task.Run(() => HdStudioDiscovery.RunAsync(_project, options, Log, progress, _discoveryCancellation.Token));
+				foreach(string error in result.Errors) {
+					Log("Discovery error: " + error);
+				}
+				RefreshFromDisk();
+				ShowDiscoverySession(result.Session, result.StopReason);
+				SetStatus(result.Success
+					? $"Discovery stopped: {result.StopReason} after {result.Session.FramesCaptured:N0} frames. This is measured coverage, not a completeness proof."
+					: "Discovery stopped with errors or was cancelled. Previous chunks and approved artwork are preserved.");
+			} catch(Exception ex) {
+				SetStatus("Discovery failed: " + ex.Message);
+				Log("ERROR: " + ex);
+			} finally {
+				_busy = false;
+				_discoverStartButton.IsEnabled = true;
+				_discoverCancelButton.IsEnabled = false;
+				_discoveryCancellation?.Dispose();
+				_discoveryCancellation = null;
+			}
+		}
+
+		private void DiscoverCancel_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_discoveryCancellation == null) {
+				return;
+			}
+			_discoveryCancellation.Cancel();
+			_discoveryStatusText.Text = "Cancel requested. The current chunk will be stopped; earlier chunks are already saved.";
+			_discoverCancelButton.IsEnabled = false;
+		}
+
+		private void ShowDiscoverySession(HdStudioDiscoverySession session, string stopReason)
+		{
+			List<string> rows = new();
+			foreach(HdStudioDiscoverySnapshot snapshot in session.Snapshots) {
+				rows.Add($"#{snapshot.Chunk}  frames +{snapshot.Frames:N0}  assets {snapshot.Assets:N0} (+{snapshot.NewAssets})  patterns {snapshot.ChrTilesSeen:N0} (+{snapshot.NewPatterns})  {snapshot.Seconds:0.0}s  seed {snapshot.Seed}");
+			}
+			_discoverySessionList.ItemsSource = rows;
+			if(rows.Count > 0) {
+				_discoverySessionList.SelectedIndex = rows.Count - 1;
+			}
+			_discoveryStatusText.Text = $"Session: {session.FramesCaptured:N0} of {session.RequestedFrames:N0} frames, {session.Chunks} chunk(s), stopped by {stopReason}.";
+			System.Text.StringBuilder metrics = new();
+			metrics.AppendLine("Mode: " + HdStudioDiscoveryModes.DisplayName(session.Mode));
+			metrics.AppendLine("Frames captured: " + session.FramesCaptured.ToString("N0"));
+			metrics.AppendLine("Chunks: " + session.Chunks);
+			metrics.AppendLine("Assets: " + session.LastAssets.ToString("N0"));
+			metrics.AppendLine("Observed CHR patterns: " + session.LastPatterns.ToString("N0"));
+			metrics.AppendLine("Observed tile+palette combinations: " + session.LastSeenCombos.ToString("N0"));
+			metrics.AppendLine("Stop reason: " + stopReason);
+			metrics.AppendLine();
+			metrics.AppendLine("A chunk is a complete capture process; the pack is merged and approved artwork is preserved.");
+			metrics.AppendLine("Saturation means the measured asset/pattern counts stopped growing. It does not prove that every state or visual element was reached.");
+			_discoveryMetricsText.Text = metrics.ToString();
+			_discoveryProgress.Value = session.RequestedFrames > 0 ? Math.Clamp(100.0 * session.FramesCaptured / session.RequestedFrames, 0, 100) : 0;
+		}
+
+		private async void BrowseExportRoot_Click(object? sender, RoutedEventArgs e)
+		{
+			var folders = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions() {
+				Title = "Choose the export root folder",
+				AllowMultiple = false
+			});
+			if(folders.Count > 0) {
+				_exportRootBox.Text = folders[0].Path.LocalPath;
+				UpdateExportPaths();
+			}
+		}
+
+		private void UseRomName_Click(object? sender, RoutedEventArgs e)
+		{
+			if(!string.IsNullOrWhiteSpace(_romPath)) {
+				_exportNameBox.Text = HdStudioExport.SanitizePackName(Path.GetFileNameWithoutExtension(_romPath));
+				UpdateExportPaths();
+			}
+		}
+
+		private void ExportPath_TextChanged(object? sender, TextChangedEventArgs e)
+		{
+			if(_initialized) {
+				UpdateExportPaths();
+			}
+		}
+
+		private string ExportDestination()
+		{
+			string root = _exportRootBox.Text?.Trim() ?? "";
+			if(root.Length == 0) {
+				root = HdStudioExport.GetDefaultExportRoot();
+			}
+			string name = HdStudioExport.SanitizePackName(_exportNameBox.Text ?? "");
+			return Path.GetFullPath(Path.Combine(root, name));
+		}
+
+		private async void ExportRun_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_project == null) {
+				SetStatus("Open a project before exporting.");
+				return;
+			}
+			await RunBusy("Exporting a validated HD pack...", async () => {
+				string destination = ExportDestination();
+				HdStudioExportOptions options = new() {
+					DestinationFolder = destination,
+					Minimal = _exportMinimalCheck.IsChecked == true,
+					InstallIntoMesen = _exportInstallCheck.IsChecked == true,
+					OverwriteExisting = _exportOverwriteCheck.IsChecked == true,
+					KeepBackup = _exportBackupCheck.IsChecked == true
+				};
+				HdStudioExportResult result = await Task.Run(() => HdStudioExport.Export(_project, options, Log));
+				_exportResultText.Text = FormatExportResult(result);
+				if(result.Success) {
+					_lastExportFolder = result.FinalFolder;
+					_settings.ExportRoot = _exportRootBox.Text?.Trim() ?? "";
+					_settings.LastExportFolder = _lastExportFolder;
+					_settings.LastExportMinimal = options.Minimal;
+					_settings.LastExportInstall = options.InstallIntoMesen;
+					_settings.LastExportBackup = options.KeepBackup;
+					_settings.Save();
+					SetStatus("Export completed: " + result.FinalFolder);
+				} else {
+					SetStatus("Export failed; the previous pack was not modified.");
+				}
+			});
+		}
+
+		private static string FormatExportResult(HdStudioExportResult result)
+		{
+			System.Text.StringBuilder sb = new();
+			sb.AppendLine(result.Success ? "Export succeeded." : "Export failed.");
+			sb.AppendLine("Destination: " + result.FinalFolder);
+			if(!string.IsNullOrWhiteSpace(result.InstalledFolder)) {
+				sb.AppendLine("Installed for Mesen: " + result.InstalledFolder);
+			}
+			sb.AppendLine($"Files: {result.Files:N0}, bytes: {result.Bytes:N0}, images: {result.Images:N0}, tile entries: {result.TileEntries:N0}, replacements: {result.Replacements:N0}");
+			if(result.Errors.Count > 0) {
+				sb.AppendLine();
+				sb.AppendLine("Errors:");
+				foreach(string error in result.Errors) sb.AppendLine("  - " + error);
+			}
+			if(result.Warnings.Count > 0) {
+				sb.AppendLine();
+				sb.AppendLine("Warnings:");
+				foreach(string warning in result.Warnings) sb.AppendLine("  - " + warning);
+			}
+			return sb.ToString();
+		}
+
+		private void ExportOpen_Click(object? sender, RoutedEventArgs e)
+		{
+			string folder = !string.IsNullOrWhiteSpace(_lastExportFolder) ? _lastExportFolder : ExportDestination();
+			try {
+				Directory.CreateDirectory(folder);
+				Process.Start(new ProcessStartInfo("explorer.exe", "\"" + folder + "\"") { UseShellExecute = true });
+			} catch(Exception ex) {
+				SetStatus("Could not open the export folder: " + ex.Message);
+			}
+		}
+
+		private async void ExportCopy_Click(object? sender, RoutedEventArgs e)
+		{
+			string folder = !string.IsNullOrWhiteSpace(_lastExportFolder) ? _lastExportFolder : ExportDestination();
+			var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+			if(clipboard != null) {
+				await clipboard.SetTextAsync(folder);
+				SetStatus("Copied export path: " + folder);
+			}
+		}
+
+		private async void PreviewBuildInstall_Click(object? sender, RoutedEventArgs e)
+		{
+			await BuildAsync("Building and installing the pack for Mesen...");
+			try {
+				InstallCurrentPack();
+				_previewStatusText.Text = "Pack installed into Mesen's HD Pack folder: " + ExpectedMesenPackFolder();
+				SetStatus("Pack built and installed for preview.");
+			} catch(Exception ex) {
+				_previewStatusText.Text = "Install failed: " + ex.Message;
+			}
+		}
+
+		private string ExpectedMesenPackFolder()
+		{
+			return Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(_romPath));
+		}
+
+		private void InstallCurrentPack()
+		{
+			if(_project == null) {
+				return;
+			}
+			string expected = ExpectedMesenPackFolder();
+			if(string.Equals(Path.GetFullPath(expected).TrimEnd('\\', '/'), Path.GetFullPath(_packFolder).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)) {
+				return;
+			}
+			CopyDirectoryContents(_packFolder, expected, new[] { "HdStudio" });
+		}
+
+		private static void CopyDirectoryContents(string source, string target, string[] excludedFolders)
+		{
+			Directory.CreateDirectory(target);
+			foreach(string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)) {
+				string relative = Path.GetRelativePath(source, file);
+				string first = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+				if(excludedFolders.Contains(first, StringComparer.OrdinalIgnoreCase)) {
+					continue;
+				}
+				string destination = Path.Combine(target, relative);
+				Directory.CreateDirectory(Path.GetDirectoryName(destination) ?? target);
+				File.Copy(file, destination, true);
+			}
+		}
+
+		private void PreviewLaunch_Click(object? sender, RoutedEventArgs e)
+		{
+			try {
+				if(_project != null && File.Exists(Path.Combine(_packFolder, "hires.txt"))) {
+					InstallCurrentPack();
+				}
+				Process.Start(new ProcessStartInfo(Program.ExePath, "\"" + _romPath + "\"") { UseShellExecute = true });
+				SetStatus("Launched Mesen with the current ROM and installed pack.");
+			} catch(Exception ex) {
+				SetStatus("Could not launch Mesen: " + ex.Message);
+			}
+		}
+
+		private async void Verify_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_project == null || string.IsNullOrWhiteSpace(_romPath)) {
+				return;
+			}
+			await RunBusy("Verifying the pack in the real emulator...", async () => {
+				InstallCurrentPack();
+				int frames = 1200;
+				int code = await RunHeadlessAsync("--hdstudio", _romPath, "--verify", "--shots=2", "--frames=" + frames, "--out=" + _packFolder);
+				string verifyFolder = Path.Combine(_packFolder, HdStudioReport.StudioFolderName, "verify");
+				string html = Path.Combine(verifyFolder, "verify.html");
+				string? original = Directory.Exists(verifyFolder) ? Directory.GetFiles(verifyFolder, "frame_*_original.png").OrderBy(f => f).FirstOrDefault() : null;
+				string? hd = Directory.Exists(verifyFolder) ? Directory.GetFiles(verifyFolder, "frame_*_hd.png").OrderBy(f => f).FirstOrDefault() : null;
+				if(original != null) ShowBitmap(_verifyOriginalImage, original);
+				if(hd != null) ShowBitmap(_verifyHdImage, hd);
+				_verifySummaryText.Text = File.Exists(html)
+					? "Verification page: " + html + "\r\nExit code: " + code + ". The page compares the same deterministic frames and reports gameplay-state hashes."
+					: "Verification did not produce a report (exit code " + code + "). See the diagnostics log.";
+				_previewStatusText.Text = code == 0 ? "HD pack active and deterministic state comparison completed." : "Verification reported a problem. See the report and log.";
+				SetStatus(code == 0 ? "Verification completed." : "Verification reported a problem.");
+			});
+		}
+
+		private async void BrowseSheet_Click(object? sender, RoutedEventArgs e)
+		{
+			var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions() {
+				Title = "Select a sprite sheet",
+				AllowMultiple = false,
+				FileTypeFilter = new[] {
+					new Avalonia.Platform.Storage.FilePickerFileType("Images") { Patterns = new List<string>() { "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp" } }
+				}
+			});
+			if(files.Count > 0) {
+				_sheetPathBox.Text = files[0].Path.LocalPath;
+			}
+		}
+
+		private HdStudioSliceOptions ReadSliceOptions(string outputFolder)
+		{
+			return new HdStudioSliceOptions() {
+				ImagePath = _sheetPathBox.Text?.Trim() ?? "",
+				OutputFolder = outputFolder,
+				Columns = IntValue(_sliceColumnsBox, 0),
+				Rows = IntValue(_sliceRowsBox, 0),
+				FrameWidth = IntValue(_sliceFrameWidthBox, 0),
+				FrameHeight = IntValue(_sliceFrameHeightBox, 0),
+				MarginX = IntValue(_sliceMarginBox, 0),
+				MarginY = IntValue(_sliceMarginBox, 0),
+				SpacingX = IntValue(_sliceSpacingBox, 0),
+				SpacingY = IntValue(_sliceSpacingBox, 0),
+				TrimTransparent = _sliceTrimCheck.IsChecked == true
+			};
+		}
+
+		private void SlicePreview_Click(object? sender, RoutedEventArgs e)
+		{
+			try {
+				string folder = Path.Combine(_project?.ProjectFolder ?? _packFolder, "slices");
+				_lastSliceFolder = folder;
+				_lastSliceFrames = HdStudioSheetSlicer.Slice(ReadSliceOptions(folder), Log);
+				if(_lastSliceFrames.Count > 0) {
+					ShowBitmap(_slicePreviewImage, _lastSliceFrames[0].Path);
+					_sliceStatusText.Text = $"{_lastSliceFrames.Count} frames sliced into {folder}. First frame: {_lastSliceFrames[0].Width}x{_lastSliceFrames[0].Height} at ({_lastSliceFrames[0].X},{_lastSliceFrames[0].Y}).";
+				}
+			} catch(Exception ex) {
+				_sliceStatusText.Text = "Slicing failed: " + ex.Message;
+				Log("Slice error: " + ex);
+			}
+		}
+
+		private void SliceAssign_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_project == null) {
+				SetStatus("Open a project before assigning animation frames.");
+				return;
+			}
+			if(_lastSliceFrames.Count == 0) {
+				SlicePreview_Click(sender, e);
+			}
+			if(_lastSliceFrames.Count == 0) {
+				return;
+			}
+			if(_animationAsset == null) {
+				SliceStatusText("Select an animation sequence first.");
+				return;
+			}
+			List<HdStudioCatalogAsset> frames;
+			if(_animationAsset.Kind == "animationSequence") {
+				frames = _catalog.Assets
+					.Where(a => a.Kind == "animationFrame" && a.Tiles.Count > 0 &&
+						(string.Equals(a.ParentId, _animationAsset.Id, StringComparison.OrdinalIgnoreCase) ||
+						 string.Equals(a.AnimationId, _animationAsset.Id, StringComparison.OrdinalIgnoreCase)))
+					.OrderBy(a => a.FrameIndex)
+					.ThenBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
+					.ToList();
+			} else {
+				frames = new() { _animationAsset };
+			}
+			if(frames.Count == 0) {
+				SliceStatusText("The selected sequence has no captured frames with tile occurrences.");
+				return;
+			}
+			int assigned = 0;
+			for(int i = 0; i < frames.Count && i < _lastSliceFrames.Count; i++) {
+				HdStudioCatalogAsset asset = frames[i];
+				HdStudioSliceFrame slice = _lastSliceFrames[i];
+				string id = "replacement:" + HdStudioProject.StableId(asset.Id + "|sheet");
+				HdStudioReplacement? replacement = _project.Replacements.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase));
+				if(replacement == null) {
+					replacement = new HdStudioReplacement() {
+						Id = id,
+						AssetId = asset.Id,
+						AssetName = asset.Name,
+						AssetKind = asset.Kind,
+						CreatedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+					};
+					_project.Replacements.Add(replacement);
+				}
+				replacement.SourceImage = _project.StoreArtwork(slice.Path, id);
+				replacement.PackScale = _project.OutputScale;
+				replacement.OriginalWidth = asset.Width;
+				replacement.OriginalHeight = asset.Height;
+				replacement.TargetWidth = asset.Width * _project.OutputScale;
+				replacement.TargetHeight = asset.Height * _project.OutputScale;
+				replacement.Approval = "draft";
+				replacement.AllowSharedReplacement = false;
+				replacement.Settings.Crop = true;
+				replacement.Settings.Fit = "contain";
+				replacement.Settings.Anchor = "center";
+				replacement.Settings.AllPaletteVariants = true;
+				replacement.UpdatedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+				assigned++;
+			}
+			_project.Save(HdStudioProject.GetDefaultPath(_packFolder));
+			RefreshReplacements();
+			SliceStatusText($"Assigned {assigned} sliced frame(s) to {_animationAsset.Name} as drafts. Review and approve them in Replacements.");
+			SetStatus($"Assigned {assigned} animation frame(s) as drafts.");
+		}
+
+		private void SliceStatusText(string message)
+		{
+			_sliceStatusText.Text = message;
+			SetStatus(message);
 		}
 
 		private void OpenPackFolder_Click(object? sender, RoutedEventArgs e)

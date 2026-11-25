@@ -105,6 +105,7 @@ namespace Mesen.HdStudio
 						Y = t.Y,
 						FlipH = t.FlipH,
 						FlipV = t.FlipV,
+						BackgroundPriority = t.BackgroundPriority,
 						Palette = t.Palette
 					}).ToList() : replacement.Cells.Select(c => new HdStudioArtwork.TileSpec() {
 						Pattern = c.Key,
@@ -137,7 +138,7 @@ namespace Mesen.HdStudio
 					}
 
 					SKColor[] composed = HdStudioArtwork.Compose(image, bounds, targetWidth, targetHeight, replacement.Settings);
-					List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(specs, composed, targetWidth, targetHeight, scale, replacement.Settings.MirrorConditions, m => result.Warnings.Add(m), replacement.Settings.AllPaletteVariants && asset != null ? asset.PaletteVariants : null);
+					List<HdStudioArtwork.Cell> cells = HdStudioArtwork.BuildCells(specs, composed, targetWidth, targetHeight, scale, replacement.Settings.MirrorConditions, m => result.Warnings.Add(m), replacement.Settings.AllPaletteVariants && asset != null ? asset.PaletteVariants : null, replacement.Settings.MatchBackgroundPriority);
 					if(cells.Count == 0) {
 						result.Errors.Add($"{replacement.AssetName}: the artwork produced no replacement tiles.");
 						continue;
@@ -151,7 +152,13 @@ namespace Mesen.HdStudio
 							if(sharedAssets.Count > 4) {
 								names += ", ...";
 							}
-							result.Warnings.Add($"{replacement.AssetName}: its tile+palette keys are shared with {sharedAssets.Count} other asset(s) ({names}); those occurrences are replaced too unless a supported condition distinguishes them.");
+							replacement.Warnings.Clear();
+							replacement.Warnings.Add($"Its tile+palette keys are shared with {sharedAssets.Count} other asset(s) ({names}); those occurrences are replaced together unless a standard Mesen condition distinguishes them.");
+							if(!replacement.AllowSharedReplacement) {
+								result.Errors.Add($"{replacement.AssetName}: the replacement shares tile+palette keys with {sharedAssets.Count} other captured asset(s) ({names}). Approve the shared replacement explicitly (affected assets are listed in the Studio) or choose a context condition.");
+								continue;
+							}
+							result.Warnings.Add($"{replacement.AssetName}: shared replacement approved; {sharedAssets.Count} other asset(s) use the same hardware keys ({names}).");
 						}
 					}
 

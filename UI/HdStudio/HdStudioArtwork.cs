@@ -34,6 +34,7 @@ namespace Mesen.HdStudio
 			public int Y;
 			public bool FlipH;
 			public bool FlipV;
+			public bool BackgroundPriority;
 			public string Palette = "";
 		}
 
@@ -278,7 +279,7 @@ namespace Mesen.HdStudio
 		/// unflipped because Mesen flips the replacement at render time; conditional entries are
 		/// ordered before unconditional ones for the same hardware tile.
 		/// </summary>
-		public static List<Cell> BuildCells(IReadOnlyList<TileSpec> tiles, SKColor[] composed, int targetWidth, int targetHeight, int packScale, bool mirrorConditions, Action<string> log, IReadOnlyList<string>? paletteVariants = null)
+		public static List<Cell> BuildCells(IReadOnlyList<TileSpec> tiles, SKColor[] composed, int targetWidth, int targetHeight, int packScale, bool mirrorConditions, Action<string> log, IReadOnlyList<string>? paletteVariants = null, bool matchBackgroundPriority = false)
 		{
 			int tileSize = 8 * packScale;
 			List<Cell> cells = new();
@@ -297,7 +298,7 @@ namespace Mesen.HdStudio
 				if(string.IsNullOrEmpty(key)) {
 					continue;
 				}
-				string condition = GetCondition(tile, mirrorConditions);
+				string condition = GetCondition(tile, mirrorConditions, matchBackgroundPriority);
 
 				//The same original object can be drawn with several sprite/background palettes.
 				//A user replacement is visual content, not a palette, so it applies to every
@@ -395,17 +396,25 @@ namespace Mesen.HdStudio
 			return tile.Pattern.ToUpperInvariant();
 		}
 
-		public static string GetCondition(TileSpec tile, bool mirrorConditions)
+		public static string GetCondition(TileSpec tile, bool mirrorConditions, bool matchBackgroundPriority = false)
 		{
-			if(!mirrorConditions) {
-				return "";
+			List<string> conditions = new();
+			if(mirrorConditions) {
+				if(tile.FlipH && tile.FlipV) {
+					//Mesen combines conditions with '&'. The previous compiler treated both-axis
+					//flips as inexpressible and silently emitted an unconditional entry.
+					conditions.Add("hmirror");
+					conditions.Add("vmirror");
+				} else if(tile.FlipH) {
+					conditions.Add("hmirror");
+				} else if(tile.FlipV) {
+					conditions.Add("vmirror");
+				}
 			}
-			bool h = tile.FlipH;
-			bool v = tile.FlipV;
-			if(h && !v) return "[hmirror]";
-			if(v && !h) return "[vmirror]";
-			//Both axes cannot be expressed by a single Mesen condition; leave it unconditional.
-			return "";
+			if(matchBackgroundPriority && tile.BackgroundPriority) {
+				conditions.Add("bgpriority");
+			}
+			return conditions.Count == 0 ? "" : "[" + string.Join("&", conditions) + "]";
 		}
 
 		/// <summary>Renders the original NES appearance of an asset from captured bytes.</summary>

@@ -1,89 +1,143 @@
-# HD Studio validation (2026-11-25)
+# HD Studio validation (v0.2 Alpha, 2026-11-25)
 
 > Project documentation and this matrix with commentary:
 > <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/validation.md>
 
-## Current headless matrix
+## Fresh generic matrix (300 frames, profiles disabled)
 
-Method: 25 ROMs from `D:\NesFlasher\ROMs`, each one with
-`Mesen.exe --hdstudio ROM --generate --frames=300 --timeout=600` followed by
-`--assets`, in a **fresh output folder**. Raw results:
-`D:\MesenHighWork\validation-packs-final\matrix-results-final.json`.
+Method: all 25 ROMs in `D:\NesFlasher\ROMs`, each with
+`Mesen.exe --hdstudio ROM --generate --bgscan --frames=300 --timeout=300`
+followed by `--assets`, in a fresh folder. Raw results:
+`D:\MesenHighWork\validation-packs-v02\matrix300\matrix-results.json`.
 
-| ROM | Mapper | CHR | Tiles in pack | Seen | Assets | Status |
-|---|---:|---|---:|---:|---:|---|
-| Adventures in the Magic Kingdom (USA).nes | 1 | 128 KB | 7558 | 382 | 410 | ok |
-| Batman - Return of the Joker (USA).nes | 69 | 256 KB | 15729 | 262 | 401 | ok |
-| Batman .nes | 69 | 256 KB | 15729 | 262 | 401 | ok |
-| Don Doko Don 2 (Japan).nes | 33 | 256 KB | 14554 | 247 | 404 | ok |
-| Guardian Legend, The (USA).nes | 2 | CHR-RAM | n/a | n/a | 0 | ok |
-| Ice Climber (U) [!].nes | 0 | 8 KB | 501 | 189 | 308 | ok |
-| JuJu Densetsu (Japan).nes | 4 | 256 KB | 13679 | 278 | 401 | ok |
-| Little Mermaid - Ningyo Hime (Japan).nes | 2 | CHR-RAM | n/a | n/a | 9 | ok |
-| Panic Restaurant (E) [!].nes | 4 | 128 KB | 6669 | 237 | 400 | ok |
-| Soreike! Anpanman - Minna de Hiking Game! (Japan).nes | 4 | 128 KB | 6706 | 531 | 404 | ok |
-| Super Mario Bros. 3 (Japan) (Rev A).nes | 4 | 128 KB | 7721 | 52 | 416 | ok |
-| Super Mario Bros. 3 (USA).nes | 4 | 128 KB | 7720 | 52 | 416 | ok |
-| Teenage Mutant Ninja Turtles 2 (U) [p1].nes | 4 | 256 KB | 15557 | 208 | 401 | ok |
-| Teenage Mutant Ninja Turtles II - The Arcade Game (USA).nes | 4 | 256 KB | 15557 | 208 | 401 | ok |
-| Tiny Toon Adventures (Japan).nes | 23 | 128 KB | 7410 | 290 | 406 | ok |
-| Toki (USA).nes | 4 | 256 KB | 13692 | 174 | 403 | ok |
-| Zombie Hunter (J).nes | 1 | 32 KB | 1984 | 199 | 403 | ok |
-| anp.nes | 96 | CHR-RAM | n/a | n/a | 0 | ok |
-| anpanman.nes | 96 | CHR-RAM | n/a | n/a | 0 | ok |
-| mickey.nes | 4 | 128 KB | 8051 | 378 | 402 | ok |
-| mm1.nes | 2 | CHR-RAM | n/a | n/a | 9 | ok |
-| mmouh.nes | 3 | 32 KB | 2036 | 175 | 404 | ok |
-| mnb.nes | 0 | 8 KB | 510 | 93 | 403 | ok |
-| test.nes | 30 | CHR-RAM | n/a | n/a | 149 | ok |
-| twinbee.nes | 3 | 16 KB | 977 | 84 | 401 | ok |
+| Metric | Result |
+|---|---:|
+| ROM entries | **25** |
+| Completed captures | **25 / 25** |
+| CHR-ROM ROMs | 19 |
+| CHR-ROM with 100 % non-blank patterns in pack | **19 / 19** |
+| CHR-RAM ROMs (observed coverage only) | 6 |
+| Automatic catalog records | **14,707** |
+| Generic metasprites | 248 |
+| Background blocks (including observed runtime blocks) | 14,459 |
+| Average 300-frame capture | **8.5 s** |
+| Slowest 300-frame capture | **14.6 s** |
+| Failures/timeouts | **0** |
 
-## Summary
+The asset count grew from 7,750 in the prior 300-frame pass to 14,707. Most of the
+growth is observed runtime background blocks from `--bgscan`; it is not a semantic
+bestiary. Four CHR-RAM entries still have very few or zero assets in 300 frames
+(`anp`, `anpanman`, `Little Mermaid`), which is reported exactly rather than
+inflated.
 
-- **25/25 runs completed**, with no capture failures or timeouts.
-- **19/19 CHR-ROM games: 100% of the non-blank CHR patterns are in the pack**
-  (with the wildcard palette fallback for unseen palettes). This is cartridge
-  coverage, not semantic coverage.
-- **6 CHR-RAM games** captured only the patterns actually observed. The report
-  does not claim 100% cartridge coverage.
-- Seen coverage with 300 frames is intentionally low (52–531 tiles); use a
-  movie, `--frames=18000`, or the deep explorer for a serious capture. The
-  tile guarantee does not depend on frame count.
-- Automatic asset discovery produced **7,750 records** in this short pass
-  (7,503 background blocks, 247 generic metasprites). This is not a semantic
-  bestiary, and SMB3 is still the only game with a profile-specific object
-  atlas / level maps.
-- Average capture time was **7.0 s** per ROM (300 frames, headless); the
-  slowest was 9.3 s. This includes emulator start, exploration, PNG output and
-  the report.
+## Deep scans (beyond the 300-frame matrix)
 
-## Actual replacement validation (not only capture)
+| Game | Mapper | CHR | Frames | Observed patterns | Pack patterns | Combos | Assets | Sprites | Backgrounds |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| Batman - Return of the Joker (USA) | 69 | ROM 256 KB | 3,542 | 1,807 | 15,729 | 18,470 | 3,545 | 640 | 2,905 |
+| Don Doko Don 2 (Japan) | 33 | ROM 256 KB | 3,450 | 587 | 14,554 | 15,749 | 1,938 | 30 | 1,908 |
+| Toki (USA) | 4 | ROM 256 KB | 3,633 | 175 | 13,692 | 13,701 | 618 | 5 | 613 |
+| Guardian Legend, The (USA) deep | 2 | CHR-RAM | 3,603 | observed | observed | 277 | 466 | 2 | 464 |
+| Guardian Legend, The (USA) replay | 2 | CHR-RAM | 2,402 | observed | observed | 1,328 | 843 | 0 | 843 |
+
+“Observed patterns” for CHR-RAM means runtime content, not cartridge patterns.
+
+### Actual replacement evidence
 
 | Case | Result | Evidence |
 |---|---|---|
-| SMB3 Goomba, 4× | Replacement visible in real gameplay; full 16×16 logical object | `mesen-home\HdPacks\SMB3_HdStudioTest\HdStudio\verify` |
-| SMB3 background block | Asset imported and pack built | same project |
-| Ice Climber 16×16 enemy / irregular 32×30 composition | 24 cells (12 tiles × 2 palettes), visible in movie playback, mapper 0 | `mesen-home\HdPacks\IceClimberHdVerify\HdStudio\verify` |
-| Synthetic 8×16 sprite mode | Four 32×32 cells at 4×; player is exactly 16×16 logical | `mesen-home\HdPacks\hdstudio_test_8x16\HdStudio\verify` |
-| Synthetic mirror scene | Same pattern+palette replaced independently for H-flipped and V-flipped enemies | `mesen-home\HdPacks\hdstudio_test_mirror\HdStudio\verify` |
-| Synthetic CHR-RAM scene | Runtime content keys and an animated CHR update captured/replaced | `mesen-home\HdPacks\hdstudio_test_chrram\HdStudio\verify` |
-| Synthetic background metatile | 16×16 block replaced; shared ground tiles are replaced too, as documented | `mesen-home\HdPacks\hdstudio_bgtest\HdStudio\verify` |
+| Batman background, gameplay | Passed: marker rendered on a visible wall block; state hashes identical | `mesen-home\HdPacks\Batman - Return of the Joker (USA)\HdStudio\verify` |
+| SMB3 Goomba, block and player frame | Passed (baseline preserved) | `SMB3_HdStudioTest\HdStudio\verify` |
+| Ice Climber irregular 32×30 composition | Passed (baseline preserved) | `IceClimberHdVerify\HdStudio\verify` |
+| Synthetic 8×16 / mirror / CHR-RAM | Passed | `test_synthetic_suite.py` |
+| CHR-RAM observed background block | Passed: magenta/cyan runtime block rendered; state hashes identical | `mesen-home\HdPacks\hdstudio_test_chrram\HdStudio\verify` |
+| Don Doko Don 2, Toki, Guardian replacement | **Capture and catalog only**; no reliable visible replacement was proven in this pass | table above |
 
-Gameplay-state hashes (CPU RAM + nametables + OAM + palette + PPU memory) were
-identical between the HD and original passes at every checkpoint for the
-SMB3 movie run and all synthetic runs.
+The failed/not-proven cases are explicit. They are not counted as successes.
 
-## Reproduce
+## Unknown-homebrew holdout (profiles disabled)
+
+`hdstudio_holdout.nes` is generated from the original source in
+`test-roms/build_synthetic_roms.py` after the discovery/catalog parameters were
+frozen. It is an NROM CHR-ROM scene with 8×16 sprites, three enemies sharing the
+same pattern+palette in H, V and both-axis flip contexts, a 2×2 background
+metatile and an animated player. No SMB3 profile, disassembly, symbol file or
+ground-truth manifest is passed to the engine.
+
+`python scripts/evaluate_holdout.py --pack PACK` result:
+
+| Metric | Result |
+|---|---:|
+| Profiles disabled | Yes (0 semantic objects / animation frames) |
+| Expected hardware (pattern+palette) combinations | 16 |
+| Observed combinations | 16 |
+| Hardware-combination recall | **1.00** |
+| Hardware-combination precision | **1.00** |
+| Expected compositions `"" / H / V / HV` | 4 |
+| Found compositions | 4 |
+| Composition recall | **1.00** |
+| Background block recalled | **Yes** (patterns 101,102,111,112 / palette 21071727) |
+| Unclassified partial metasprites | 2 (sub-compositions); tiles are still ground-truth patterns |
+
+This is a controlled fixture, not evidence of complete semantic discovery for
+arbitrary commercial games.
+
+## Stock Mesen compatibility (official release)
+
+| Item | Value |
+|---|---|
+| Emulator | Official **Mesen 2.1.1** Windows release |
+| Source asset | `Mesen_2.1.1_Windows.zip` from `SourMesen/Mesen2` |
+| ZIP SHA-256 | `23ccc2bc060b663c68dad3a8c5d6da7d23a50f872d04f135bafa2b04ff7d5cbe` |
+| EXE SHA-256 | `d2eb03c2590c648bf329f127ebcfefd70130e7690a9e2ccdba8616faea1fe96b` |
+| Packs tested | holdout minimal (both-axis condition), synthetic example, SMB3 full |
+| Result | **Passed** |
+
+The holdout pack contains only:
+
+```
+[hmirror&vmirror]<tile>0,07,FF0F1A2A,0,0,1,N
+...
+```
+
+In stock Mesen only the rightmost, both-flipped enemy changed; the H-only and
+V-only enemies stayed original. This proves the condition is parsed and applied
+by unmodified Mesen, not by a fork-only extension. The SMB3 full pack loaded in
+stock Mesen 2.1.1 without crashing.
+
+Reproduce:
 
 ```bat
-python scripts\validate_matrix.py --rom-dir "D:\NesFlasher\ROMs" ^
-  --out-root "D:\MesenHighWork\validation-packs-final" --frames 300
-
-python scripts\test_hdstudio_geometry.py --home D:\MesenHighWork\mesen-home
-python scripts\test_hdstudio_project.py --rom "...\Super Mario Bros. 3 (USA).nes" ^
-  --pack "...\mesen-home\HdPacks\Super Mario Bros. 3 (USA)" --image "...\input\user_1.png" --asset 114
-python scripts\test_importer.py --rom "...\Super Mario Bros. 3 (USA).nes" ^
-  --pack "...\mesen-home\HdPacks\Super Mario Bros. 3 (USA)" --image "...\input\user_0.png" --asset 114
-python scripts\test_gate1_mapper.py --rom "...\Super Mario Bros. 3 (USA).nes"
-python scripts\test_synthetic_suite.py --home D:\MesenHighWork\mesen-home
+python scripts\test_stock_mesen.py --rom ROM --pack PACK --shots OUTPUT
 ```
+
+## Test results
+
+| Test | Command | Result |
+|---|---|---|
+| Geometry/adaptation self test | `Mesen.exe --hdstudio --selftest` | **165 passed, 0 failed** |
+| Managed project/compiler | `test_hdstudio_project.py ... --asset 114` | **Passed**; deterministic rebuild, copied project, draft, conflict stop, minimal export |
+| Export workflow | `test_hdstudio_export.py` | **Passed**; full/minimal, Unicode path, backup, refusal, install, ROM integrity |
+| Shared-pattern safety | `test_hdstudio_safety.py` | **Passed**; both-axis condition, unapproved shared key refused, approval, conflict stop, pack preserved |
+| Discovery sessions | `test_hdstudio_discovery.py` | **Passed**; 600 → 1200 frame resume, restart, snapshots, stopping reasons |
+| Sprite-sheet slicer | `test_hdstudio_slicer.py` | **Passed**; 4 frames, margins/spacing, derived grid, trim, invalid grid |
+| Synthetic suite | `test_synthetic_suite.py` | **5/5 variants**, CHR-RAM background block observed, holdout both-axis |
+| Holdout evaluation | `evaluate_holdout.py` | **1.00 precision/recall**, composition recall 1.00 |
+| Legacy importer | `test_importer.py` | **Passed** |
+| Mapper audit | `test_gate1_mapper.py` | **36/36 rows**, 0 failures |
+| 25-ROM matrix | `validate_matrix.py --frames 300` | **25/25**, 19/19 CHR-ROM coverage, 6 CHR-RAM honest |
+| Stock Mesen | `test_stock_mesen.py` | **Passed** on Mesen 2.1.1 |
+
+## Limitations confirmed in this pass
+
+- Live capture from an interactive Mesen session is not implemented.
+- The GUI sprite-sheet assignment path is implemented and shares the tested
+  slicer, but the automated end-to-end assignment through the GUI was not run;
+  the CLI slicer and frame assignment backend were tested.
+- Don Doko Don 2, Toki and Guardian Legend were captured deeply but no reliable
+  visible authored replacement was proven for them in this pass.
+- Saturation is not completeness. Commercial semantic denominators remain
+  unknown.
+- `spriteNearby`, `tileAtPosition`, memory checks and other standard conditions
+  are supported by Mesen's parser but the compiler only emits mirror and
+  background-priority conditions automatically. They remain advanced/manual.

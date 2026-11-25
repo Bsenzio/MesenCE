@@ -5,13 +5,109 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
-HD Studio is an addition to this fork of MesenCE that automates the first steps of making an HD pack for an NES game:
-it plays the game without a window, records every tile that is drawn, detects the objects on screen (metasprites)
-and writes a report saying which PNG images to draw and at what size.
+## v0.2 Alpha — generalized discovery, export and safety (2026-11-25)
 
-HD packs are a Mesen feature for **NES games only**.
+This release turns the native application into a complete authoring workflow and
+addresses the main correctness limitations of v0.1.
 
-## Native application (2026-11-25)
+### Native user experience
+
+- **Welcome** tab with Open ROM, Open project, the portable synthetic example,
+  recent projects and a first-run guide.
+- Workflow navigation: **Discover → Artwork → Animations → Backgrounds →
+  Replacements → Preview → Export**.
+- The asset catalog supports category, search, replacement-status and shared-key
+  filters. Replaced/draft assets are labelled; unknown assets stay visible.
+- **Artwork Workshop** keeps the original NES appearance next to the HD preview,
+  with source art, crop/fit/anchor/offset/zoom/flip controls, all-palette scope,
+  mirror and background-priority conditions, explicit shared-key approval, undo
+  via draft state and approval.
+- **Preview** shows the last real original/HD verification frames and can build,
+  install and launch the pack in Mesen, or run a deterministic verification pass.
+- **Export** has a predictable destination, staging, validation, backup, install
+  and Open/Copy/Play actions.
+
+### Resumable discovery
+
+`--discover=quick|deep|replay|assisted` runs complete capture chunks in separate
+headless Mesen processes and merges them into the same pack. After every chunk the
+semantic catalog is exported and a `HdStudio/discovery-session.json` snapshot
+records frames, deterministic seed, asset/pattern growth and the stopping reason.
+A second run resumes; `--discover-restart` starts again. Quick scans are labelled
+incomplete. Saturation means "no measured growth for N chunks", not proof of
+completeness. Live capture from an already-running interactive Mesen window is not
+claimed in this version.
+
+### Shared-pattern safety and standard conditions
+
+- The compiler now refuses a replacement whose tile+palette keys are shared with
+  other captured assets unless the project explicitly approves the shared
+  replacement. Affected assets are listed in the Studio.
+- Both-axis flips compile to the standard Mesen `[hmirror&vmirror]` condition;
+  background priority can use `[bgpriority]`. H/V-only conditions remain
+  supported. A true same-condition conflict still stops the build.
+- Authored entries still precede capture entries (Mesen uses the first match).
+- A failed build never overwrites the previous `hires.txt`.
+
+### CHR-RAM background blocks
+
+`--bgscan` loads a runtime observer (`Scripts/bg_observe.lua`) that samples
+nametable, attribute and mapper-resolved pattern context. The asset exporter emits
+editable 16×16 background blocks identified by their runtime pattern bytes. Blank
+cells are deliberately omitted because a blank pattern is shared by every empty
+area and cannot be replaced privately. This is observed runtime coverage, not a
+promise that every background state was reached.
+
+### Sprite-sheet slicing
+
+The Animations tab can slice a source sheet by grid, frame size, margin and
+spacing, preview the result and assign frames to a captured animation sequence.
+Assignments are drafts until approved. The CLI equivalent is:
+
+```bat
+Mesen.exe --hdstudio --slice-sheet=sheet.png --grid=4x2 --slice-frame=64x64 ^
+  --slice-margin=0 --slice-spacing=0 --slice-out=frames
+```
+
+### Export
+
+```bat
+Mesen.exe --hdstudio game.nes --export --project=PACK ^
+  --export-root="D:\Packs" [--minimal] [--install] [--overwrite]
+:: or an exact destination:
+Mesen.exe --hdstudio game.nes --export --project=PACK --export-to="D:\Packs\My Pack"
+```
+
+Default root: `Documents\RetroArcDo HD Studio\Exports`. The exporter builds in a
+staging folder, validates `<supportedRom>`, scale, every referenced PNG and the
+absence of ROM files, then replaces the destination atomically. An existing pack
+is backed up by default. `--install` copies the result to Mesen's `HdPacks`
+folder under the ROM name.
+
+### Stock Mesen compatibility
+
+The standard output was tested with the official **Mesen 2.1.1** Windows release
+(SHA-256 `23ccc2bc060b663c68dad3a8c5d6da7d23a50f872d04f135bafa2b04ff7d5cbe`).
+A both-axis conditional replacement renders only on the both-flipped enemy in
+stock Mesen, while H/V enemies remain original. See
+`HDSTUDIO_VALIDATION.md` and the docs repository for screenshots and commands.
+
+### Regression commands
+
+```bat
+python scripts\test_hdstudio_geometry.py --home D:\MesenHighWork\mesen-home
+python scripts\test_hdstudio_project.py ... --asset 114
+python scripts\test_hdstudio_export.py
+python scripts\test_hdstudio_safety.py
+python scripts\test_hdstudio_discovery.py
+python scripts\test_hdstudio_slicer.py
+python scripts\test_synthetic_suite.py
+python scripts\evaluate_holdout.py --pack PACK
+python scripts\validate_matrix.py --frames 300
+python scripts\test_stock_mesen.py --rom ROM --pack PACK --shots OUTPUT
+```
+
+## Native application foundation (preserved in v0.2)
 
 The fork now contains a native graphical application in addition to the headless pipeline:
 
@@ -235,13 +331,15 @@ hang. The images are rendered with CHR + the exact sprite palette into `HdStudio
 walking characters look doubled). The report shows an **Object atlas (named sprites)** table with all 196 IDs,
 names and the
 captured images. IDs that need a special state (doors, controllers, some bosses’ phases) show “no visible
-sprite in the forced state” instead of a wrong image. Measured on SMB3: **147 of 196 object types** produced
-sprites (443 visible sprite entries, **200 exact pattern+palette combinations** added to the pack; all 200
-present). SMB3 uses **8×16 sprites**, so the renderer combines each OAM pattern pair; a few forced-state boss
-captures are still partial (Bowser, Boss Bass) because they need their real level/state. The 49 without sprites
-are 7 world-map objects, invisible objects (hidden whistle, door, lift, currents), and event/cannon controllers
-that spawn other objects instead of drawing themselves. Player forms (Tanuki, Frog, Hammer…) are not object IDs;
-they are captured by the separate `--playerforms` atlas (see below).
+sprite in the forced state” instead of a wrong image. Current mapper-aware audit: **140 captured OAM
+compositions, 138 verified, 2 blank/unverified, 49 unique IDs with no sprite, 1,070 OAM rows and
+444/444 exact object (pattern+palette) combinations present in the pack**. The retired 147/196 and
+200/200 claims are no longer used. SMB3 uses **8×16 sprites**, so the renderer combines each OAM pattern
+pair; a few forced-state boss captures are still partial (Bowser, Boss Bass) because they need their real
+level/state. The 49 without sprites are 7 world-map objects, invisible objects (hidden whistle, door, lift,
+currents), and event/cannon controllers that spawn other objects instead of drawing themselves. Player
+forms (Tanuki, Frog, Hammer…) are not object IDs; they are captured by the separate `--playerforms` atlas
+(see below).
 
 **What “100 %” does not mean:** it is tile/palette coverage, not a named bestiary. `sheet_objects.png`
 contains the metasprites detected in the recording (for SMB3: 71 groups / 464 variants); the game data

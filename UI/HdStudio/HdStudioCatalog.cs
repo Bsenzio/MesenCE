@@ -100,7 +100,7 @@ namespace Mesen.HdStudio
 			return shared;
 		}
 
-		private static string GetTileKey(HdStudioCatalogTile tile)
+		internal static string GetTileKey(HdStudioCatalogTile tile)
 		{
 			if(tile.ChrType.Contains("ChrRam", StringComparison.OrdinalIgnoreCase) &&
 				!string.IsNullOrEmpty(tile.TileData) && tile.TileData.Length == 32) {

@@ -131,19 +131,23 @@ def main():
     hires = open(hires_path, encoding="utf-8").read()
     if replacement["sheet"] not in hires:
         raise SystemExit("generated sheet is not referenced by hires.txt")
-    if count_img(hires) != count_img(base) + 1:
-        raise SystemExit("hires.txt image count is not base + 1 replacement")
-    expected_tiles = len(tile_entries(base)) + len(replacement["cells"])
+    approved = [r for r in project["replacements"] if r.get("approval") == "approved"]
+    if count_img(hires) != count_img(base) + len(approved):
+        raise SystemExit(f"hires.txt image count is not base + approved replacements ({count_img(base)} + {len(approved)})")
+    expected_tiles = len(tile_entries(base)) + sum(len(r.get("cells", [])) for r in approved)
     if len(tile_entries(hires)) != expected_tiles:
         raise SystemExit(f"unexpected tile entry count: {len(tile_entries(hires))} != {expected_tiles}")
 
     # Mesen uses the first matching entry for a tile key. Authored entries must therefore
     # precede capture-generated entries, otherwise an exact capture palette shadows the art
     # and the pack loads but the replacement never appears on screen.
-    image_lines = [line[5:] for line in hires.splitlines() if line.startswith("<img>")]
-    managed_index = image_lines.index(replacement["sheet"])
-    first_tile = next((line for line in hires.splitlines() if "<tile>" in line), "")
-    if f"<tile>{managed_index}," not in first_tile:
+    base_images = count_img(base)
+    ordered_tiles = [line for line in hires.splitlines() if "<tile>" in line]
+    first_managed = next((i for i, line in enumerate(ordered_tiles)
+                          if int(line.split("<tile>")[1].split(",")[0]) >= base_images), -1)
+    first_base = next((i for i, line in enumerate(ordered_tiles)
+                       if int(line.split("<tile>")[1].split(",")[0]) < base_images), -1)
+    if first_managed < 0 or (first_base >= 0 and first_base < first_managed):
         raise SystemExit("authored tile entries do not precede capture-generated entries")
 
     # 2. Rebuild twice: deterministic and idempotent, in-place.
@@ -154,7 +158,7 @@ def main():
     third = sha(hires_path)
     if first != second or second != third:
         raise SystemExit("repeated builds are not deterministic")
-    if open(hires_path, encoding="utf-8").read().count("<img>HdStudioManaged_") != 1:
+    if open(hires_path, encoding="utf-8").read().count("<img>HdStudioManaged_") != len(approved):
         raise SystemExit("rebuild accumulated duplicate generated images")
 
     # 3. Validation is read-only.
@@ -169,7 +173,7 @@ def main():
     save_project(project_path, project)
     run(args.mesen, args.rom, pack, ["--compile"])
     draft_hires = open(hires_path, encoding="utf-8").read()
-    if "HdStudioManaged_" in draft_hires:
+    if replacement["sheet"] in draft_hires:
         raise SystemExit("a draft replacement was exported")
     replacement["approval"] = "approved"
     save_project(project_path, project)
@@ -229,11 +233,11 @@ def main():
     minimal_hires = open(os.path.join(minimal, "hires.txt"), encoding="utf-8").read()
     if "Chr_" in minimal_hires:
         raise SystemExit("minimal export contains base capture image entries")
-    if len(tile_entries(minimal_hires)) != len(replacement.get("cells", [])):
-        raise SystemExit("minimal export does not contain exactly the replacement tiles")
+    if len(tile_entries(minimal_hires)) != sum(len(r.get("cells", [])) for r in approved):
+        raise SystemExit("minimal export does not contain exactly the approved replacement tiles")
     sheets = [f for f in os.listdir(minimal) if f.startswith("HdStudioManaged_") and f.endswith(".png")]
-    if not sheets:
-        raise SystemExit("minimal export did not write the replacement sheet")
+    if len(sheets) != len(approved):
+        raise SystemExit("minimal export did not write one sheet per approved replacement")
 
     result = {
         "passed": True,
