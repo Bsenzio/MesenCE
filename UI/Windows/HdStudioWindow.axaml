@@ -1027,7 +1027,7 @@
                     <Border Grid.Column="1" Classes="badge"><TextBlock Text="256×240" /></Border>
                   </Grid>
                   <Border Grid.Row="1" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="6" ClipToBounds="True">
-                    <Viewbox Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10"><Image Name="VerifyOriginalImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None" /></Viewbox>
+                    <Viewbox Width="560" Height="420" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10"><Image Name="VerifyOriginalImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None" /></Viewbox>
                   </Border>
                 </Grid>
               </Border>
@@ -1038,7 +1038,7 @@
                     <Border Grid.Column="1" Classes="badge success"><TextBlock Text="HD PACK ACTIVE" /></Border>
                   </Grid>
                   <Border Grid.Row="1" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="6" ClipToBounds="True">
-                    <Viewbox Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="10"><Image Name="VerifyHdImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None" /></Viewbox>
+                    <Viewbox Width="560" Height="420" Stretch="Uniform" StretchDirection="Both" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10"><Image Name="VerifyHdImage" Stretch="None" RenderOptions.BitmapInterpolationMode="None" /></Viewbox>
                   </Border>
                 </Grid>
               </Border>
