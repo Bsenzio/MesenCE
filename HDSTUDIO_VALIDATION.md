@@ -1,5 +1,28 @@
 ﻿# HD Studio validation
 
+## v0.5 (2026-11-25)
+
+The final v0.5 binaries were exercised against all 170 unique ROMs in the local
+library (300 frames, four workers), six representative 6,000-frame deep runs and
+four independent homebrew ROMs.
+
+- Tier-1: **168/170 captures**, **170/170 catalogs**, **170/170 ROM integrity**.
+  Two pirate multicarts (mappers 576 and 396) were rejected by Mesen.
+- Deep: **6/6 captures**, **5/6 gameplay signatures**, **8,515 reconstructed
+  compositions**; The Guardian Legend produced **4,454** compositions at 6,000
+  frames.
+- Authored replacement: **Guardian Legend non-blank player composition verified**
+  (15x43 -> 60x172 at 4x, real 1024x960 HD frame, identical state hashes at frames
+  600 and 1200); synthetic player replacement verified; Don Doko Don 2/Toki/
+  Little Mermaid not proven in this pass.
+- Live capture: **134 samples, 1,020 rendered sprite occurrences, 251 background
+  blocks, zero OAM fallback**; hardware pick persisted.
+- Official Mesen 2.1.1 loaded the standard synthetic pack: passed, 7,288 changed
+  pixels.
+- Advanced standard condition (`positionCheckX:>=,0`) emitted, parsed, and active
+  in a real emulator run.
+- Full details: `docs/FINAL_ENGINEERING_REPORT_v0.5.md` in the documentation repo.
+
 ## v0.3 (2026-11-25)
 
 The graphical redesign preserves the engine and passed: full core+UI build,
