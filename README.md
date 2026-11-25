@@ -8,7 +8,8 @@
 >
 > **v0.3 Alpha:** [HDSTUDIO.md](HDSTUDIO.md) · [full engineering report](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.3.md) ·
 > [media gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md) ·
-> [game gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md)
+> [game gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md) ·
+> [AI-enhanced experiments](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/AI_ENHANCEMENTS.md)
 
 Mesen is a multi-system emulator for Windows, Linux, and macOS. It supports NES, SNES, Game Boy (GB/SGB/GBC), Game Boy Advance, PC Engine, SMS/Game Gear, and WonderSwan (WS/WSC).
 

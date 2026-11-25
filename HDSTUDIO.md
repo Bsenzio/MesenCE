@@ -9,6 +9,7 @@
 
 - **Media gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md>
 - **Game gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md>
+- **AI-enhanced experiments:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/AI_ENHANCEMENTS.md>
 - **Full v0.3 report:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.3.md>
 
 The native Studio is now a graphical RetroArcDo editor. The complete report with
