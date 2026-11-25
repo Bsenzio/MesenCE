@@ -1,0 +1,238 @@
+<Window
+	xmlns="https://github.com/avaloniaui"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+	mc:Ignorable="d" d:DesignWidth="1240" d:DesignHeight="820"
+	x:Class="Mesen.Windows.HdStudioWindow"
+	Width="1240" Height="820" MinWidth="980" MinHeight="640"
+	Title="RetroArcDo HD Studio"
+	Icon="/Assets/HdPack.png"
+	Name="root"
+>
+	<Grid RowDefinitions="Auto,Auto,*,Auto" Margin="6">
+		<Border Grid.Row="0" BorderThickness="1" BorderBrush="#40808080" Padding="8,5" CornerRadius="3">
+			<DockPanel LastChildFill="True">
+				<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+					<Button Name="OpenRomButton" Content="Open ROM..." Click="OpenRom_Click" ToolTip.Tip="Choose a NES ROM and open its HD pack project" />
+					<Button Name="TopCaptureButton" Content="Capture..." Click="Capture_Click" ToolTip.Tip="Run a headless exploration capture for the current ROM" />
+					<Button Name="TopCompileButton" Content="Build Pack" Click="Compile_Click" ToolTip.Tip="Compile the project into a standard Mesen hires.txt pack" />
+					<Button Name="TopValidateButton" Content="Validate" Click="Validate_Click" ToolTip.Tip="Check ROM identity, sources, scales and context conflicts" />
+				</StackPanel>
+				<StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+					<TextBlock Name="RomText" FontWeight="Bold" Text="No ROM loaded" />
+					<TextBlock Name="ProjectText" Opacity="0.8" Text="" />
+				</StackPanel>
+			</DockPanel>
+		</Border>
+
+		<TextBlock Grid.Row="1" Name="StatusText" Margin="2,4,2,4" Text="Ready." TextWrapping="Wrap" />
+
+		<Grid Grid.Row="2" ColumnDefinitions="360,6,*">
+			<Border Grid.Column="0" BorderThickness="1" BorderBrush="#40808080" CornerRadius="3" Padding="6">
+				<Grid RowDefinitions="Auto,Auto,*,Auto">
+					<TextBlock Text="Asset browser" FontWeight="Bold" Margin="0,0,0,4" />
+					<StackPanel Grid.Row="1" Spacing="4">
+						<TextBox Name="AssetSearchBox" PlaceholderText="Search name, label or id..." TextChanged="AssetSearch_TextChanged" />
+						<ComboBox Name="CategoryBox" SelectedIndex="0" SelectionChanged="Category_SelectionChanged" HorizontalAlignment="Stretch">
+							<ComboBoxItem Content="All assets" />
+							<ComboBoxItem Content="Objects" />
+							<ComboBoxItem Content="Rendered metasprites" />
+							<ComboBoxItem Content="Animation frames" />
+							<ComboBoxItem Content="Animation sequences" />
+							<ComboBoxItem Content="Backgrounds" />
+							<ComboBoxItem Content="Background tiles" />
+							<ComboBoxItem Content="Other" />
+						</ComboBox>
+					</StackPanel>
+					<ListBox Grid.Row="2" Name="AssetList" Margin="0,6,0,0" SelectionChanged="AssetList_SelectionChanged" />
+					<StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+						<TextBlock Name="AssetCountText" VerticalAlignment="Center" Opacity="0.7" Text="0 assets" />
+						<Button Name="OpenWorkshopButton" Content="Open in Workshop" Click="OpenWorkshop_Click" HorizontalAlignment="Right" />
+					</StackPanel>
+				</Grid>
+			</Border>
+
+			<GridSplitter Grid.Column="1" Width="6" Background="Transparent" ResizeDirection="Columns" />
+
+			<TabControl Grid.Column="2" Name="Tabs" Margin="4,0,0,0">
+				<TabItem Header="Artwork Workshop">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel Spacing="8" Margin="4">
+							<Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+								<StackPanel Grid.Column="0" Spacing="4">
+									<TextBlock Text="Original NES appearance" FontWeight="Bold" />
+									<Border BorderThickness="1" BorderBrush="#40808080" Height="210" Background="#18808080">
+										<Image Name="OriginalImage" Stretch="Uniform" Margin="4" />
+									</Border>
+								</StackPanel>
+								<StackPanel Grid.Column="1" Spacing="4">
+									<TextBlock Text="HD replacement preview" FontWeight="Bold" />
+									<Border BorderThickness="1" BorderBrush="#40808080" Height="210" Background="#18808080">
+										<Image Name="ReplacementImage" Stretch="Uniform" Margin="4" />
+									</Border>
+								</StackPanel>
+							</Grid>
+
+							<TextBlock Name="AssetInfoText" TextWrapping="Wrap" Opacity="0.85" Text="Select an asset from the browser." />
+
+							<TextBlock Text="Source artwork" FontWeight="Bold" />
+							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+								<TextBox Name="SourcePathBox" PlaceholderText="PNG, JPEG or WebP artwork..." />
+								<Button Grid.Column="1" Content="Browse..." Click="Browse_Click" />
+							</Grid>
+
+							<TextBlock Text="Adaptation (whole object is composed once, then segmented into the original 8x8 grid)" FontWeight="Bold" TextWrapping="Wrap" />
+							<WrapPanel>
+								<CheckBox Name="RemoveBackgroundCheck" Content="Remove background" Margin="0,0,14,0" />
+								<TextBlock Text="Tolerance" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="ToleranceBox" Minimum="0" Maximum="441" Value="40" Increment="1" Width="90" Margin="0,0,14,0" />
+								<CheckBox Name="KeepLargestCheck" Content="Keep largest component" Margin="0,0,14,0" />
+								<CheckBox Name="CropCheck" Content="Crop transparent border" IsChecked="True" />
+							</WrapPanel>
+							<WrapPanel>
+								<TextBlock Text="Fit" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<ComboBox Name="FitBox" SelectedIndex="0" Width="120" Margin="0,0,14,0">
+									<ComboBoxItem Content="contain" />
+									<ComboBoxItem Content="stretch" />
+								</ComboBox>
+								<TextBlock Text="Anchor" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<ComboBox Name="AnchorBox" SelectedIndex="2" Width="110" Margin="0,0,14,0">
+									<ComboBoxItem Content="top" />
+									<ComboBoxItem Content="left" />
+									<ComboBoxItem Content="center" />
+									<ComboBoxItem Content="right" />
+									<ComboBoxItem Content="bottom" />
+								</ComboBox>
+								<TextBlock Text="Padding" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="PaddingBox" Minimum="0" Maximum="256" Value="0" Increment="1" Width="90" />
+							</WrapPanel>
+							<WrapPanel>
+								<TextBlock Text="Offset X" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="OffsetXBox" Minimum="-1024" Maximum="1024" Value="0" Increment="1" Width="90" Margin="0,0,14,0" />
+								<TextBlock Text="Offset Y" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="OffsetYBox" Minimum="-1024" Maximum="1024" Value="0" Increment="1" Width="90" Margin="0,0,14,0" />
+								<TextBlock Text="Zoom %" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="ZoomBox" Minimum="10" Maximum="400" Value="100" Increment="5" Width="90" Margin="0,0,14,0" />
+								<CheckBox Name="FlipHCheck" Content="Flip H" Margin="0,0,10,0" />
+								<CheckBox Name="FlipVCheck" Content="Flip V" Margin="0,0,10,0" />
+								<CheckBox Name="AllPalettesCheck" Content="All observed palettes" IsChecked="True" Margin="0,0,10,0" />
+								<CheckBox Name="MirrorCheck" Content="Mirror-specific variants (advanced)" IsChecked="False" />
+							</WrapPanel>
+
+							<StackPanel Orientation="Horizontal" Spacing="8">
+								<Button Name="PreviewButton" Content="Preview" Click="Preview_Click" />
+								<Button Name="SaveDraftButton" Content="Save Draft" Click="SaveDraft_Click" />
+								<Button Name="ApplyButton" Content="Approve &amp; Apply" Click="Apply_Click" />
+								<TextBlock Name="WorkshopStatusText" VerticalAlignment="Center" Opacity="0.8" Text="" />
+							</StackPanel>
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
+
+				<TabItem Header="Animations">
+					<Grid ColumnDefinitions="360,6,*" Margin="4">
+						<StackPanel Spacing="6">
+							<TextBlock Text="Animation sequences and frames" FontWeight="Bold" />
+							<ListBox Name="AnimationList" SelectionChanged="AnimationList_SelectionChanged" />
+						</StackPanel>
+						<GridSplitter Grid.Column="1" Background="Transparent" />
+						<StackPanel Grid.Column="2" Spacing="6">
+							<Border BorderThickness="1" BorderBrush="#40808080" Height="260" Background="#18808080">
+								<Image Name="AnimationPreview" Stretch="Uniform" Margin="4" />
+							</Border>
+							<TextBlock Name="AnimationInfoText" TextWrapping="Wrap" />
+							<Button Name="OpenAnimationButton" Content="Open frame in Workshop" Click="OpenAnimation_Click" HorizontalAlignment="Left" />
+						</StackPanel>
+					</Grid>
+				</TabItem>
+
+				<TabItem Header="Backgrounds">
+					<Grid ColumnDefinitions="360,6,*" Margin="4">
+						<StackPanel Spacing="6">
+							<TextBlock Text="Background blocks and tiles" FontWeight="Bold" />
+							<ListBox Name="BackgroundList" SelectionChanged="BackgroundList_SelectionChanged" />
+						</StackPanel>
+						<GridSplitter Grid.Column="1" Background="Transparent" />
+						<StackPanel Grid.Column="2" Spacing="6">
+							<Border BorderThickness="1" BorderBrush="#40808080" Height="260" Background="#18808080">
+								<Image Name="BackgroundPreview" Stretch="Uniform" Margin="4" />
+							</Border>
+							<TextBlock Name="BackgroundInfoText" TextWrapping="Wrap" />
+							<Button Name="OpenBackgroundButton" Content="Open block in Workshop" Click="OpenBackground_Click" HorizontalAlignment="Left" />
+						</StackPanel>
+					</Grid>
+				</TabItem>
+
+				<TabItem Header="Replacements">
+					<Grid ColumnDefinitions="380,6,*" Margin="4">
+						<StackPanel Spacing="6">
+							<TextBlock Text="Project replacements" FontWeight="Bold" />
+							<ListBox Name="ReplacementList" SelectionChanged="ReplacementList_SelectionChanged" />
+						</StackPanel>
+						<GridSplitter Grid.Column="1" Background="Transparent" />
+						<StackPanel Grid.Column="2" Spacing="8">
+							<TextBlock Name="ReplacementInfoText" TextWrapping="Wrap" />
+							<StackPanel Orientation="Horizontal" Spacing="6">
+								<Button Name="ApproveReplacementButton" Content="Approve" Click="ApproveReplacement_Click" />
+								<Button Name="UnapproveReplacementButton" Content="Unapprove" Click="UnapproveReplacement_Click" />
+								<Button Name="ApplyReplacementButton" Content="Apply Selected" Click="ApplyReplacement_Click" />
+								<Button Name="RemoveReplacementButton" Content="Remove" Click="RemoveReplacement_Click" />
+							</StackPanel>
+							<TextBlock Text="Approved replacements are written to the pack on Build. Drafts stay in the project and are never exported." TextWrapping="Wrap" Opacity="0.75" />
+						</StackPanel>
+					</Grid>
+				</TabItem>
+
+				<TabItem Header="Build &amp; Capture">
+					<Grid RowDefinitions="Auto,*" Margin="4">
+						<StackPanel Grid.Row="0" Spacing="6">
+							<WrapPanel>
+								<TextBlock Text="Capture frames" VerticalAlignment="Center" Margin="0,0,4,0" />
+								<NumericUpDown Name="FramesBox" Minimum="600" Maximum="360000" Value="18000" Increment="600" Width="110" Margin="0,0,14,0" />
+								<Button Name="CaptureButton" Content="Run headless capture" Click="Capture_Click" Margin="0,0,6,0" />
+								<Button Name="CompileButton" Content="Build standard pack" Click="Compile_Click" Margin="0,0,6,0" />
+								<Button Name="ValidateButton" Content="Validate project" Click="Validate_Click" Margin="0,0,6,0" />
+								<Button Name="MinimalExportButton" Content="Export minimal pack..." Click="MinimalExport_Click" Margin="0,0,6,0" />
+								<Button Name="OpenPackFolderButton" Content="Open pack folder" Click="OpenPackFolder_Click" />
+							</WrapPanel>
+							<ProgressBar Name="BuildProgress" Height="6" IsIndeterminate="False" Minimum="0" Maximum="100" Value="0" />
+							<TextBlock Text="Capture runs in a separate headless Mesen process; the Studio stays responsive. Build writes only standard hires.txt and PNG files." TextWrapping="Wrap" Opacity="0.75" />
+						</StackPanel>
+						<TextBox Grid.Row="1" Name="LogBox" Margin="0,8,0,0" AcceptsReturn="True" IsReadOnly="True" TextWrapping="NoWrap" FontFamily="Consolas, Cascadia Mono, monospace" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+					</Grid>
+				</TabItem>
+
+				<TabItem Header="Validation">
+					<ScrollViewer VerticalScrollBarVisibility="Auto">
+						<StackPanel Spacing="6" Margin="4">
+							<Button Name="RefreshValidationButton" Content="Run validation" Click="Validate_Click" HorizontalAlignment="Left" />
+							<TextBlock Name="ValidationText" TextWrapping="Wrap" />
+						</StackPanel>
+					</ScrollViewer>
+				</TabItem>
+
+				<TabItem Header="Project">
+					<StackPanel Spacing="8" Margin="4">
+						<TextBlock Text="Project file" FontWeight="Bold" />
+						<TextBlock Name="ProjectPathText" TextWrapping="Wrap" />
+						<WrapPanel>
+							<TextBlock Text="Output scale" VerticalAlignment="Center" Margin="0,0,4,0" />
+							<NumericUpDown Name="ScaleBox" Minimum="1" Maximum="10" Value="4" Increment="1" Width="90" Margin="0,0,14,0" />
+							<Button Name="SaveProjectButton" Content="Save project" Click="SaveProject_Click" Margin="0,0,6,0" />
+							<Button Name="ReloadProjectButton" Content="Reload project" Click="ReloadProject_Click" Margin="0,0,6,0" />
+							<Button Name="RebuildBaseButton" Content="Re-snapshot base pack" Click="RebuildBase_Click" />
+						</WrapPanel>
+						<TextBlock Name="BaseStatusText" TextWrapping="Wrap" Opacity="0.8" />
+						<TextBlock Text="The base snapshot keeps capture-generated hires.txt content. Managed replacements are rebuilt on top of it, so builds are repeatable and never accumulate duplicate entries." TextWrapping="Wrap" Opacity="0.75" />
+						<TextBlock Name="ProjectSummaryText" TextWrapping="Wrap" />
+					</StackPanel>
+				</TabItem>
+			</TabControl>
+		</Grid>
+
+		<Border Grid.Row="3" BorderThickness="0,1,0,0" BorderBrush="#40808080" Margin="0,6,0,0" Padding="4,4,0,0">
+			<TextBlock Name="FooterText" Opacity="0.7" Text="RetroArcDo HD Studio - original NES geometry is preserved; only appearance changes." />
+		</Border>
+	</Grid>
+</Window>

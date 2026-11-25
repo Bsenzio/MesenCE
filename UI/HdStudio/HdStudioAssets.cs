@@ -71,6 +71,8 @@ namespace Mesen.HdStudio
 			ReadDiscoveredMetasprites(studio, romKey, assets, log);
 			ReadObjectAtlas(studio, romKey, assets, log);
 			ReadPlayerAtlas(studio, romKey, assets, log);
+			ReadPlayerFormTiles(studio, romKey, assets, log);
+			ReadBackgroundBlocks(studio, romKey, assets, log);
 
 			using(FileStream stream = File.Create(Path.Combine(assetsFolder, "assets.json"))) {
 				using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true });
@@ -101,7 +103,7 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
-			log($"Assets: {assets.Count} records ({assets.Count(a => a.Kind == "metasprite")} generic metasprites, {assets.Count(a => a.Kind == "semanticObject")} semantic objects, {assets.Count(a => a.Kind == "animationFrame")} animation frames) -> {assetsFolder}");
+			log($"Assets: {assets.Count} records ({assets.Count(a => a.Kind == "metasprite")} generic metasprites, {assets.Count(a => a.Kind == "semanticObject")} semantic objects, {assets.Count(a => a.Kind == "animationFrame")} animation frames, {assets.Count(a => a.Kind == "backgroundBlock")} background blocks) -> {assetsFolder}");
 			return 0;
 		}
 
@@ -355,6 +357,165 @@ namespace Mesen.HdStudio
 				log("Assets: player forms exported as animation sequences and frames");
 			} catch(Exception ex) {
 				log("Assets: player forms could not be read: " + ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// Attaches the mapper-resolved OAM parts recorded by --playerforms to the animation
+		/// frames exported above. Without this an animation frame is only a reference image and
+		/// cannot be replaced or segmented into NES tiles.
+		/// </summary>
+		private static void ReadPlayerFormTiles(string studio, string romKey, List<Asset> assets, Action<string> log)
+		{
+			string path = Path.Combine(studio, "playerforms", "playerforms.csv");
+			if(!File.Exists(path)) {
+				return;
+			}
+
+			Dictionary<string, Asset> frames = assets
+				.Where(a => a.Kind == "animationFrame")
+				.GroupBy(a => a.Id)
+				.ToDictionary(g => g.Key, g => g.First());
+			Dictionary<string, Dictionary<string, TileRef>> byPose = new();
+			foreach(string line in File.ReadLines(path).Skip(1)) {
+				if(string.IsNullOrWhiteSpace(line)) {
+					continue;
+				}
+				string[] p = line.Split(',');
+				if(p.Length < 19 ||
+					!int.TryParse(p[0], out int formId) ||
+					!int.TryParse(p[3], out int poseCode) ||
+					!int.TryParse(p[5], out int oamIndex) ||
+					!int.TryParse(p[6], out int part)) {
+					continue;
+				}
+				int attr = ParseHex(p[15]);
+				string poseKey = formId.ToString(CultureInfo.InvariantCulture) + ":" + poseCode.ToString("X2", CultureInfo.InvariantCulture);
+				if(!byPose.TryGetValue(poseKey, out Dictionary<string, TileRef>? parts)) {
+					byPose[poseKey] = parts = new Dictionary<string, TileRef>();
+				}
+				string partKey = oamIndex.ToString(CultureInfo.InvariantCulture) + ":" + part.ToString(CultureInfo.InvariantCulture);
+				if(parts.ContainsKey(partKey)) {
+					continue;
+				}
+				parts[partKey] = new TileRef() {
+					X = ParseInt(p[13]),
+					Y = ParseInt(p[14]),
+					Pattern = p[11].ToUpperInvariant(),
+					TileData = p[10].Length == 32 ? p[10] : null,
+					Palette = p[12].ToUpperInvariant(),
+					FlipH = (attr & 0x40) != 0,
+					FlipV = (attr & 0x80) != 0,
+					Priority = (attr & 0x20) != 0,
+					ChrAddr = ParseHex(p[8]),
+					ChrType = p[9]
+				};
+			}
+
+			int attached = 0;
+			foreach(var group in byPose) {
+				string id = "animationFrame:" + romKey + ":player:" + group.Key;
+				if(!frames.TryGetValue(id, out Asset? frame) || frame.Tiles.Count > 0 || group.Value.Count == 0) {
+					continue;
+				}
+				List<TileRef> tiles = group.Value.Values.OrderBy(t => t.Y).ThenBy(t => t.X).ToList();
+				int minX = tiles.Min(t => t.X);
+				int minY = tiles.Min(t => t.Y);
+				foreach(TileRef tile in tiles) {
+					tile.X -= minX;
+					tile.Y -= minY;
+				}
+				frame.Tiles = tiles;
+				frame.OriginX = minX;
+				frame.OriginY = minY;
+				frame.Width = Math.Max(frame.Width, tiles.Max(t => t.X + 8));
+				frame.Height = Math.Max(frame.Height, tiles.Max(t => t.Y + 8));
+				foreach(string palette in tiles.Select(t => t.Palette).Distinct()) {
+					if(!frame.PaletteVariants.Contains(palette)) {
+						frame.PaletteVariants.Add(palette);
+					}
+				}
+				frame.ValidationNotes.Add("OAM parts come from the game's own Player_Draw routine (mapper-resolved).");
+				attached++;
+			}
+			if(attached > 0) {
+				log($"Assets: {attached} player-form animation frames segmented into NES tiles");
+			}
+		}
+
+		/// <summary>
+		/// Exposes the 16x16 background blocks of sheet_backgrounds.json as editable assets.
+		/// The block is stored row-major (upper-left, upper-right, lower-left, lower-right),
+		/// exactly like the original capture sheet.
+		/// </summary>
+		private static void ReadBackgroundBlocks(string studio, string romKey, List<Asset> assets, Action<string> log)
+		{
+			string path = Path.Combine(studio, "sheet_backgrounds.json");
+			if(!File.Exists(path)) {
+				return;
+			}
+
+			try {
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+				if(!doc.RootElement.TryGetProperty("blocks", out JsonElement blocks) || blocks.ValueKind != JsonValueKind.Array) {
+					return;
+				}
+				int added = 0;
+				foreach(JsonElement block in blocks.EnumerateArray()) {
+					string palette = block.TryGetProperty("palette", out JsonElement pal) ? pal.GetString() ?? "" : "";
+					if(string.IsNullOrWhiteSpace(palette) ||
+						!block.TryGetProperty("tiles", out JsonElement tileList) ||
+						tileList.ValueKind != JsonValueKind.Array ||
+						tileList.GetArrayLength() < 4) {
+						continue;
+					}
+					List<string> keys = tileList.EnumerateArray()
+						.Where(t => t.ValueKind == JsonValueKind.String)
+						.Select(t => t.GetString() ?? "")
+						.Where(t => t.Length > 0)
+						.Take(4)
+						.ToList();
+					if(keys.Count < 4) {
+						continue;
+					}
+
+					string blockKey = string.Join("-", keys.Select(k => k.ToUpperInvariant()));
+					int x = block.TryGetProperty("x", out JsonElement bx) ? bx.GetInt32() : 0;
+					int y = block.TryGetProperty("y", out JsonElement by) ? by.GetInt32() : 0;
+					int uses = block.TryGetProperty("uses", out JsonElement bu) && bu.TryGetInt32(out int useCount) ? useCount : 0;
+					Asset asset = new() {
+						Id = "backgroundBlock:" + romKey + ":" + ShortHash(blockKey + "|" + palette),
+						Kind = "backgroundBlock",
+						Name = "Background block " + keys[0] + " (" + palette + ")",
+						Source = "automatic",
+						Provenance = $"sheet_backgrounds.json block {x},{y}, captured uses {uses}",
+						Confidence = 0.6,
+						Validation = "verified-composition",
+						Width = 16,
+						Height = 16
+					};
+					int[] posX = { 0, 8, 0, 8 };
+					int[] posY = { 0, 0, 8, 8 };
+					for(int i = 0; i < 4; i++) {
+						asset.Tiles.Add(new TileRef() {
+							X = posX[i],
+							Y = posY[i],
+							Pattern = keys[i].ToUpperInvariant(),
+							Palette = palette.ToUpperInvariant(),
+							ChrType = "NesChrRom"
+						});
+					}
+					asset.PaletteVariants.Add(palette.ToUpperInvariant());
+					asset.ValidationNotes.Add("2x2 block assembled from four consecutive CHR tiles with the same captured palette.");
+					asset.ValidationNotes.Add("The NES nametable still controls placement, priority and scrolling; only appearance changes.");
+					assets.Add(asset);
+					added++;
+				}
+				if(added > 0) {
+					log($"Assets: {added} background blocks from sheet_backgrounds.json");
+				}
+			} catch(Exception ex) {
+				log("Assets: background blocks could not be read: " + ex.Message);
 			}
 		}
 

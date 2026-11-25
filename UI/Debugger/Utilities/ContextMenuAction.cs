@@ -611,6 +611,8 @@ namespace Mesen.Debugger.Utilities
 		InstallHdPack,
 		[IconFile("HdPack")]
 		HdPackBuilder,
+		[IconFile("HdPack")]
+		RetroArcDoHdStudio,
 
 		[IconFile("LogWindow")]
 		LogWindow,

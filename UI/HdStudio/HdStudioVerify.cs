@@ -29,6 +29,8 @@ namespace Mesen.HdStudio
 		private readonly string _verifyFolder;
 		private readonly List<uint> _checkpoints = new();
 		private readonly Action<string> _log;
+		private readonly List<string> _hdStateHashes = new();
+		private readonly List<string> _originalStateHashes = new();
 
 		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log)
 		{
@@ -75,6 +77,7 @@ namespace Mesen.HdStudio
 			bool ok;
 			try {
 				ok = RunPass(true, "hd", out hdSize) & RunPass(false, "original", out originalSize);
+				CompareStateHashes();
 			} finally {
 				ConfigManager.Config.Nes.EnableHdPacks = originalSetting;
 				ConfigManager.Config.Nes.ApplyConfig();
@@ -123,6 +126,8 @@ namespace Mesen.HdStudio
 			ConfigApi.SetEmulationFlag(EmulationFlags.MaximumSpeed, true);
 			_log($"Pass '{suffix}' (HD packs {(enableHdPacks ? "enabled" : "disabled")})");
 
+			List<string> stateHashes = enableHdPacks ? _hdStateHashes : _originalStateHashes;
+			stateHashes.Clear();
 			bool ok = true;
 			foreach(uint frame in _checkpoints) {
 				if(!RunToFrame(frame)) {
@@ -130,6 +135,9 @@ namespace Mesen.HdStudio
 					ok = false;
 					break;
 				}
+				string stateHash = ComputeStateHash();
+				stateHashes.Add(stateHash);
+				_log($"  gameplay state at frame {frame}: {stateHash}");
 				string file = Path.Combine(_verifyFolder, $"frame_{frame:00000}_{suffix}.png");
 				if(!HdStudioSaveScreenshot(file)) {
 					_log($"  screenshot failed at frame {frame}");
@@ -212,6 +220,49 @@ namespace Mesen.HdStudio
 					stable.Restart();
 				}
 			}
+			return true;
+		}
+
+		/// <summary>
+		/// Hashes the emulated NES state that HD rendering must never alter: CPU RAM,
+		/// nametables, OAM, palette RAM and PPU memory. Two runs with identical input are
+		/// expected to produce the same hash at the same frame.
+		/// </summary>
+		private static string ComputeStateHash()
+		{
+			try {
+				uint hash = 2166136261;
+				void Mix(MemoryType type)
+				{
+					byte[] data = DebugApi.GetMemoryState(type);
+					foreach(byte value in data) {
+						hash = (hash ^ value) * 16777619;
+					}
+				}
+				Mix(MemoryType.NesInternalRam);
+				Mix(MemoryType.NesNametableRam);
+				Mix(MemoryType.NesSpriteRam);
+				Mix(MemoryType.NesPaletteRam);
+				Mix(MemoryType.NesPpuMemory);
+				return hash.ToString("X8");
+			} catch(Exception ex) {
+				return "unavailable(" + ex.GetType().Name + ")";
+			}
+		}
+
+		private bool CompareStateHashes()
+		{
+			if(_hdStateHashes.Count == 0 || _hdStateHashes.Count != _originalStateHashes.Count) {
+				_log("Gameplay state comparison: unavailable (no checkpoints).");
+				return false;
+			}
+			for(int i = 0; i < _hdStateHashes.Count; i++) {
+				if(_hdStateHashes[i] != _originalStateHashes[i]) {
+					_log($"Gameplay state comparison: DIFFERENT at checkpoint {i + 1} (HD {_hdStateHashes[i]}, original {_originalStateHashes[i]}).");
+					return false;
+				}
+			}
+			_log("Gameplay state comparison: IDENTICAL at every checkpoint.");
 			return true;
 		}
 

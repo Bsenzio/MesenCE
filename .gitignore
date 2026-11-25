@@ -190,3 +190,6 @@ packages/*
 
 TestHelper/*
 UI/Dependencies.zip
+# Local HD Studio work log (not part of the source tree)
+/HANDOFF_DEEPSEEK.md
+

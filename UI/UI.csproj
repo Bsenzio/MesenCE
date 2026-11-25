@@ -697,4 +697,12 @@
 		<RemoveDir Directories="$(OutDir)Dependencies" />
 		<Delete Files="$(ProjectDir)Dependencies.zip" />
 	</Target>
+
+	<!-- Standalone HD Studio launcher: the same Avalonia executable under a name that
+	     selects the Studio window at startup (see Program.IsStudioLauncher). It shares the
+	     entire Mesen build, services and runtime dependencies, so CLI/headless behavior and
+	     the integrated Tools entry point remain identical. -->
+	<Target Name="CreateHdStudioLauncher" AfterTargets="Build" Condition="'$(RuntimeIdentifier)'=='win-x64' And '$(DesignTimeBuild)'!='true'">
+		<Copy SourceFiles="$(TargetDir)$(AssemblyName).exe" DestinationFiles="$(OutDir)RetroArcDoHDStudio.exe" SkipUnchangedFiles="true" />
+	</Target>
 </Project>

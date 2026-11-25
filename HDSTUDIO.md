@@ -11,6 +11,88 @@ and writes a report saying which PNG images to draw and at what size.
 
 HD packs are a Mesen feature for **NES games only**.
 
+## Native application (2026-11-25)
+
+The fork now contains a native graphical application in addition to the headless pipeline:
+
+| Item | Location |
+|---|---|
+| Integrated entry point | **Tools → RetroArcDo HD Studio** while a ROM is loaded |
+| Standalone executable | `bin\win-x64\Release\RetroArcDoHDStudio.exe` (a copy of the same apphost) |
+| Native window | `UI/Windows/HdStudioWindow.axaml` + `.axaml.cs` |
+| Shared services | `UI/HdStudio/HdStudioProject.cs`, `HdStudioCatalog.cs`, `HdStudioArtwork.cs`, `HdStudioCompiler.cs` |
+| Project file | `<HD pack folder>\HdStudio\project.hdstudio.json` |
+| Portable package | `D:\MesenHighWork\dist\RetroArcDoHDStudio-win64.zip` (local build output) |
+
+The window provides ROM Explorer, asset browser/search/categories, original/replacement
+previews, artwork import and adaptation controls, all-palette replacement, animation frame
+selection, background blocks, project replacements/approval, Build & Capture, Validation and
+Project/Export tabs. Captures run in a separate headless Mesen process; edits are stored in
+the project and compiled into a standard `hires.txt` + PNG pack.
+
+### Compiler precedence (important correctness fix)
+
+Mesen checks candidate tile entries in file order and uses the first one whose condition
+matches. The compiler now inserts authored replacements **before** capture-generated tile
+entries. Without this, an exact `(pattern, palette)` row written by the capture shadowed the
+user's art: the pack reported success but the replacement never appeared on screen. This was
+reproduced on the synthetic CHR-ROM scene and on SMB3, then fixed and regression-tested.
+
+### Project portability
+
+`project.hdstudio.json` stores the ROM path relative to the pack folder when possible and
+rebases the pack folder from the project file location on load. Copying or unzipping a
+project/pack folder no longer writes builds back into the original folder. A regression test
+copies an approved project to a second pack folder and verifies that the original `hires.txt`
+is byte-identical afterwards.
+
+### Geometry and self test
+
+`Mesen.exe --hdstudio --selftest` runs 165 offline checks with no ROM or emulator:
+logical-to-physical dimensions at 1–8×, 8×8 grid alignment, four-tile segmentation, quadrant
+colors, mirror normalization, irregular compositions, oversized contain/stretch, transparent
+pixels, palette association and stable ids.
+
+### Verification state hash
+
+`--verify` now hashes CPU RAM, nametables, OAM, palette RAM and PPU memory at every
+checkpoint in both passes. With a deterministic movie or fixed input script it reports:
+
+```
+Gameplay state comparison: IDENTICAL at every checkpoint.
+```
+
+This is independent evidence that HD rendering did not alter gameplay state. It is not
+claimed for the built-in adaptive explorer, whose screen sampling intentionally differs
+between HD and original resolutions; use a movie or `scripts/preview_input.lua` for
+comparisons.
+
+### Commands
+
+```bat
+:: geometry / adaptation (no ROM)
+Mesen.exe --hdstudio --selftest
+
+:: capture + semantic asset catalog
+Mesen.exe --hdstudio game.nes --generate --frames=18000 --out=PACK
+Mesen.exe --hdstudio game.nes --assets --out=PACK
+
+:: one approved replacement (standard pack)
+Mesen.exe --hdstudio game.nes --import --asset=ID --image=ART.png ^
+  --keep-largest --all-palettes --import-name=MyArt --out=PACK
+
+:: repeatable build / validation
+Mesen.exe --hdstudio game.nes --compile --out=PACK
+Mesen.exe --hdstudio game.nes --validate --out=PACK
+
+:: real emulator comparison (standard pack must be in HdPacks/<rom name>)
+Mesen.exe --hdstudio game.nes [movie.fm2|script.lua] --verify --shots=3 --frames=1200 --out=PACK
+```
+
+Regression scripts: `scripts/test_hdstudio_geometry.py`, `test_hdstudio_project.py`,
+`test_importer.py`, `test_gate1_mapper.py`, `test_synthetic_suite.py` and
+`validate_matrix.py`. Synthetic ROM sources are in `test-roms/build_synthetic_roms.py`.
+
 ## Generate (fully automatic)
 
 ```

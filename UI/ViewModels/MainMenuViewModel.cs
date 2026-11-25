@@ -840,6 +840,14 @@ namespace Mesen.ViewModels
 							OnClick = () => {
 								ApplicationHelper.GetOrCreateUniqueWindow(wnd, () => new HdPackBuilderWindow());
 							}
+						},
+						new MainMenuAction() {
+							ActionType = ActionType.RetroArcDoHdStudio,
+							OnClick = () => {
+								string romPath = ((ResourcePath)MainWindow.RomInfo.RomPath).Path;
+								string packFolder = Path.Combine(ConfigManager.HdPackFolder, Path.GetFileNameWithoutExtension(romPath));
+								ApplicationHelper.GetOrCreateUniqueWindow(wnd, () => new HdStudioWindow(romPath, packFolder));
+							}
 						}
 					}
 				},

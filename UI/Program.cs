@@ -84,6 +84,17 @@ namespace Mesen
 				return HdStudio.HdStudioCapture.Run(args);
 			}
 
+			//Standalone/integrated Studio entry point: a normal Avalonia lifetime whose main
+			//window is the Studio instead of the emulator window.
+			if(args.Contains("--hdstudio-ui") || IsStudioLauncher()) {
+				App.HdStudioMode = true;
+				App.HdStudioRomPath = FindStudioRom(args);
+				App.HdStudioPackFolder = FindOption(args, "--pack=");
+				Program.CommandLineArgs = (string[])args.Clone();
+				BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnMainWindowClose);
+				return 0;
+			}
+
 			using SingleInstance instance = SingleInstance.Instance;
 			instance.Init(args);
 			if(instance.FirstInstance) {
@@ -92,6 +103,39 @@ namespace Mesen
 			}
 
 			return 0;
+		}
+
+		private static bool IsStudioLauncher()
+		{
+			return string.Equals(Path.GetFileNameWithoutExtension(ExePath), "RetroArcDoHDStudio", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private static string FindStudioRom(string[] args)
+		{
+			string explicitRom = FindOption(args, "--rom=");
+			if(explicitRom.Length > 0 && File.Exists(explicitRom)) {
+				return Path.GetFullPath(explicitRom);
+			}
+			for(int i = 0; i < args.Length; i++) {
+				string arg = args[i];
+				if(arg.StartsWith("--", StringComparison.Ordinal)) {
+					continue;
+				}
+				if(File.Exists(arg) && !arg.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && !arg.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) {
+					return Path.GetFullPath(arg);
+				}
+			}
+			return "";
+		}
+
+		private static string FindOption(string[] args, string prefix)
+		{
+			foreach(string arg in args) {
+				if(arg.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
+					return arg.Substring(prefix.Length).Trim('"');
+				}
+			}
+			return "";
 		}
 
 		private static IntPtr DllImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)

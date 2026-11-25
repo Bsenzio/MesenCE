@@ -38,6 +38,8 @@ namespace Mesen.HdStudio
 	///                     Hammer and Tanuki Statue) with named poses and exact sprite palettes
 	///   --atlasrender     Render/audit the mapper-aware object-atlas CSVs in HdStudio/sprites (offline)
 	///   --assets          Export HdStudio/assets/assets.json (versioned semantic asset schema)
+	///   --compile         Rebuild HdStudio/project.hdstudio.json into a standard Mesen pack
+	///   --validate        Check the project (dry-run compile) without modifying the pack
 	///   --import          Import a user image into one selected asset (requires --asset/--image)
 	///   --asset=ID        Semantic asset id, name or atlas id (e.g. 114 for the SMB3 Goomba)
 	///   --image=FILE      Any PNG/JPEG/WebP image used as the new appearance
@@ -45,6 +47,7 @@ namespace Mesen.HdStudio
 	///   --fit=contain|stretch  --anchor=center|bottom|top|left|right  --padding=N
 	///   --import-scale=N  Output scale (2-6); a different scale needs --minimal
 	///   --mirror-conditions  Add standard hmirror/vmirror conditions when exactly one axis is flipped
+	///   --all-palettes    Replace every observed palette variant of the asset (default: first palette only)
 	///   --minimal         Write a standalone minimal pack instead of adding to an existing hires.txt
 	///   --dry-run         Write previews/sheet/manifest without changing hires.txt
 	///   --catalog=FILE    Optional object-id/label/name JSON used by --atlasrender
@@ -65,6 +68,7 @@ namespace Mesen.HdStudio
 			public ScaleFilterType Filter = ScaleFilterType.xBRZ;
 			public int Frames = 18000;
 			public string? OutFolder;
+			public string? ProjectFolder;
 			public int TimeoutSeconds = 1800;
 			public bool ReportOnly;
 			public bool Verify;
@@ -76,6 +80,9 @@ namespace Mesen.HdStudio
 			public bool Demo;
 			public bool AtlasRender;
 			public bool ExportAssets;
+			public bool SelfTest;
+			public bool Compile;
+			public bool Validate;
 			public bool Import;
 			public string? CatalogPath;
 			public string? ImportAsset;
@@ -90,6 +97,7 @@ namespace Mesen.HdStudio
 			public bool ImportKeepLargest;
 			public bool ImportCrop = true;
 			public bool ImportMirrorConditions;
+			public bool ImportAllPalettes;
 			public bool ImportMinimal;
 			public bool ImportDryRun;
 			public int SpriteId = -1;
@@ -109,6 +117,10 @@ namespace Mesen.HdStudio
 			AttachToParentConsole();
 
 			Options opt = ParseArgs(args);
+			if(opt.SelfTest) {
+				//No ROM/emulator is involved: verify geometry, segmentation and adaptation rules.
+				return HdStudioSelfTest.Run(Log);
+			}
 			if(opt.Errors.Count > 0 || opt.RomPath == null) {
 				foreach(string error in opt.Errors) {
 					Log("Error: " + error);
@@ -150,6 +162,33 @@ namespace Mesen.HdStudio
 				return HdStudioAssets.Export(opt.RomPath!, outFolder, Log);
 			}
 
+			if(opt.Compile || opt.Validate) {
+				//Offline: rebuild the project into a standard Mesen pack. This is the same
+				//compiler the Studio window uses; --validate is a dry run that reports errors
+				//(ROM identity, missing artwork, mixed scales, context conflicts) without
+				//touching the pack.
+				string projectFolder = opt.ProjectFolder ?? outFolder;
+				if(!File.Exists(HdStudioProject.GetDefaultPath(projectFolder))) {
+					//--out is the export target for --minimal; the editable project still
+					//lives in the ROM's normal HdPack folder.
+					projectFolder = Path.Combine(ConfigManager.HdPackFolder, packName);
+				}
+				string projectPath = HdStudioProject.GetDefaultPath(projectFolder);
+				if(!File.Exists(projectPath)) {
+					Log("Error: no HD Studio project was found: " + projectPath);
+					return -1;
+				}
+				try {
+					HdStudioProject project = HdStudioProject.Load(projectPath);
+					bool minimal = opt.ImportMinimal;
+					HdStudioCompileResult result = HdStudioCompiler.Compile(project, Log, minimal, minimal ? outFolder : null, opt.ImportDryRun || opt.Validate);
+					return result.Success ? 0 : 1;
+				} catch(Exception ex) {
+					Log("Error: the project could not be compiled: " + ex.Message);
+					return -1;
+				}
+			}
+
 			if(opt.Import) {
 				//Offline: process one whole object image, segment it into its original tile grid
 				//and write standard Mesen HD-pack tile entries.
@@ -166,6 +205,7 @@ namespace Mesen.HdStudio
 					Padding = opt.ImportPadding,
 					PackScale = opt.ImportScale,
 					MirrorConditions = opt.ImportMirrorConditions,
+					AllPaletteVariants = opt.ImportAllPalettes,
 					Minimal = opt.ImportMinimal,
 					DryRun = opt.ImportDryRun
 				}, ConfigManager.Config.Nes.UserPalette, Log);
@@ -675,6 +715,9 @@ namespace Mesen.HdStudio
 						case "playerforms": opt.PlayerForms = true; break;
 						case "atlasrender": opt.AtlasRender = true; break;
 						case "assets": opt.ExportAssets = true; break;
+						case "selftest": opt.SelfTest = true; break;
+						case "compile": opt.Compile = true; break;
+						case "validate": opt.Validate = true; break;
 						case "import": opt.Import = true; break;
 						case "asset": opt.ImportAsset = value; break;
 						case "image": opt.ImportImage = Path.GetFullPath(value, Program.OriginalFolder); break;
@@ -718,6 +761,7 @@ namespace Mesen.HdStudio
 							}
 							break;
 						case "mirror-conditions": opt.ImportMirrorConditions = true; break;
+						case "all-palettes": opt.ImportAllPalettes = true; break;
 						case "minimal": opt.ImportMinimal = true; break;
 						case "dry-run": opt.ImportDryRun = true; break;
 						case "catalog":
@@ -767,6 +811,9 @@ namespace Mesen.HdStudio
 							break;
 						case "out":
 							opt.OutFolder = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
+						case "project":
+							opt.ProjectFolder = Path.GetFullPath(value, Program.OriginalFolder);
 							break;
 						case "log":
 							//Mesen is a windowed program: when the output is redirected (e.g. to a file or a pipe)
@@ -829,6 +876,8 @@ namespace Mesen.HdStudio
 			Log("  --playerforms: SMB3 (USA) only: all eight player suits plus Death and their named poses, exact sprite palettes.");
 			Log("  --atlasrender: render the mapper-aware object-atlas CSV captures in HdStudio/sprites (does not run the game).");
 			Log("  --assets: export the versioned asset schema to HdStudio/assets/assets.json.");
+			Log("  --selftest: run offline geometry, segmentation, mirroring and adaptation checks (no ROM needed).");
+			Log("  --compile: rebuild HdStudio/project.hdstudio.json as a standard Mesen pack (--validate checks it without writing).");
 			Log("  --demo: records a short real-Mesen GIF with the HD pack active (SMB3 1-1).");
 		}
 

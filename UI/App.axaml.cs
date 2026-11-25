@@ -20,6 +20,9 @@ namespace Mesen
 	public class App : Application
 	{
 		public static bool ShowConfigWindow { get; set; }
+		public static bool HdStudioMode { get; set; }
+		public static string HdStudioRomPath { get; set; } = "";
+		public static string HdStudioPackFolder { get; set; } = "";
 
 		public override void Initialize()
 		{
@@ -47,6 +50,10 @@ namespace Mesen
 				if(ShowConfigWindow) {
 					new PreferencesConfig().InitializeFontDefaults();
 					desktop.MainWindow = new SetupWizardWindow();
+				} else if(HdStudioMode) {
+					//The Studio uses the shared file/catalog/compile services and does not need
+					//the emulator core; it can open before any ROM is loaded.
+					desktop.MainWindow = new HdStudioWindow(HdStudioRomPath, HdStudioPackFolder);
 				} else {
 					//Test if the core can be loaded, and display an error message popup if not
 					try {

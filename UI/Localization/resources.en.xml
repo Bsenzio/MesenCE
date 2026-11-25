@@ -3665,6 +3665,7 @@ E
 			<Value ID="HdPacks">HD Packs (NES)</Value>
 			<Value ID="InstallHdPack">Install HD Pack</Value>
 			<Value ID="HdPackBuilder">HD Pack Builder</Value>
+			<Value ID="RetroArcDoHdStudio">RetroArcDo HD Studio</Value>
 			<Value ID="TakeScreenshot">Take Screenshot</Value>
 			<Value ID="SaveSpcFile">Save .SPC File</Value>
 
