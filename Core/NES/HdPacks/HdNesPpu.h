@@ -45,6 +45,35 @@ public:
 	__forceinline bool RemoveSpriteLimit() { return _forceRemoveSpriteLimit || _console->GetNesConfig().RemoveSpriteLimit; }
 	__forceinline bool UseAdaptiveSpriteLimit() { return _forceRemoveSpriteLimit || _console->GetNesConfig().AdaptiveSpriteLimit; }
 
+	//HD Studio live capture: expose the exact rendered sprite patterns of the displayed
+	//frame to the Lua capture host. Only visible opaque sprite pixels reach this hook.
+	bool SupportsRenderedSpriteCapture() override { return true; }
+
+	void NotifySpritePixelRendered(uint32_t spriteIndex) override
+	{
+		if(spriteIndex >= 64) {
+			return;
+		}
+		NesSpriteInfoEx& ex = _exSpriteInfo[spriteIndex];
+		NesSpriteInfo& sprite = _spriteTiles[spriteIndex];
+		if(ex.AbsoluteTileAddr < 0) {
+			return;
+		}
+		BaseMapper* mapper = _console->GetMapper();
+		int32_t tileIndex = (_isChrRam ? (uint32_t)ex.TileAddr : (uint32_t)ex.AbsoluteTileAddr) / 16;
+		uint32_t paletteOffset = sprite.PaletteOffset;
+		uint32_t paletteColors = 0xFF000000 | ReadPaletteRam(paletteOffset + 3) | (ReadPaletteRam(paletteOffset + 2) << 8) | (ReadPaletteRam(paletteOffset + 1) << 16);
+		uint8_t data[16] = {};
+		mapper->CopyChrTile((uint32_t)ex.AbsoluteTileAddr & 0xFFFFFFF0, data);
+		int sizeMask = _control.LargeSprites ? 15 : 7;
+		int displayRow = ex.VerticalMirror ? (sizeMask - ex.OffsetY) : ex.OffsetY;
+		int part = displayRow >= 8 ? 1 : 0;
+		int16_t y = (int16_t)(_scanline - displayRow + part * 8);
+		AddRenderedSprite(sprite.SpriteX, y, tileIndex, paletteColors, data,
+			ex.HorizontalMirror, ex.VerticalMirror, sprite.BackgroundPriority,
+			GetSecondaryOamSource(spriteIndex), (uint8_t)part);
+	}
+
 	__forceinline void StoreSpriteInformation(bool horizontalMirror, bool verticalMirror, uint16_t tileAddr, uint8_t lineOffset, NesSpriteInfo& sprite)
 	{
 		NesSpriteInfoEx& info = _exSpriteInfo[_spriteIndex];

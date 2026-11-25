@@ -19,9 +19,17 @@ namespace Mesen.HdStudio
 	/// </summary>
 	internal static class HdStudioLiveAssets
 	{
-		private const int MaxMetasprites = 6000;
-		private const int MaxBackgrounds = 4000;
-		private const int MaxTracks = 800;
+		//Safety budgets, not presentation limits. They are far above the library's observed
+		//sessions, configurable through the environment, and every hit is logged/reported.
+		private static readonly int MaxMetasprites = ReadLimit("HDSTUDIO_MAX_METASPIRITES", 100000);
+		private static readonly int MaxBackgrounds = ReadLimit("HDSTUDIO_MAX_BACKGROUNDS", 50000);
+		private static readonly int MaxTracks = ReadLimit("HDSTUDIO_MAX_ANIMATION_TRACKS", 20000);
+
+		private static int ReadLimit(string name, int fallback)
+		{
+			string? value = Environment.GetEnvironmentVariable(name);
+			return int.TryParse(value, out int configured) && configured > 0 ? configured : fallback;
+		}
 
 		private sealed class PatternInfo
 		{
@@ -83,6 +91,7 @@ namespace Mesen.HdStudio
 			}
 
 			Dictionary<string, HdStudioAssets.Asset> metasprites = new(StringComparer.Ordinal);
+			HashSet<string> limitHits = new(StringComparer.Ordinal);
 			Dictionary<string, List<string>> shapePalettes = new(StringComparer.Ordinal);
 			Dictionary<string, Composition> compositions = new(StringComparer.Ordinal);
 			int liveFrames = 0;
@@ -93,11 +102,12 @@ namespace Mesen.HdStudio
 				occurrenceCount += frameSprites.Count;
 				List<Composition> frameCompositions = Reconstruct(frameSprites);
 				foreach(Composition composition in frameCompositions) {
-					if(composition.Sprites.Count == 0 || composition.Sprites.Count > 32) {
+					if(composition.Sprites.Count == 0 || composition.Sprites.Count > 64) {
 						continue;
 					}
 					if(!compositions.ContainsKey(composition.Shape)) {
 						if(compositions.Count >= MaxMetasprites) {
+							limitHits.Add("composition");
 							continue;
 						}
 						compositions[composition.Shape] = composition;
@@ -145,6 +155,7 @@ namespace Mesen.HdStudio
 					}
 					if(best == null) {
 						if(tracks.Count >= MaxTracks) {
+							limitHits.Add("animation-track");
 							continue;
 						}
 						best = new Track() { Id = ++trackId };
@@ -161,7 +172,9 @@ namespace Mesen.HdStudio
 			}
 
 			int sequences = 0;
-			foreach(Track track in tracks.Where(t => t.ShapeSet.Count >= 3).Take(200)) {
+			//Two-frame animations are real animations (idle bob, two-pose walk, hit flash).
+			//The old >=3 rule silently dropped them.
+			foreach(Track track in tracks.Where(t => t.ShapeSet.Count >= 2)) {
 				string sequenceId = "liveSequence:" + romKey + ":" + track.Id;
 				HdStudioAssets.Asset sequence = new() {
 					Id = sequenceId,
@@ -201,10 +214,13 @@ namespace Mesen.HdStudio
 				}
 			}
 
-			ReadBackgrounds(live, romKey, rom, assets, log);
+			ReadBackgrounds(live, romKey, rom, assets, limitHits, log);
 
 			if(liveFrames > 0) {
-				log($"Assets: live capture rebuilt {metasprites.Count} compositions from {liveFrames:N0} sampled frames / {occurrenceCount:N0} sprite occurrences, {sequences} animation track(s).");
+				log($"Assets: live capture rebuilt {metasprites.Count} compositions from {liveFrames:N0} sampled frames / {occurrenceCount:N0} sprite occurrences, {sequences} animation track(s), {tracks.Count} temporal track(s).");
+			}
+			foreach(string hit in limitHits.OrderBy(v => v)) {
+				log($"WARNING: live reconstruction safety budget reached for {hit}. Raw observations remain in HdStudio/live/*.tsv; raise the corresponding HDSTUDIO_MAX_* variable to index more records.");
 			}
 		}
 
@@ -249,6 +265,19 @@ namespace Mesen.HdStudio
 			return asset;
 		}
 
+		private static bool IsVerticalHalfPair(LiveSprite top, LiveSprite bottom)
+		{
+			return top.X == bottom.X && bottom.Y == top.Y + 8 &&
+				top.Palette == bottom.Palette && Math.Abs(top.Tile - bottom.Tile) == 1;
+		}
+
+		private static bool IsHorizontalHalfPair(LiveSprite left, LiveSprite right)
+		{
+			int delta = Math.Abs(left.Tile - right.Tile);
+			return left.Y == right.Y && Math.Abs(left.X - right.X) == 8 &&
+				left.Palette == right.Palette && delta > 0 && delta <= 2;
+		}
+
 		private static bool SharesPattern(Track track, Composition composition)
 		{
 			foreach(Composition existing in track.ByShape.Values) {
@@ -281,7 +310,7 @@ namespace Mesen.HdStudio
 			{
 				int a = Find(i);
 				int b = Find(j);
-				if(a == b || size[a] + size[b] > 16) {
+				if(a == b || size[a] + size[b] > 64) {
 					return;
 				}
 				parent[a] = b;
@@ -292,7 +321,7 @@ namespace Mesen.HdStudio
 				for(int j = i + 1; j < count; j++) {
 					LiveSprite a = sprites[i];
 					LiveSprite b = sprites[j];
-					if(a.Oam == b.Oam) {
+					if(IsVerticalHalfPair(a, b) || IsVerticalHalfPair(b, a) || IsHorizontalHalfPair(a, b)) {
 						Union(i, j);
 						continue;
 					}
@@ -303,14 +332,9 @@ namespace Mesen.HdStudio
 					int overlap = (right > left && bottom > top) ? (right - left) * (bottom - top) : 0;
 					if(overlap >= 2) {
 						Union(i, j);
-						continue;
 					}
-					int dx = Math.Abs(a.X - b.X);
-					int dy = Math.Abs(a.Y - b.Y);
-					int oamDistance = Math.Abs(a.Oam - b.Oam);
-					if(dx <= 9 && dy <= 9 && (dx <= 8 || dy <= 8) && a.Palette == b.Palette && oamDistance <= 6) {
-						Union(i, j);
-					}
+					//Deliberately no "same palette and nearby OAM" rule: unrelated enemies
+					//in a row satisfied it and produced a new catalog identity every frame.
 				}
 			}
 
@@ -324,7 +348,7 @@ namespace Mesen.HdStudio
 			}
 
 			foreach(List<LiveSprite> group in groups.Values) {
-				if(group.Count == 0 || group.Count > 32) {
+				if(group.Count == 0 || group.Count > 64) {
 					continue;
 				}
 				Composition composition = new() {
@@ -421,7 +445,7 @@ namespace Mesen.HdStudio
 			}
 		}
 
-		private static void ReadBackgrounds(string live, string romKey, NesRomData rom, List<HdStudioAssets.Asset> assets, Action<string> log)
+		private static void ReadBackgrounds(string live, string romKey, NesRomData rom, List<HdStudioAssets.Asset> assets, HashSet<string> limitHits, Action<string> log)
 		{
 			string path = Path.Combine(live, "live-backgrounds.tsv");
 			if(!File.Exists(path)) {
@@ -453,6 +477,7 @@ namespace Mesen.HdStudio
 					continue;
 				}
 				if(byShape.Count >= MaxBackgrounds) {
+					limitHits.Add("background");
 					continue;
 				}
 				int uses = ParseInt(p[1], 0);

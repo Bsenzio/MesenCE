@@ -93,7 +93,7 @@ namespace Mesen.HdStudio
 					if(root.TryGetProperty("sprites", out JsonElement sprites) && sprites.ValueKind == JsonValueKind.Array) {
 						foreach(JsonElement item in sprites.EnumerateArray()) {
 							frame.Sprites.Add(new PauseSprite() {
-								Oam = GetInt(item, "oam"),
+								Oam = item.TryGetProperty("renderSlot", out JsonElement slot) ? GetInt(item, "renderSlot") : GetInt(item, "oam"),
 								Part = GetInt(item, "part"),
 								X = GetInt(item, "x"),
 								Y = GetInt(item, "y"),
@@ -159,7 +159,7 @@ namespace Mesen.HdStudio
 			foreach(PauseSprite hit in hits.Take(6)) {
 				PickCandidate candidate = new() {
 					Kind = "hardwareSprite",
-					Name = $"Hardware sprite OAM {hit.Oam}" + (frame.LargeSprites ? $" part {hit.Part}" : ""),
+					Name = $"Render slot {hit.Oam}" + (frame.LargeSprites ? $" part {hit.Part}" : ""),
 					Detail = $"8x8 at {hit.X},{hit.Y} - palette {hit.Palette}",
 					X = hit.X,
 					Y = hit.Y,
@@ -227,7 +227,7 @@ namespace Mesen.HdStudio
 			HashSet<PauseSprite> members = new() { seed };
 			Queue<PauseSprite> queue = new();
 			queue.Enqueue(seed);
-			while(queue.Count > 0 && members.Count < 24) {
+			while(queue.Count > 0 && members.Count < 64) {
 				PauseSprite current = queue.Dequeue();
 				foreach(PauseSprite other in frame.Sprites) {
 					if(members.Contains(other)) {
@@ -235,9 +235,14 @@ namespace Mesen.HdStudio
 					}
 					bool overlap = current.X < other.X + 8 && other.X < current.X + 8 &&
 						current.Y < other.Y + 8 && other.Y < current.Y + 8;
-					bool touch = Math.Abs(current.X - other.X) <= 9 && Math.Abs(current.Y - other.Y) <= 9;
-					bool compatible = current.Palette == other.Palette || overlap;
-					if(overlap || (touch && compatible)) {
+					bool verticalPair = current.X == other.X && Math.Abs(current.Y - other.Y) == 8 &&
+						current.Palette == other.Palette && Math.Abs(current.Tile - other.Tile) == 1;
+					int tileDelta = Math.Abs(current.Tile - other.Tile);
+					bool horizontalPair = current.Y == other.Y && Math.Abs(current.X - other.X) == 8 &&
+						current.Palette == other.Palette && tileDelta > 0 && tileDelta <= 2;
+					//Touching alone is not composition evidence: a row of enemies would
+					//otherwise become one object. The user can still group manually.
+					if(overlap || verticalPair || horizontalPair) {
 						members.Add(other);
 						queue.Enqueue(other);
 					}

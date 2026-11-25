@@ -67,7 +67,14 @@ def main():
 
     observed_combos = set()
     observed_patterns = set()
+    raw_records = 0
     for asset in assets:
+        #Raw pattern records mirror every observed tile as a separate access layer.
+        #Composition/hardware precision is measured on the semantic/composition
+        #records; raw duplicates are counted explicitly instead of penalizing recall.
+        if asset.get("kind") == "rawPattern":
+            raw_records += 1
+            continue
         for tile in asset.get("tiles", []):
             pattern = normalize_pattern(tile.get("pattern"))
             palette = (tile.get("palette") or "").upper()
@@ -109,6 +116,7 @@ def main():
         "profilesDisabled": profiles_disabled,
         "assets": len(assets),
         "metasprites": len(metasprites),
+        "rawPatternRecords": raw_records,
         "backgroundBlocks": len([a for a in assets if a.get("kind") == "backgroundBlock"]),
         "expectedHardwareCombos": len(expected_combos),
         "observedHardwareCombos": len(observed_combos),
@@ -121,7 +129,7 @@ def main():
         "missingCompositions": missing_compositions,
         "backgroundBlockRecalled": bg_found,
         "passed": bool(profiles_disabled and recall == 1.0 and precision == 1.0 and
-                       composition_recall == 1.0 and bg_found),
+                       composition_recall == 1.0 and bg_found and raw_records > 0),
         "note": "Unclassified partial metasprites may exist; every discovered pattern is checked against the fixture ground truth."
     }
     print(json.dumps(result, indent=2))

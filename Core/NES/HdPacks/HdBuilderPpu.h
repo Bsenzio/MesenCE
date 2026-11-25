@@ -61,67 +61,62 @@ public:
 		return nullptr;
 	}
 
-	//HD Studio: send the sprites visible this frame (from OAM) to the builder, to detect metasprites
+	//HD Studio: a sprite pixel actually reached the visible output. Capture the exact
+	//mapper-resolved pattern and palette that were used at that scanline. Sprite-limit
+	//behaviour, flicker, off-screen OAM entries and background-priority-hidden sprites are
+	//therefore resolved by the renderer itself, not reconstructed from end-of-frame OAM.
+	bool SupportsRenderedSpriteCapture() override { return true; }
+
+	void NotifySpritePixelRendered(uint32_t spriteIndex) override
+	{
+		if(spriteIndex >= 64) {
+			return;
+		}
+		NesSpriteInfoEx& ex = _exSpriteInfo[spriteIndex];
+		NesSpriteInfo& sprite = _spriteTiles[spriteIndex];
+		if(ex.AbsoluteTileAddr < 0) {
+			return;
+		}
+		BaseMapper* mapper = _console->GetMapper();
+		bool isChrRam = !mapper->HasChrRom();
+		int32_t tileIndex = (isChrRam ? (ex.TileAddr & _chrRamIndexMask) : (uint32_t)ex.AbsoluteTileAddr) / 16;
+		uint32_t paletteOffset = sprite.PaletteOffset;
+		uint32_t paletteColors = ReadPaletteRam(paletteOffset + 3) | (ReadPaletteRam(paletteOffset + 2) << 8) | (ReadPaletteRam(paletteOffset + 1) << 16) | 0xFF000000;
+		uint8_t data[16] = {};
+		mapper->CopyChrTile((uint32_t)ex.AbsoluteTileAddr & 0xFFFFFFF0, data);
+		//OffsetY is the *source* row. Vertical flip reverses it, so convert to the
+		//display row before deriving the 8x16 half and the on-screen top-left.
+		int sizeMask = _control.LargeSprites ? 15 : 7;
+		int displayRow = ex.VerticalMirror ? (sizeMask - ex.OffsetY) : ex.OffsetY;
+		int part = displayRow >= 8 ? 1 : 0;
+		int16_t y = (int16_t)(_scanline - displayRow + part * 8);
+		AddRenderedSprite(sprite.SpriteX, y, tileIndex, paletteColors, data,
+			ex.HorizontalMirror, ex.VerticalMirror, sprite.BackgroundPriority,
+			GetSecondaryOamSource(spriteIndex), (uint8_t)part);
+	}
+
+	//HD Studio: send the sprites that actually contributed visible pixels this frame to
+	//the composition builder. The end-of-frame OAM is no longer used for this evidence.
 	void CaptureSpriteFrame()
 	{
 		vector<HdStudioSprite> sprites;
-		//Do not require the PPU enable bits here: SendFrame happens at the end of the
-		//frame, when many games have already disabled rendering for OAM DMA. The primary
-		//OAM still describes the sprites that were displayed. This was the reason CHR-RAM
-		//games such as The Guardian Legend produced almost no compositions.
-		{
-			BaseMapper* mapper = _console->GetMapper();
-			bool isChrRam = !mapper->HasChrRom();
-			bool largeSprites = _control.LargeSprites;
-			sprites.reserve(128);
-
-			for(int i = 0; i < 64; i++) {
-				uint8_t y = _spriteRam[i * 4];
-				if(y >= 0xEF) {
-					//Sprite is offscreen
-					continue;
-				}
-
-				uint8_t tileIndex = _spriteRam[i * 4 + 1];
-				uint8_t attributes = _spriteRam[i * 4 + 2];
-				uint8_t x = _spriteRam[i * 4 + 3];
-				bool horizontalMirror = (attributes & 0x40) != 0;
-				bool verticalMirror = (attributes & 0x80) != 0;
-				uint16_t paletteOffset = ((attributes & 0x03) << 2) | 0x10;
-				uint32_t paletteColors = ReadPaletteRam(paletteOffset + 3) | (ReadPaletteRam(paletteOffset + 2) << 8) | (ReadPaletteRam(paletteOffset + 1) << 16) | 0xFF000000;
-
-				int parts = largeSprites ? 2 : 1;
-				for(int part = 0; part < parts; part++) {
-					uint16_t tileAddr;
-					if(largeSprites) {
-						//8x16 sprites: when flipped vertically, the bottom tile is displayed on top
-						int sourcePart = verticalMirror ? (1 - part) : part;
-						tileAddr = (((tileIndex & 0x01) ? 0x1000 : 0x0000) | ((tileIndex & 0xFE) << 4)) + sourcePart * 16;
-					} else {
-						tileAddr = _control.SpritePatternAddr | (tileIndex << 4);
-					}
-
-					AddressInfo absAddr = mapper->GetPpuAbsoluteAddress(tileAddr);
-					if(absAddr.Address < 0) {
-						continue;
-					}
-
-					HdStudioSprite sprite = {};
-					sprite.X = x;
-					sprite.Y = y + 1 + part * 8;
-					sprite.TileIndex = (isChrRam ? (tileAddr & _chrRamIndexMask) : absAddr.Address) / 16;
-					mapper->CopyChrTile(absAddr.Address & 0xFFFFFFF0, sprite.TileData);
-					sprite.PaletteColors = paletteColors;
-					sprite.HorizontalMirror = horizontalMirror;
-					sprite.VerticalMirror = verticalMirror;
-					sprite.OamIndex = (uint8_t)i;
-					sprite.OamPart = (uint8_t)part;
-					sprites.push_back(sprite);
-				}
-			}
+		sprites.reserve(128);
+		for(int i = 0; i < _renderedSpriteCount; i++) {
+			NesRenderedSpriteInfo& rendered = _renderedSprites[i];
+			HdStudioSprite sprite = {};
+			sprite.X = rendered.X;
+			sprite.Y = rendered.Y;
+			sprite.TileIndex = rendered.TileIndex;
+			memcpy(sprite.TileData, rendered.TileData, sizeof(sprite.TileData));
+			sprite.PaletteColors = rendered.PaletteColors;
+			sprite.HorizontalMirror = rendered.HorizontalMirror;
+			sprite.VerticalMirror = rendered.VerticalMirror;
+			sprite.OamIndex = rendered.RenderSlot;
+			sprite.OamPart = rendered.Part;
+			sprites.push_back(sprite);
 		}
-
 		_hdPackBuilder->ProcessSpriteFrame(sprites);
+		CommitRenderedSprites();
 	}
 
 	__forceinline void StoreSpriteInformation(bool horizontalMirror, bool verticalMirror, uint16_t tileAddr, uint8_t lineOffset, NesSpriteInfo& sprite)
@@ -267,5 +262,6 @@ public:
 		_chrRamBankSize = chrRamBankSize;
 		_chrRamIndexMask = chrRamBankSize - 1;
 		_needChrHash = true;
+		EnableRenderedSpriteCapture();
 	}
 };

@@ -75,6 +75,7 @@ namespace Mesen.HdStudio
 			ReadBackgroundBlocks(studio, romKey, assets, log);
 			ReadObservedBackgroundBlocks(studio, romKey, rom, assets, log);
 			HdStudioLiveAssets.Import(studio, romKey, rom, assets, log);
+			ReadRawPatterns(studio, romKey, rom, assets, log);
 
 			using(FileStream stream = File.Create(Path.Combine(assetsFolder, "assets.json"))) {
 				using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true });
@@ -110,8 +111,65 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
-			log($"Assets: {assets.Count} records ({assets.Count(a => a.Kind == "metasprite")} generic metasprites, {assets.Count(a => a.Kind == "semanticObject")} semantic objects, {assets.Count(a => a.Kind == "animationFrame")} animation frames, {assets.Count(a => a.Kind == "backgroundBlock")} background blocks) -> {assetsFolder}");
+			log($"Assets: {assets.Count} records ({assets.Count(a => a.Kind == "metasprite")} generic metasprites, {assets.Count(a => a.Kind == "semanticObject")} semantic objects, {assets.Count(a => a.Kind == "animationFrame")} animation frames, {assets.Count(a => a.Kind == "backgroundBlock")} background blocks, {assets.Count(a => a.Kind == "rawPattern")} raw patterns) -> {assetsFolder}");
 			return 0;
+		}
+
+		/// <summary>
+		/// Every observed pattern+palette combination is also exposed as a raw record.
+		/// This is the fallback layer that does not depend on automatic composition or
+		/// semantic classification: an unknown object can always be inspected and
+		/// replaced through its real hardware tiles.
+		/// </summary>
+		private static void ReadRawPatterns(string studio, string romKey, NesRomData rom, List<Asset> assets, Action<string> log)
+		{
+			string path = Path.Combine(studio, "tiles.txt");
+			if(!File.Exists(path)) {
+				return;
+			}
+			HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+			int added = 0;
+			foreach(string line in File.ReadLines(path)) {
+				if(line.Length == 0 || line[0] == '#') {
+					continue;
+				}
+				string[] p = line.Split('\t');
+				if(p.Length < 2) {
+					continue;
+				}
+				string key = p[0].Trim().ToUpperInvariant();
+				string palette = p[1].Trim().ToUpperInvariant();
+				if(key.Length == 0 || palette.Length != 8 || !seen.Add(key + "|" + palette)) {
+					continue;
+				}
+				bool chrRamKey = key.Length == 32;
+				Asset asset = new() {
+					Id = "rawPattern:" + romKey + ":" + ShortHash(key + "|" + palette),
+					Kind = "rawPattern",
+					Name = "Raw pattern " + (chrRamKey ? key.Substring(0, 8) : key) + " / " + palette,
+					Source = "automatic",
+					Provenance = $"tiles.txt observed pattern+palette, pixel count {p[2]}",
+					Confidence = 1.0,
+					Validation = "raw-observed",
+					Width = 8,
+					Height = 8
+				};
+				asset.Tiles.Add(new TileRef() {
+					X = 0,
+					Y = 0,
+					Pattern = key,
+					TileData = chrRamKey ? key : null,
+					Palette = palette,
+					ChrType = chrRamKey ? "NesChrRam" : "NesChrRom"
+				});
+				asset.PaletteVariants.Add(palette);
+				asset.ValidationNotes.Add("Raw hardware observation; no semantic grouping is implied.");
+				assets.Add(asset);
+				added++;
+			}
+			if(added > 0) {
+				log($"Assets: {added} raw pattern records (fallback access to every observed tile+palette)");
+			}
 		}
 
 		private static void ReadDiscoveredMetasprites(string studio, string romKey, List<Asset> assets, Action<string> log)
@@ -160,7 +218,7 @@ namespace Mesen.HdStudio
 					};
 					tiles.Add(tileRef);
 				}
-				if(tiles.Count == 0 || tiles.Count > 32) {
+				if(tiles.Count == 0 || tiles.Count > 64) {
 					//A full OAM wrap of blank sprites is not a semantic object.
 					continue;
 				}

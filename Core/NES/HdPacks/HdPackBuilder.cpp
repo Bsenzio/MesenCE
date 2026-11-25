@@ -525,6 +525,27 @@ void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 		return;
 	}
 
+	//Advanced diagnostic: one line per visible rendered sprite tile. Disabled by default
+	//because per-frame IO is inappropriate during normal play. It exposes exactly what the
+	//renderer used, which is the ground truth for OAM/CHR timing investigations.
+	char* debugRender = nullptr;
+	size_t debugRenderLen = 0;
+	_dupenv_s(&debugRender, &debugRenderLen, "HDSTUDIO_DEBUG_RENDER");
+	if(debugRender != nullptr) {
+		string studioFolder = FolderUtilities::CombinePath(_saveFolder, "HdStudio");
+		FolderUtilities::CreateFolder(studioFolder);
+		ofstream debug(FolderUtilities::CombinePath(studioFolder, "rendered-frame-debug.tsv"), ios::app);
+		if(debug) {
+			for(int i = 0; i < (int)sprites.size(); i++) {
+				HdStudioSprite& s = sprites[i];
+				debug << _studioFrameCount << "\t" << (int)s.OamIndex << "\t" << (int)s.OamPart
+					<< "\t" << s.X << "\t" << s.Y << "\t" << GetStudioTileKey(s.TileIndex, s.TileData)
+					<< "\t" << HexUtilities::ToHex(s.PaletteColors, true) << std::endl;
+			}
+		}
+	}
+	free(debugRender);
+
 	//Group sprites that overlap or touch each other (union-find).
 	//
 	//The v0.3 rule merged every touching sprite with the same palette. In games that
@@ -536,7 +557,11 @@ void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 	//  * touching slots are only joined when they are OAM-adjacent, share a palette
 	//    and stay aligned, so unrelated neighbours keep their own identity;
 	//  * a composition is capped at 16 hardware parts.
-	const size_t MaxPartsPerComposition = 16;
+	//A composition can span the whole hardware OAM. The old 16-part cap made large
+	//bosses/vehicles indistinguishable from unrelated neighbours; the grouping evidence
+	//below still prevents arbitrary merges. Manual composition remains available for
+	//anything the automatic pass leaves fragmented.
+	const size_t MaxPartsPerComposition = 64;
 	vector<size_t> parent(count);
 	vector<size_t> clusterSize(count);
 	for(size_t i = 0; i < count; i++) {
@@ -573,34 +598,47 @@ void HdPackBuilder::ProcessSpriteFrame(vector<HdStudioSprite>& sprites)
 		return (right - left) * (bottom - top);
 	};
 
+	auto isVerticalHalfPair = [](const HdStudioSprite& top, const HdStudioSprite& bottom) {
+		//8x16 sprites draw two vertically adjacent pattern-table entries. Requiring the
+		//same X, an exact 8-pixel Y offset, the same palette and consecutive CHR patterns
+		//is much stronger evidence than "the OAM slots are near each other".
+		return top.X == bottom.X && bottom.Y == top.Y + 8 &&
+			top.PaletteColors == bottom.PaletteColors &&
+			std::abs(top.TileIndex - bottom.TileIndex) == 1;
+	};
+
+	auto isHorizontalHalfPair = [](const HdStudioSprite& left, const HdStudioSprite& right) {
+		//A 16x16 character is normally two 8x16 hardware sprites (or two 8x8 columns)
+		//whose top tiles are two apart in the pattern table. This is specific enough to
+		//keep a row of identical enemies separate, while still joining a authored 2x2
+		//metasprite. Merely touching is NOT used as evidence.
+		int tileDelta = std::abs(left.TileIndex - right.TileIndex);
+		return left.Y == right.Y && std::abs(left.X - right.X) == 8 &&
+			left.PaletteColors == right.PaletteColors && tileDelta > 0 && tileDelta <= 2;
+	};
+
 	for(size_t i = 0; i < count; i++) {
 		for(size_t j = i + 1; j < count; j++) {
 			HdStudioSprite& a = sprites[i];
 			HdStudioSprite& b = sprites[j];
 
-			//Both halves of the same hardware sprite (8x16) are one composition.
-			if(a.OamIndex == b.OamIndex && a.OamPart != b.OamPart) {
+			//The two halves of one 8x16 hardware sprite are always one composition.
+			if(isVerticalHalfPair(a, b) || isVerticalHalfPair(b, a)) {
+				tryUnion(i, j);
+				continue;
+			}
+			if(isHorizontalHalfPair(a, b)) {
 				tryUnion(i, j);
 				continue;
 			}
 
-			int overlap = overlapArea(a, b);
-			if(overlap >= 2) {
-				//Characters drawn with two palettes layer overlapping sprites; keep them together.
+			//Real shared pixels are strong evidence, even across palettes. Merely touching
+			//or overlapping a few boundary pixels is not: rows of enemies and two unrelated
+			//actors can touch without belonging to one authored character. Automatic
+			//grouping remains conservative; the Studio's manual grouping handles the rest.
+			if(overlapArea(a, b) >= 2) {
 				tryUnion(i, j);
 				continue;
-			}
-
-			//Touching (0-1 pixel gap) needs additional evidence: same palette, adjacent OAM
-			//slots and a shared row/column edge. This keeps a row of enemies from collapsing
-			//into one object while still joining tightly packed metasprites.
-			int dx = std::abs(a.X - b.X);
-			int dy = std::abs(a.Y - b.Y);
-			bool aligned = dx <= 8 || dy <= 8;
-			int oamDistance = std::abs((int)a.OamIndex - (int)b.OamIndex);
-			bool touches = dx <= 9 && dy <= 9;
-			if(touches && aligned && a.PaletteColors == b.PaletteColors && oamDistance <= 6) {
-				tryUnion(i, j);
 			}
 		}
 	}

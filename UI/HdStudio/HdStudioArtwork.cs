@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using SkiaSharp;
 
@@ -405,6 +406,91 @@ namespace Mesen.HdStudio
 			return tile.Pattern.ToUpperInvariant();
 		}
 
+		public static bool IsCustomConditionToken(string token)
+		{
+			int colon = token.IndexOf(':');
+			if(colon <= 0) {
+				return false;
+			}
+			string type = token.Substring(0, colon).Trim();
+			return type is "spriteNearby" or "tileNearby" or "positionCheckX" or "positionCheckY"
+				or "originPositionCheckX" or "originPositionCheckY";
+		}
+
+		public static string CustomConditionName(string token)
+		{
+			byte[] hash = SHA1.HashData(Encoding.UTF8.GetBytes(token));
+			return "HdStudioCtx_" + Convert.ToHexString(hash).Substring(0, 10);
+		}
+
+		/// <summary>
+		/// Expands the advanced tokens accepted in ExtraCondition into standard Mesen
+		/// &lt;condition&gt; definitions. The UI/CLI never invents a condition type: only
+		/// parser-supported nearby/position conditions are emitted.
+		/// </summary>
+		public static List<string> GetCustomConditionDefinitions(string extraCondition, List<string>? errors = null)
+		{
+			List<string> definitions = new();
+			HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+			foreach(string raw in (extraCondition ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+				if(!IsCustomConditionToken(raw)) {
+					if(raw.Contains(':')) {
+						errors?.Add($"Condition {raw}: unsupported custom condition type. Use hmirror, vmirror, bgpriority, sppalette0-3 or a supported nearby/position expression.");
+					}
+					continue;
+				}
+				string[] typeValue = raw.Split(':', 2);
+				string type = typeValue[0].Trim();
+				string[] args = typeValue[1].Split(',', StringSplitOptions.TrimEntries);
+				string name = CustomConditionName(raw);
+				if(!seen.Add(name)) {
+					continue;
+				}
+				if(type is "spriteNearby" or "tileNearby") {
+					if(args.Length < 4) {
+						errors?.Add($"Condition {raw}: expected {type}:x,y,tile,palette[,ignorePalette].");
+						continue;
+					}
+					if(!int.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int x) ||
+						!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int y) ||
+						x < -255 || x > 255 || y < -255 || y > 255) {
+						errors?.Add($"Condition {raw}: x/y must be integers from -255 to 255.");
+						continue;
+					}
+					string key = args[2].Trim().ToUpperInvariant();
+					string palette = args[3].Trim().ToUpperInvariant();
+					bool keyValid = key.Length == 32 ? key.All(Uri.IsHexDigit) :
+						(key.Length is >= 1 and <= 4 && key.All(Uri.IsHexDigit));
+					bool paletteValid = palette.Length == 8 && palette.All(Uri.IsHexDigit);
+					if(!keyValid || !paletteValid) {
+						errors?.Add($"Condition {raw}: tile must be 1-4 or 32 hex digits and palette exactly 8 hex digits.");
+						continue;
+					}
+					string ignore = "false";
+					if(args.Length >= 5) {
+						if(!bool.TryParse(args[4], out bool ignorePalette)) {
+							errors?.Add($"Condition {raw}: ignorePalette must be true or false.");
+							continue;
+						}
+						ignore = ignorePalette ? "true" : "false";
+					}
+					definitions.Add($"<condition>{name},{type},{x},{y},{key},{palette},{ignore}");
+				} else {
+					if(args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int operand) || operand < 0 || operand > 0xFFFF) {
+						errors?.Add($"Condition {raw}: expected {type}:operator,operand (operand 0-65535).");
+						continue;
+					}
+					string op = args[0].Trim();
+					if(op is not ("==" or "!=" or ">" or "<" or ">=" or "<=")) {
+						errors?.Add($"Condition {raw}: operator must be ==, !=, >, <, >= or <=.");
+						continue;
+					}
+					definitions.Add($"<condition>{name},{type},{op},{operand}");
+				}
+			}
+			return definitions;
+		}
+
 		public static string GetCondition(TileSpec tile, bool mirrorConditions, bool matchBackgroundPriority = false, string extraCondition = "")
 		{
 			List<string> conditions = new();
@@ -424,7 +510,8 @@ namespace Mesen.HdStudio
 				conditions.Add("bgpriority");
 			}
 			if(!string.IsNullOrWhiteSpace(extraCondition)) {
-				foreach(string token in extraCondition.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+				foreach(string raw in extraCondition.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+					string token = IsCustomConditionToken(raw) ? CustomConditionName(raw) : raw;
 					if(!conditions.Contains(token, StringComparer.OrdinalIgnoreCase)) {
 						conditions.Add(token);
 					}

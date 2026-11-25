@@ -72,6 +72,14 @@ namespace Mesen.HdStudio
 				.ToList();
 			result.SkippedReplacements = project.Replacements.Count(r => !r.Approved);
 
+			List<string> conditionErrors = new();
+			List<string> customConditions = HdStudioArtwork.GetCustomConditionDefinitions(
+				string.Join("&", managed.Select(r => r.Settings.ExtraCondition).Where(c => !string.IsNullOrWhiteSpace(c))),
+				conditionErrors);
+			foreach(string error in conditionErrors) {
+				result.Errors.Add(error);
+			}
+
 			List<(HdStudioReplacement Replacement, List<HdStudioArtwork.Cell> Cells, string SheetName)> outputs = new();
 			Dictionary<string, (string ReplacementId, string Hash)> contexts = new();
 
@@ -233,6 +241,14 @@ namespace Mesen.HdStudio
 
 			int baseImageCount = baseLines.Count(l => l.StartsWith("<img>", StringComparison.Ordinal));
 			List<string> output = new(baseLines);
+			if(customConditions.Count > 0) {
+				int conditionInsert = output.FindIndex(l => l.StartsWith("<supportedRom>", StringComparison.Ordinal));
+				if(conditionInsert < 0) {
+					conditionInsert = output.FindLastIndex(l => l.StartsWith("<scale>", StringComparison.Ordinal));
+				}
+				conditionInsert = conditionInsert < 0 ? 0 : conditionInsert + 1;
+				output.InsertRange(conditionInsert, customConditions);
+			}
 			int insertAt = LastImageIndex(output);
 			if(insertAt < 0) {
 				int firstTile = output.FindIndex(l => l.StartsWith("<tile>", StringComparison.Ordinal));
@@ -474,7 +490,13 @@ namespace Mesen.HdStudio
 							["x"] = cell.SheetX
 						});
 						if(!string.IsNullOrEmpty(cell.Condition)) {
-							string type = cell.Condition.Contains("hmirror", StringComparison.OrdinalIgnoreCase) ? "standard-hmirror" : "standard-vmirror";
+							string type = cell.Condition.Contains("HdStudioCtx_", StringComparison.OrdinalIgnoreCase)
+								? "standard-nearby-or-position"
+								: cell.Condition.Contains("hmirror", StringComparison.OrdinalIgnoreCase)
+									? "standard-hmirror"
+									: cell.Condition.Contains("vmirror", StringComparison.OrdinalIgnoreCase)
+										? "standard-vmirror"
+										: "standard-bgpriority";
 							string id = "condition:" + HdStudioProject.StableId(type + "|" + cell.Key + "|" + cell.Palette);
 							if(conditionIds.Add(id)) {
 								replacementConditions.Add((JsonNode)new JsonObject() {
@@ -482,7 +504,8 @@ namespace Mesen.HdStudio
 									["type"] = type,
 									["tileKey"] = cell.Key,
 									["palette"] = cell.Palette,
-									["verified"] = true
+									["syntaxVerified"] = true,
+									["runtimeVerified"] = false
 								});
 							}
 						}

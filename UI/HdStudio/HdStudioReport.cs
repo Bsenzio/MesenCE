@@ -18,7 +18,12 @@ namespace Mesen.HdStudio
 	internal class HdStudioReport
 	{
 		public const string StudioFolderName = "HdStudio";
-		private const int MaxReportedObjects = 200;
+		//Presentation safety budget for the standalone HTML/sheet. The complete raw catalog is
+		//always written to HdStudio/assets/assets.json, objects.txt and report.json. The Studio
+		//lists all of them with incremental loading; this report is the only capped view.
+		private const int MaxReportedObjects = 10000;
+		private int _objectGroupsBeforeReportCap = 0;
+		private bool _objectReportCapReached = false;
 
 		private readonly string _packFolder;
 		private readonly string _studioFolder;
@@ -514,11 +519,16 @@ namespace Mesen.HdStudio
 
 			//Ignore objects that only appeared for a couple of frames (usually transitions/glitches)
 			uint minFrames = (uint)Math.Max(2, _frameCount / 5000);
-			List<ObjectGroup> result = groups.Values
+			List<ObjectGroup> all = groups.Values
 				.Where(g => g.FrameCount >= minFrames)
 				.OrderByDescending(g => g.FrameCount)
-				.Take(MaxReportedObjects)
 				.ToList();
+			_objectGroupsBeforeReportCap = all.Count;
+			_objectReportCapReached = all.Count > MaxReportedObjects;
+			if(_objectReportCapReached) {
+				_log($"Report: object presentation budget reached ({MaxReportedObjects:N0} of {all.Count:N0}); the raw records remain in objects.txt/assets.json.");
+			}
+			List<ObjectGroup> result = all.Take(MaxReportedObjects).ToList();
 
 			for(int i = 0; i < result.Count; i++) {
 				ObjectGroup g = result[i];
@@ -1071,6 +1081,9 @@ namespace Mesen.HdStudio
 				json.WriteEndObject();
 			}
 
+			json.WriteNumber("objectGroupsBeforeReportCap", _objectGroupsBeforeReportCap);
+			json.WriteNumber("objectReportCap", MaxReportedObjects);
+			json.WriteBoolean("objectReportCapReached", _objectReportCapReached);
 			json.WriteStartArray("objects");
 			foreach(ObjectGroup g in groups) {
 				json.WriteStartObject();
@@ -1206,6 +1219,9 @@ namespace Mesen.HdStudio
 			sb.AppendLine("<h2>What to draw</h2>");
 			sb.AppendLine($"<p>Every original 8×8 tile is replaced by a <b>{hdTile}×{hdTile} px</b> image. The pack sheets ({_packImages.Count}) are <b>{128 * _scale}×{128 * _scale} px</b> each (16×16 tiles). " +
 				"To work per character instead of per tile, use the templates below: each one already has the final HD size; redraw on top of it, respecting the grid.</p>");
+			if(_objectReportCapReached) {
+				sb.AppendLine($"<p class=\"wrn\"><b>Report presentation limit:</b> this page and its sheet show {groups.Count:N0} of {_objectGroupsBeforeReportCap:N0} objects. The complete catalog remains in <code>assets/assets.json</code> and <code>objects.txt</code>.</p>");
+			}
 			if(groups.Count > 0) {
 				sb.AppendLine("<p><b>Full sprite sheet:</b> <a href=\"sheet_objects.png\"><code>sheet_objects.png</code></a> has every object of the table at HD size " +
 					"(its layout is in <code>sheet_objects.json</code>). This is the sheet to redraw and later load in HD Studio.</p>");

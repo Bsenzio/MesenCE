@@ -12,8 +12,34 @@ class SnesControlManager;
 class NesConsole;
 class EmuSettings;
 
+//HD Studio: one sprite tile that actually contributed an opaque pixel to the frame that
+//was displayed. This is deliberately not an end-of-frame OAM snapshot: it is produced by
+//the renderer's sprite-selection path, so off-screen sprites, stale OAM entries and sprites
+//whose pixels were hidden behind an opaque, higher-priority background never appear here.
+struct NesRenderedSpriteInfo
+{
+	int16_t X;
+	int16_t Y;
+	int32_t TileIndex;
+	uint32_t PaletteColors;
+	uint8_t TileData[16];
+	bool HorizontalMirror;
+	bool VerticalMirror;
+	bool BackgroundPriority;
+	uint8_t RenderSlot;
+	uint8_t Part;
+};
+
 class BaseNesPpu : public INesMemoryHandler, public ISerializable
 {
+public:
+	BaseNesPpu()
+	{
+		for(int i = 0; i < 128; i++) {
+			_renderedTileBySlotPart[i] = -1;
+		}
+	}
+
 protected:
 	uint64_t _masterClock = 0;
 	uint32_t _cycle = 0;
@@ -87,6 +113,23 @@ protected:
 	////////////////////////
 	NesSpriteInfo _spriteTiles[64] = {};
 
+	//HD Studio: render-time sprite evidence. The current frame is filled by the concrete
+	//PPU when a sprite pixel is actually selected for output; the last complete frame is
+	//kept for the debugger/Lua API because SendFrame and the Lua endFrame callback happen
+	//after the visible scanlines have ended.
+	NesRenderedSpriteInfo _renderedSprites[128] = {};
+	int _renderedSpriteCount = 0;
+	NesRenderedSpriteInfo _lastRenderedSprites[128] = {};
+	int _lastRenderedSpriteCount = 0;
+	//Source primary-OAM entry for each secondary-OAM shifter slot. This preserves the
+	//hardware's documented OAM proximity evidence even though the PPU draws from
+	//secondary OAM (which does not retain the original slot number).
+	uint8_t _secondaryOamSource[8] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+	//O(1) de-duplication per render slot/part. The old linear scan of up to 128
+	//entries could run on every visible sprite pixel.
+	int32_t _renderedTileBySlotPart[128];
+	bool _collectRenderedSprites = false;
+
 	static constexpr int SpriteShifterDone = 0x8000;
 	uint16_t _spriteShifterList[9] = { SpriteShifterDone, SpriteShifterDone, SpriteShifterDone, SpriteShifterDone, SpriteShifterDone, SpriteShifterDone, SpriteShifterDone, SpriteShifterDone, SpriteShifterDone }; //Ordered by X coordinate.
 	uint8_t _nextSpriteShifter = 0;
@@ -139,6 +182,65 @@ public:
 	//HD Studio live capture: a copy of the primary OAM used for the frame that just finished.
 	void CopySpriteRam(uint8_t* dest) { memcpy(dest, _spriteRam, 0x100); }
 	void CopyPaletteRam(uint8_t* dest) { memcpy(dest, _paletteRam, 0x20); }
+
+	//HD Studio: called by the concrete PPU when a sprite contributes a visible pixel.
+	//The base implementation records the pixel-time tile identity once per render slot,
+	//part and tile; a mid-frame CHR bank change therefore records both patterns.
+	void AddRenderedSprite(int16_t x, int16_t y, int32_t tileIndex, uint32_t paletteColors,
+		const uint8_t* tileData, bool horizontalMirror, bool verticalMirror,
+		bool backgroundPriority, uint8_t renderSlot, uint8_t part)
+	{
+		int key = ((renderSlot & 0x3F) << 1) | (part & 1);
+		if(_renderedTileBySlotPart[key] == tileIndex) {
+			return;
+		}
+		_renderedTileBySlotPart[key] = tileIndex;
+		if(_renderedSpriteCount >= (int)(sizeof(_renderedSprites) / sizeof(_renderedSprites[0]))) {
+			return;
+		}
+		NesRenderedSpriteInfo& info = _renderedSprites[_renderedSpriteCount++];
+		info.X = x;
+		info.Y = y;
+		info.TileIndex = tileIndex;
+		info.PaletteColors = paletteColors;
+		memcpy(info.TileData, tileData, 16);
+		info.HorizontalMirror = horizontalMirror;
+		info.VerticalMirror = verticalMirror;
+		info.BackgroundPriority = backgroundPriority;
+		info.RenderSlot = renderSlot;
+		info.Part = part;
+	}
+
+	void CommitRenderedSprites()
+	{
+		memcpy(_lastRenderedSprites, _renderedSprites, sizeof(NesRenderedSpriteInfo) * (size_t)_renderedSpriteCount);
+		_lastRenderedSpriteCount = _renderedSpriteCount;
+		_renderedSpriteCount = 0;
+		for(int i = 0; i < 128; i++) {
+			_renderedTileBySlotPart[i] = -1;
+		}
+	}
+
+	void EnableRenderedSpriteCapture() { _collectRenderedSprites = true; }
+
+	const NesRenderedSpriteInfo* GetLastRenderedSprites(int& count) const
+	{
+		count = _lastRenderedSpriteCount;
+		return _lastRenderedSprites;
+	}
+
+	uint8_t GetSecondaryOamSource(uint32_t shifterSlot) const
+	{
+		//0xFF means the emulator could not attribute a primary-OAM slot to this
+		//shifter (extra/corrupted sprites). The shifter ordinal is still a stable
+		//per-frame identity; never return the sentinel, which would merge everything.
+		uint8_t source = shifterSlot < 8 ? _secondaryOamSource[shifterSlot] : (uint8_t)(shifterSlot & 0x3F);
+		return source == 0xFF ? (uint8_t)(shifterSlot & 0x3F) : source;
+	}
+
+	//Hook called from GetPixelColor only when a sprite pixel wins priority and is visible.
+	virtual void NotifySpritePixelRendered(uint32_t spriteIndex) {}
+	virtual bool SupportsRenderedSpriteCapture() { return false; }
 
 	//HD Studio: the current $2000/$2001 flags, so capture scripts can resolve the real
 	//sprite size and pattern-table base instead of assuming SMB3's 8x16 mode.

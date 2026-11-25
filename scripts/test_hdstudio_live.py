@@ -58,7 +58,18 @@ def main():
                                stderr=subprocess.STDOUT, text=True)
 
     def drive():
-        time.sleep(9)
+        #Wait for measurement, not wall-clock startup: the deep explorer may spend
+        #several seconds booting the game before the live script sees gameplay frames.
+        status_path = os.path.join(live, "live-status.json")
+        deadline = time.time() + 40
+        while time.time() < deadline:
+            try:
+                status = json.load(open(status_path, encoding="utf-8"))
+                if status.get("samples", 0) >= 60 and status.get("frame", 0) >= 240:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.75)
         open(control, "w", encoding="utf-8").write("1|pause\n")
         time.sleep(4)
         open(control, "w", encoding="utf-8").write("2|stop\n")
@@ -88,7 +99,7 @@ def main():
     if not pause.get("sprites") or not pause.get("background"):
         raise SystemExit("frozen frame has no hardware sprites or background cells")
     sprite = pause["sprites"][0]
-    for key in ("oam", "x", "y", "tile", "palette", "pattern", "chrType", "data"):
+    for key in ("renderSlot", "x", "y", "tile", "palette", "pattern", "chrType", "data"):
         if key not in sprite:
             raise SystemExit("frozen sprite is missing " + key)
     if len(sprite.get("data", "")) != 32:

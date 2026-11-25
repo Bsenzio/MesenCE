@@ -828,6 +828,24 @@ template<class T> void NesPpu<T>::LoadSpriteTileInfo()
 	//Set it to whatever shifter we're filling.
 	_spriteIndex = (_cycle - 257) >> 3;
 	uint8_t* spriteAddr = _secondarySpriteRam + _spriteIndex * 4;
+
+	//HD Studio: recover the primary-OAM slot that produced this secondary-OAM entry.
+	//The hardware evaluation does not retain it, but the four bytes are copied verbatim.
+	//Matching the entry to primary OAM is more reliable than deriving the slot from the
+	//evaluation cursor, particularly around out-of-range sprites and the overflow bug.
+	uint8_t source = 0xFF;
+	for(int i = 0; i < 64; i++) {
+		uint8_t* primary = _spriteRam + i * 4;
+		if(primary[0] == spriteAddr[0] && primary[1] == spriteAddr[1] &&
+			primary[2] == spriteAddr[2] && primary[3] == spriteAddr[3]) {
+			source = (uint8_t)i;
+			break;
+		}
+	}
+	if(_spriteIndex < 8) {
+		_secondaryOamSource[_spriteIndex] = source;
+	}
+
 	LoadSprite(*spriteAddr, *(spriteAddr + 1), *(spriteAddr + 2), *(spriteAddr + 3), false);
 }
 
@@ -915,7 +933,13 @@ template<class T> uint8_t NesPpu<T>::GetPixelColor()
 				}
 
 				if(_emulatorSpritesEnabled && (backgroundColor == 0 || !_spriteTiles[spriteIndex].BackgroundPriority)) {
-					//Check sprite priority
+					//Check sprite priority. Only at this point is the sprite pixel part of
+					//the visible image; HdNesPpu/HdBuilderPpu use this render-time evidence
+					//instead of the later end-of-frame OAM snapshot. Default (non-HD) PPUs
+					//do not pay for this hook.
+					if(_collectRenderedSprites) {
+						NotifySpritePixelRendered(spriteIndex);
+					}
 					return _spriteTiles[spriteIndex].PaletteOffset + spriteColor;
 				}
 			}
@@ -1093,6 +1117,9 @@ template<class T> void NesPpu<T>::ProcessSpriteEvaluationStart()
 	//that byte as the "sprite 0" Y coordinate.
 	_firstVisibleSpriteAddr = _spriteRamAddr & 0xFC;
 	_lastVisibleSpriteAddr = _firstVisibleSpriteAddr;
+	for(int i = 0; i < 8; i++) {
+		_secondaryOamSource[i] = 0xFF;
+	}
 }
 
 template<class T> void NesPpu<T>::ProcessSpriteShifters()
@@ -1183,6 +1210,9 @@ template<class T> void NesPpu<T>::ProcessSpriteEvaluation()
 							//Done copying all 4 bytes
 							_spriteInRange = false;
 							_lastVisibleSpriteAddr = (spriteAddrH - 1) * 4;
+							if((_secondaryOamAddr >> 2) > 0 && (_secondaryOamAddr >> 2) <= 8) {
+								_secondaryOamSource[(_secondaryOamAddr >> 2) - 1] = (uint8_t)((spriteAddrH - 1) & 0x3F);
+							}
 
 							if(spriteAddrL != 0) {
 								//Normally, if the sprite eval started on a non-multiple-of-4 address, it would

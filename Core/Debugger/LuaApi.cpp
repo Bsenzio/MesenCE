@@ -174,6 +174,7 @@ int LuaApi::GetLibrary(lua_State* lua)
 		{ "getPpuInfo", LuaApi::GetPpuInfo },
 		{ "getBackgroundTile", LuaApi::GetBackgroundTile },
 		{ "getOamInfo", LuaApi::GetOamInfo },
+		{ "getRenderedSpriteInfo", LuaApi::GetRenderedSpriteInfo },
 		{ NULL, NULL }
 	};
 
@@ -1254,6 +1255,8 @@ int LuaApi::GetPpuInfo(lua_State* lua)
 	lua_setfield(lua, -2, "mirroring");
 	lua_pushboolean(lua, mapper->HasChrRam());
 	lua_setfield(lua, -2, "hasChrRam");
+	lua_pushboolean(lua, ppu->SupportsRenderedSpriteCapture());
+	lua_setfield(lua, -2, "renderedSpriteCapture");
 	return 1;
 }
 
@@ -1342,6 +1345,69 @@ int LuaApi::GetOamInfo(lua_State* lua)
 	uint8_t oam[0x100];
 	ppu->CopySpriteRam(oam);
 	lua_pushlstring(lua, (const char*)oam, 0x100);
+	return 1;
+}
+
+//HD Studio: the sprite tiles that actually contributed visible pixels to the last
+//displayed frame, collected by the HD PPU at render time. This avoids reporting stale
+//OAM entries or patterns that were hidden by sprite priority or never selected by the
+//8-sprite hardware limit. Returns a Lua array; an empty table is a valid result.
+int LuaApi::GetRenderedSpriteInfo(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	checkparams();
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	NesConsole* nesConsole = static_cast<NesConsole*>(console.get());
+	BaseNesPpu* ppu = nesConsole->GetPpu();
+	BaseMapper* mapper = nesConsole->GetMapper();
+	if(!ppu || !mapper) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	int count = 0;
+	const NesRenderedSpriteInfo* sprites = ppu->GetLastRenderedSprites(count);
+	bool isChrRam = mapper->HasChrRam();
+	string chrType = isChrRam ? "NesChrRam" : "NesChrRom";
+
+	lua_newtable(lua);
+	for(int i = 0; i < count; i++) {
+		const NesRenderedSpriteInfo& s = sprites[i];
+		lua_newtable(lua);
+		LuaPushIntValue(lua, "x", s.X);
+		LuaPushIntValue(lua, "y", s.Y);
+		LuaPushIntValue(lua, "tileIndex", s.TileIndex);
+		LuaPushIntValue(lua, "tile", s.TileIndex & 0xFF);
+		LuaPushIntValue(lua, "renderSlot", s.RenderSlot);
+		LuaPushIntValue(lua, "part", s.Part);
+		lua_pushboolean(lua, s.HorizontalMirror);
+		lua_setfield(lua, -2, "flipH");
+		lua_pushboolean(lua, s.VerticalMirror);
+		lua_setfield(lua, -2, "flipV");
+		lua_pushboolean(lua, s.BackgroundPriority);
+		lua_setfield(lua, -2, "backgroundPriority");
+		LuaPushIntValue(lua, "paletteColors", (int)s.PaletteColors);
+		string paletteHex = HexUtilities::ToHex(s.PaletteColors, true);
+		lua_pushstring(lua, paletteHex.c_str());
+		lua_setfield(lua, -2, "palette");
+		LuaPushIntValue(lua, "chrAddress", s.TileIndex * 16);
+		lua_pushstring(lua, chrType.c_str());
+		lua_setfield(lua, -2, "chrType");
+		string hex;
+		hex.reserve(32);
+		for(int j = 0; j < 16; j++) {
+			hex += HexUtilities::ToHex(s.TileData[j]);
+		}
+		lua_pushlstring(lua, hex.data(), hex.size());
+		lua_setfield(lua, -2, "data");
+		lua_rawseti(lua, -2, i + 1);
+	}
 	return 1;
 }
 

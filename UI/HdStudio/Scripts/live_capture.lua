@@ -1,4 +1,4 @@
--- RetroArcDo HD Studio v0.4 - live interactive capture.
+-- RetroArcDo HD Studio v0.5 - live interactive capture with render-time sprite evidence.
 --
 -- This script is loaded into the running emulator while the user plays normally.
 -- It does NOT change input, memory or PPU state. At the end of each sampled frame it
@@ -19,7 +19,11 @@ local OUTPUT_DIR = "__OUTPUT__"
 local CONTROL_FILE = "__CONTROL__"
 local SAMPLE_EVERY = __SAMPLE_EVERY__
 local BG_SAMPLE_EVERY = __BG_SAMPLE_EVERY__
-local MAX_PATTERNS = 40000
+local CAPTURE_MODE = "__CAPTURE_MODE__"
+local SINGLE_FRAME = __SINGLE_FRAME__
+--The limit is a safety valve for pathological frames, not a presentation cap. It is
+--reported in live-status.json when reached instead of silently dropping patterns.
+local MAX_PATTERNS = __MAX_PATTERNS__
 
 local spritesPath = OUTPUT_DIR .. "/live-sprites.tsv"
 local patternsPath = OUTPUT_DIR .. "/live-patterns.tsv"
@@ -44,6 +48,10 @@ local sessionTag = os.date("!%Y%m%d-%H%M%S")
 local spriteCount = 0
 local blockCount = 0
 local screenHash = ""
+local patternLimitReached = false
+local displaySpriteSamples = 0
+local oamFallbackSamples = 0
+local sampleMicros = 0
 
 local patterns = {}
 local patternOrder = {}
@@ -133,6 +141,7 @@ local function patternInfo(ppuAddress)
   end
   if not patterns[key] then
     if #patternOrder >= MAX_PATTERNS then
+      patternLimitReached = true
       return key, info
     end
     patterns[key] = {
@@ -177,9 +186,11 @@ local function writeStatus()
   local f = io.open(statusPath, "w")
   if not f then return end
   f:write(string.format(
-    '{"schemaVersion":"1.0.0","frame":%d,"samples":%d,"patterns":%d,"spriteOccurrences":%d,"backgroundBlocks":%d,"gameplayFrames":%d,"paused":%s,"stopped":%s,"startedAt":%d,"updatedAt":%d,"screenHash":"%s"}\n',
-    frame, samples, #patternOrder, spriteCount, #blockOrder, gameplayFrames,
-    paused and "true" or "false", stopped and "true" or "false", startedAt, os.time(), screenHash))
+    '{"schemaVersion":"1.1.0","captureMode":"%s","frame":%d,"samples":%d,"patterns":%d,"spriteOccurrences":%d,"backgroundBlocks":%d,"gameplayFrames":%d,"paused":%s,"stopped":%s,"startedAt":%d,"updatedAt":%d,"screenHash":"%s","displaySpriteSamples":%d,"oamFallbackSamples":%d,"sampleMicros":%d,"patternLimit":%d,"patternLimitReached":%s,"singleFrame":%s}\n',
+    CAPTURE_MODE, frame, samples, #patternOrder, spriteCount, #blockOrder, gameplayFrames,
+    paused and "true" or "false", stopped and "true" or "false", startedAt, os.time(), screenHash,
+    displaySpriteSamples, oamFallbackSamples, sampleMicros, MAX_PATTERNS,
+    patternLimitReached and "true" or "false", SINGLE_FRAME and "true" or "false"))
   f:close()
 end
 
@@ -233,10 +244,10 @@ local function writePauseFrame(sprites, ppu)
   for i, s in ipairs(sprites) do
     if i > 1 then f:write(",") end
     f:write(string.format(
-      '{"oam":%d,"part":%d,"x":%d,"y":%d,"tile":%d,"palette":"%s","flipH":%s,"flipV":%s,"backgroundPriority":%s,"pattern":"%s","chrType":"%s","chrAddress":%d,"data":"%s"}',
+      '{"renderSlot":%d,"part":%d,"x":%d,"y":%d,"tile":%d,"palette":"%s","flipH":%s,"flipV":%s,"backgroundPriority":%s,"pattern":"%s","chrType":"%s","chrAddress":%d,"data":"%s","evidence":"%s"}',
       s.oam, s.part, s.x, s.y, s.tile, s.palette,
       s.flipH and "true" or "false", s.flipV and "true" or "false", s.priority and "true" or "false",
-      s.pattern or "", s.chrType or "", s.chrAddr or -1, s.data or ""))
+      s.pattern or "", s.chrType or "", s.chrAddr or -1, s.data or "", s.evidence or "oam-fallback"))
   end
   f:write('],"background":[')
   for ty = 0, 29 do
@@ -263,14 +274,78 @@ local function writePauseFrame(sprites, ppu)
   log("paused at frame " .. frame .. " (" .. #sprites .. " sprite parts)")
 end
 
+local function registerPattern(key, chrType, chrAddr, data)
+  if not key or key == "" then return nil end
+  if not patterns[key] then
+    if #patternOrder >= MAX_PATTERNS then
+      patternLimitReached = true
+      return key
+    end
+    patterns[key] = {
+      uses = 0,
+      chrType = chrType or "",
+      chrAddr = chrAddr or -1,
+      data = data or "",
+      firstFrame = frame
+    }
+    patternOrder[#patternOrder + 1] = key
+  end
+  patterns[key].uses = patterns[key].uses + 1
+  return key
+end
+
 local function sampleSprites(ppu)
   local sprites = {}
   if not ppu then
     return sprites
   end
-  --Do not require the sprite-enable bit here: many games turn rendering off
-  --during vblank for OAM DMA, and the END-FRAME callback happens in that window.
-  --The primary OAM still holds the sprites used by the frame that was displayed.
+
+  --Preferred path: the HD PPU records only sprite tiles that contributed visible
+  --opaque pixels during the displayed frame. This is exact for OAM DMA, dynamic
+  --CHR banks, sprite limit/flicker and sprites hidden by background priority.
+  local rendered = emu.getRenderedSpriteInfo and emu.getRenderedSpriteInfo() or nil
+  if type(rendered) == "table" and #rendered > 0 then
+    displaySpriteSamples = displaySpriteSamples + 1
+    for _, r in ipairs(rendered) do
+      local key
+      if r.chrType == "NesChrRam" then
+        key = r.data
+      else
+        key = string.format("%X", math.floor((r.chrAddress or 0) / 16))
+      end
+      key = registerPattern(key, r.chrType, r.chrAddress, r.data)
+      if key then
+        sprites[#sprites + 1] = {
+          oam = r.renderSlot or 0,
+          part = r.part or 0,
+          x = r.x,
+          y = r.y,
+          tile = r.tile or 0,
+          palette = r.palette or "FF000000",
+          flipH = r.flipH == true,
+          flipV = r.flipV == true,
+          priority = r.backgroundPriority == true,
+          pattern = key,
+          chrType = r.chrType or "",
+          chrAddr = r.chrAddress or -1,
+          data = r.data or "",
+          evidence = "render-time"
+        }
+      end
+    end
+    return sprites
+  end
+
+  --If the HD PPU supports render-time evidence, an empty list is authoritative:
+  --there were no visible sprites in this displayed frame.
+  if ppu.renderedSpriteCapture then
+    displaySpriteSamples = displaySpriteSamples + 1
+    return sprites
+  end
+
+  --Compatibility fallback for emulator states without an HD PPU. This remains
+  --explicitly labelled in status/pause data and is not counted as render-time proof.
+  oamFallbackSamples = oamFallbackSamples + 1
   local large = ppu.largeSprites
   local base = ppu.spritePatternAddr or 0
   local oam = emu.getOamInfo()
@@ -302,7 +377,7 @@ local function sampleSprites(ppu)
             oam = i, part = part, x = x, y = y + 1 + part * 8, tile = tile,
             palette = palette, flipH = flipH, flipV = flipV, priority = priority,
             pattern = key, chrType = info.type, chrAddr = info.address,
-            data = info.data or ""
+            data = info.data or "", evidence = "oam-fallback"
           }
           sprites[#sprites + 1] = s
         end
@@ -417,6 +492,7 @@ local function onEndFrame()
   if not ppu then return end
 
   samples = samples + 1
+  local sampleStart = os.clock()
   screenHash = screenSignature()
   local sprites = sampleSprites(ppu)
   appendSprites(sprites)
@@ -429,6 +505,7 @@ local function onEndFrame()
   if frame % BG_SAMPLE_EVERY == 0 then
     sampleBackground(ppu)
   end
+  sampleMicros = sampleMicros + math.floor((os.clock() - sampleStart) * 1000000)
 
   local f = io.open(framesPath, "a")
   if f then
@@ -444,6 +521,17 @@ local function onEndFrame()
   if samples % 60 == 0 then
     writeBlocks()
     writeStatus()
+  end
+
+  if SINGLE_FRAME then
+    --One displayed frame is the complete request in this mode. Freeze the recorder
+    --(the emulator continues running) and write the hardware pick frame immediately.
+    paused = true
+    writePauseFrame(sprites, ppu)
+    writePatterns()
+    writeBlocks()
+    writeStatus()
+    log("single-frame inspection captured frame " .. frame)
   end
 end
 
@@ -464,7 +552,8 @@ local function initialize()
   if not fileExists(patternsPath) then writePatterns() end
   if not fileExists(blocksPath) then writeBlocks() end
   writeStatus()
-  log("live capture started (sample every " .. SAMPLE_EVERY .. " frames, background every " .. BG_SAMPLE_EVERY .. ")")
+  log("live capture started (mode " .. CAPTURE_MODE .. ", sample every " .. SAMPLE_EVERY ..
+    " frames, background every " .. BG_SAMPLE_EVERY .. ", max patterns " .. MAX_PATTERNS .. ")")
   return true
 end
 

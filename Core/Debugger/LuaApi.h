@@ -95,6 +95,7 @@ public:
 	static int GetPpuInfo(lua_State* lua);
 	static int GetBackgroundTile(lua_State* lua);
 	static int GetOamInfo(lua_State* lua);
+	static int GetRenderedSpriteInfo(lua_State* lua);
 
 	static void GenerateStateTable(Serializer& s, lua_State* lua);
 	static void ReadStateTable(Serializer& s, lua_State* lua);

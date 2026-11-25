@@ -5,10 +5,31 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
-## v0.4 Alpha - generalized gameplay discovery and complete asset editing (2026-11-25)
+## v0.5 Alpha - large-scale compatibility and replacement accuracy (2026-11-25)
 
-- **Full v0.4 report:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.4.md>
+- **Full v0.5 report:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.5.md>
 - **Media gallery:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md>
+
+Implemented in this release:
+
+- **Render-time sprite evidence:** `emu.getRenderedSpriteInfo` exposes the sprite
+  tiles that actually contributed visible pixels. End-of-frame OAM is no longer
+  treated as display proof. The capture covers sprite limit/flicker, off-screen
+  entries, priority-hidden sprites, OAM DMA timing and dynamic CHR changes.
+- **Generalized compositions:** exact 8x16 halves and 2x2 character geometry;
+  no touch-only merges; 64-part hardware safety instead of the old 16-part split.
+- **Sampling depth:** Efficient, Balanced, Exhaustive and Single-frame modes in
+  the Studio and `--live-mode`.
+- **No silent catalog caps:** configurable safety budgets, explicit truncation
+  warnings, incremental browsing, raw-tile fallback, two-frame animations.
+- **Advanced standard conditions:** validated `spriteNearby`, `tileNearby` and
+  position condition definitions using the parser-supported Mesen syntax.
+- **Expanded validation:** full local library, representative deep runs and
+  independent homebrew holdout.
+
+See `HDSTUDIO_VALIDATION.md` and the docs repository for measured results.
+
+## v0.4 Alpha - generalized gameplay discovery and complete asset editing (historical)
 
 Implemented in this release:
 

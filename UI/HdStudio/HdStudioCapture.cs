@@ -121,6 +121,7 @@ namespace Mesen.HdStudio
 			public bool ImportMirrorConditions;
 			public bool ImportMatchBgPriority;
 			public bool ImportAllPalettes;
+			public string ImportCondition = "";
 			public bool ImportMinimal;
 			public bool ImportDryRun;
 			public bool Export;
@@ -154,6 +155,7 @@ namespace Mesen.HdStudio
 			public bool FramesSpecified;
 			public int Shots = 4;
 			public bool Live;
+			public string LiveMode = HdStudioSamplingModes.Balanced;
 			public string? PickPoint;
 			public string? PickGroup;
 			public int PickSave = -1;
@@ -405,6 +407,7 @@ namespace Mesen.HdStudio
 					MirrorConditions = opt.ImportMirrorConditions,
 					MatchBackgroundPriority = opt.ImportMatchBgPriority,
 					AllPaletteVariants = opt.ImportAllPalettes,
+					ExtraCondition = opt.ImportCondition,
 					Minimal = opt.ImportMinimal,
 					DryRun = opt.ImportDryRun
 				}, ConfigManager.Config.Nes.UserPalette, Log);
@@ -527,11 +530,15 @@ namespace Mesen.HdStudio
 				if(!File.Exists(control)) {
 					File.WriteAllText(control, "0|resume\n");
 				}
+				(int liveSampleEvery, int liveBackgroundEvery, bool liveSingleFrame) = HdStudioSamplingModes.Values(opt.LiveMode);
 				string liveScript = GetBuiltInExplorer("live_capture.lua")
 					.Replace("__OUTPUT__", liveFolder.Replace("\\", "/"))
 					.Replace("__CONTROL__", control.Replace("\\", "/"))
-					.Replace("__SAMPLE_EVERY__", "2")
-					.Replace("__BG_SAMPLE_EVERY__", "30");
+					.Replace("__SAMPLE_EVERY__", liveSampleEvery.ToString(CultureInfo.InvariantCulture))
+					.Replace("__BG_SAMPLE_EVERY__", liveBackgroundEvery.ToString(CultureInfo.InvariantCulture))
+					.Replace("__CAPTURE_MODE__", opt.LiveMode)
+					.Replace("__SINGLE_FRAME__", liveSingleFrame ? "true" : "false")
+					.Replace("__MAX_PATTERNS__", ReadLivePatternBudget().ToString(CultureInfo.InvariantCulture));
 				_scriptIds.Add(DebugApi.LoadScript("live_capture.lua", Path.Combine(liveFolder, "live_capture.lua"), liveScript));
 				Log("Live capture script loaded -> " + liveFolder);
 
@@ -937,6 +944,12 @@ namespace Mesen.HdStudio
 		}
 
 		/// <summary>Scripts from UI/HdStudio/Scripts, embedded in Mesen.exe (explore.lua or explore_deep.lua)</summary>
+		private static int ReadLivePatternBudget()
+		{
+			string? value = Environment.GetEnvironmentVariable("HDSTUDIO_MAX_LIVE_PATTERNS");
+			return int.TryParse(value, out int configured) && configured >= 40000 ? configured : 250000;
+		}
+
 		public static string GetBuiltInExplorer(string name = "explore.lua")
 		{
 			using Stream? stream = typeof(HdStudioCapture).Assembly.GetManifestResourceStream("Mesen.HdStudio." + name);
@@ -964,6 +977,7 @@ namespace Mesen.HdStudio
 						case "generate": opt.Generate = true; break;
 						case "bgscan": opt.BgScan = true; break;
 						case "live": opt.Live = true; break;
+						case "live-mode": opt.LiveMode = HdStudioSamplingModes.Normalize(value); break;
 						case "pick": opt.PickPoint = value; break;
 						case "pick-group": opt.PickGroup = value; break;
 						case "pick-save":
@@ -1026,6 +1040,7 @@ namespace Mesen.HdStudio
 						case "mirror-conditions": opt.ImportMirrorConditions = true; break;
 						case "match-bgpriority": opt.ImportMatchBgPriority = true; break;
 						case "all-palettes": opt.ImportAllPalettes = true; break;
+						case "condition": opt.ImportCondition = value; break;
 						case "minimal": opt.ImportMinimal = true; break;
 						case "dry-run": opt.ImportDryRun = true; break;
 						case "export": opt.Export = true; break;

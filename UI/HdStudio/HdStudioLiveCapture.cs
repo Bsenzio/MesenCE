@@ -7,6 +7,43 @@ using Mesen.Utilities;
 
 namespace Mesen.HdStudio
 {
+	internal static class HdStudioSamplingModes
+	{
+		public const string Efficient = "efficient";
+		public const string Balanced = "balanced";
+		public const string Exhaustive = "exhaustive";
+		public const string SingleFrame = "single-frame";
+
+		public static string DisplayName(string mode)
+		{
+			return mode switch {
+				Efficient => "Efficient (every 4 frames, backgrounds every 60)",
+				Exhaustive => "Exhaustive (every displayed frame)",
+				SingleFrame => "Single-frame inspection",
+				_ => "Balanced (every 2 frames, backgrounds every 30)"
+			};
+		}
+
+		public static (int Sprites, int Background, bool Single) Values(string mode)
+		{
+			return mode switch {
+				Efficient => (4, 60, false),
+				Exhaustive => (1, 1, false),
+				SingleFrame => (1, 1, true),
+				_ => (2, 30, false)
+			};
+		}
+
+		public static string Normalize(string? mode)
+		{
+			string value = (mode ?? "").Trim().ToLowerInvariant();
+			return value switch {
+				Efficient or Exhaustive or SingleFrame => value,
+				_ => Balanced
+			};
+		}
+	}
+
 	/// <summary>
 	/// Controls the live capture script inside the running Mesen emulator.
 	///
@@ -25,6 +62,7 @@ namespace Mesen.HdStudio
 		public string ControlPath = "";
 		public string StatusPath = "";
 		public string PausePath = "";
+		public string SamplingMode = HdStudioSamplingModes.Balanced;
 		public DateTime StartedAtUtc = DateTime.UtcNow;
 	}
 
@@ -35,8 +73,10 @@ namespace Mesen.HdStudio
 			return Path.Combine(packFolder, HdStudioReport.StudioFolderName, "live");
 		}
 
-		public static HdStudioLiveSession Start(HdStudioProject project, int sampleEvery, int backgroundEvery, Action<string> log)
+		public static HdStudioLiveSession Start(HdStudioProject project, string samplingMode, Action<string> log)
 		{
+			string mode = HdStudioSamplingModes.Normalize(samplingMode);
+			(int sampleEvery, int backgroundEvery, bool singleFrame) = HdStudioSamplingModes.Values(mode);
 			if(!EmuApi.IsRunning()) {
 				//Start the project's ROM in the integrated emulator. This is the same ROM the
 				//project was created from and the original file is opened read-only.
@@ -64,7 +104,10 @@ namespace Mesen.HdStudio
 				.Replace("__OUTPUT__", folder.Replace("\\", "/"))
 				.Replace("__CONTROL__", control.Replace("\\", "/"))
 				.Replace("__SAMPLE_EVERY__", Math.Clamp(sampleEvery, 1, 30).ToString())
-				.Replace("__BG_SAMPLE_EVERY__", Math.Clamp(backgroundEvery, 5, 600).ToString());
+				.Replace("__BG_SAMPLE_EVERY__", Math.Clamp(backgroundEvery, 1, 600).ToString())
+				.Replace("__CAPTURE_MODE__", mode)
+				.Replace("__SINGLE_FRAME__", singleFrame ? "true" : "false")
+				.Replace("__MAX_PATTERNS__", ReadPatternBudget().ToString());
 
 			string scriptPath = Path.Combine(folder, "live_capture.lua");
 			File.WriteAllText(scriptPath, script);
@@ -82,10 +125,19 @@ namespace Mesen.HdStudio
 				Folder = folder,
 				ControlPath = control,
 				StatusPath = Path.Combine(folder, "live-status.json"),
-				PausePath = Path.Combine(folder, "pause-frame.json")
+				PausePath = Path.Combine(folder, "pause-frame.json"),
+				SamplingMode = mode
 			};
-			log($"Live capture started (script {id}); output {folder}.");
+			log($"Live capture started ({HdStudioSamplingModes.DisplayName(mode)}, script {id}); output {folder}.");
 			return session;
+		}
+
+		private static int ReadPatternBudget()
+		{
+			//A safety budget, not a semantic/presentation limit. It is configurable and the
+			//script reports when it is reached, so no truncation is silent.
+			string? value = Environment.GetEnvironmentVariable("HDSTUDIO_MAX_LIVE_PATTERNS");
+			return int.TryParse(value, out int configured) && configured >= 40000 ? configured : 250000;
 		}
 
 		public static void SendCommand(HdStudioLiveSession session, string command)
@@ -123,6 +175,12 @@ namespace Mesen.HdStudio
 			public bool Paused;
 			public bool Stopped;
 			public string ScreenHash = "";
+			public string CaptureMode = "";
+			public int DisplaySpriteSamples;
+			public int OamFallbackSamples;
+			public long SampleMicros;
+			public bool PatternLimitReached;
+			public bool SingleFrame;
 		}
 
 		public static LiveStatus? ReadStatus(HdStudioLiveSession session)
@@ -142,7 +200,13 @@ namespace Mesen.HdStudio
 					GameplayFrames = GetInt(root, "gameplayFrames"),
 					Paused = GetBool(root, "paused"),
 					Stopped = GetBool(root, "stopped"),
-					ScreenHash = GetString(root, "screenHash")
+					ScreenHash = GetString(root, "screenHash"),
+					CaptureMode = GetString(root, "captureMode"),
+					DisplaySpriteSamples = GetInt(root, "displaySpriteSamples"),
+					OamFallbackSamples = GetInt(root, "oamFallbackSamples"),
+					SampleMicros = GetLong(root, "sampleMicros"),
+					PatternLimitReached = GetBool(root, "patternLimitReached"),
+					SingleFrame = GetBool(root, "singleFrame")
 				};
 			} catch {
 				return null;
@@ -157,6 +221,11 @@ namespace Mesen.HdStudio
 		private static bool GetBool(JsonElement element, string name)
 		{
 			return element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
+		}
+
+		private static long GetLong(JsonElement element, string name)
+		{
+			return element.TryGetProperty(name, out JsonElement value) && value.TryGetInt64(out long result) ? result : 0;
 		}
 
 		private static string GetString(JsonElement element, string name)

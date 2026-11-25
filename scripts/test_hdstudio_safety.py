@@ -119,6 +119,21 @@ def main():
         raise SystemExit("context condition was not compiled into the standard tile entry")
     if "context condition" not in log:
         raise SystemExit("context-specific replacement was not reported")
+
+    # Advanced standard nearby condition: emitted only with parser-supported syntax
+    # and a valid <condition> definition.
+    replacement["allowSharedReplacement"] = False
+    replacement["adaptation"]["extraCondition"] = "spriteNearby:8,0,06,FF0F1A2A"
+    json.dump(project, open(project_path, "w", encoding="utf-8"), indent=2)
+    code, log = run(args.mesen, args.home, ["--hdstudio", rom, "--compile", "--out=" + pack])
+    nearby_hires = open(hires_path, encoding="utf-8").read()
+    if "<condition>HdStudioCtx_" not in nearby_hires:
+        raise SystemExit("advanced nearby condition definition was not emitted")
+    if "spriteNearby,8,0,06,FF0F1A2A" not in nearby_hires:
+        raise SystemExit("advanced nearby condition arguments were not emitted")
+    if "HdStudioCtx_" not in "\n".join(line for line in nearby_hires.splitlines() if "<tile>" in line):
+        raise SystemExit("advanced condition was not referenced by a tile entry")
+
     replacement["allowSharedReplacement"] = True
     replacement["adaptation"].pop("extraCondition", None)
     json.dump(project, open(project_path, "w", encoding="utf-8"), indent=2)

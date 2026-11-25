@@ -38,6 +38,7 @@ namespace Mesen.HdStudio
 			public bool MirrorConditions;
 			public bool MatchBackgroundPriority;
 			public bool AllPaletteVariants;
+			public string ExtraCondition = "";
 			public bool Minimal;
 			public bool DryRun;
 		}
@@ -97,7 +98,8 @@ namespace Mesen.HdStudio
 				Padding = options.Padding,
 				MirrorConditions = options.MirrorConditions,
 				MatchBackgroundPriority = options.MatchBackgroundPriority,
-				AllPaletteVariants = options.AllPaletteVariants
+				AllPaletteVariants = options.AllPaletteVariants,
+				ExtraCondition = options.ExtraCondition
 			};
 
 			HdStudioArtwork.ArtworkImage source = HdStudioArtwork.LoadImage(options.ImagePath);
@@ -165,7 +167,7 @@ namespace Mesen.HdStudio
 
 			string hiresPath = Path.Combine(outFolder, "hires.txt");
 			if(!options.DryRun && !managed) {
-				WriteHires(hiresPath, sheetName, cells, packScale, rom, options.Minimal, log);
+				WriteHires(hiresPath, sheetName, cells, packScale, rom, options.Minimal, settings.ExtraCondition, log);
 			}
 
 			string manifestPath = WriteManifest(importsFolder, slug, options, asset, cells, sheetName, width, height, targetWidth, targetHeight, packScale);
@@ -229,6 +231,7 @@ namespace Mesen.HdStudio
 				replacement.Settings.MirrorConditions = settings.MirrorConditions;
 				replacement.Settings.MatchBackgroundPriority = settings.MatchBackgroundPriority;
 				replacement.Settings.AllPaletteVariants = settings.AllPaletteVariants;
+				replacement.Settings.ExtraCondition = settings.ExtraCondition;
 				replacement.Warnings.Clear();
 				if(sharedAssets.Count > 0) {
 					string names = string.Join(", ", sharedAssets.Take(6).Select(a => a.Name));
@@ -268,7 +271,7 @@ namespace Mesen.HdStudio
 			return 4;
 		}
 
-		private static void WriteHires(string path, string sheetName, List<HdStudioArtwork.Cell> cells, int scale, NesRomData rom, bool minimal, Action<string> log)
+		private static void WriteHires(string path, string sheetName, List<HdStudioArtwork.Cell> cells, int scale, NesRomData rom, bool minimal, string extraCondition, Action<string> log)
 		{
 			List<string> lines = new();
 			if(!minimal && File.Exists(path)) {
@@ -277,6 +280,16 @@ namespace Mesen.HdStudio
 				lines.Add("<ver>109");
 				lines.Add($"<scale>{scale}");
 				lines.Add("<supportedRom>" + rom.Sha1);
+			}
+
+			List<string> conditionErrors = new();
+			List<string> conditions = HdStudioArtwork.GetCustomConditionDefinitions(extraCondition, conditionErrors);
+			foreach(string error in conditionErrors) {
+				log("Import: condition error: " + error);
+			}
+			if(conditions.Count > 0) {
+				int insertCondition = lines.FindIndex(l => l.StartsWith("<supportedRom>", StringComparison.Ordinal));
+				lines.InsertRange(insertCondition < 0 ? lines.Count : insertCondition + 1, conditions);
 			}
 
 			int imageIndex = lines.Count(l => l.StartsWith("<img>", StringComparison.Ordinal));

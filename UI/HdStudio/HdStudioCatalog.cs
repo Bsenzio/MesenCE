@@ -83,7 +83,11 @@ namespace Mesen.HdStudio
 
 			List<HdStudioCatalogAsset> shared = new();
 			foreach(HdStudioCatalogAsset asset in catalog.Assets) {
-				if(string.Equals(asset.Id, assetId, StringComparison.OrdinalIgnoreCase) || asset.Tiles.Count == 0) {
+				//Raw-pattern records intentionally mirror every observed hardware key.
+				//They are a fallback access layer, not another semantic consumer, so they
+				//must not turn every authored replacement into a shared-pattern conflict.
+				if(string.Equals(asset.Id, assetId, StringComparison.OrdinalIgnoreCase) ||
+					asset.Kind == "rawPattern" || asset.Tiles.Count == 0) {
 					continue;
 				}
 				foreach(HdStudioCatalogTile tile in asset.Tiles) {

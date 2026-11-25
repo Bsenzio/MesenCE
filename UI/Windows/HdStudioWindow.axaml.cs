@@ -30,7 +30,7 @@ using System.Threading.Tasks;
 namespace Mesen.Windows
 {
 	/// <summary>
-	/// RetroArcDo HD Studio v0.3 — graphical authoring shell.
+	/// RetroArcDo HD Studio v0.5 - graphical authoring shell.
 	///
 	/// All file, catalog, compiler and exporter work remains in the shared HdStudio services.
 	/// This window owns presentation only: it selects an asset, edits the project's adaptation
@@ -39,7 +39,7 @@ namespace Mesen.Windows
 	/// </summary>
 	public partial class HdStudioWindow : MesenWindow
 	{
-		private const string Version = "0.3.0 Alpha";
+		private const string Version = "0.5.0 Alpha";
 
 		private string _romPath = "";
 		private string _packFolder = "";
@@ -99,6 +99,7 @@ namespace Mesen.Windows
 		private List<HdStudioSliceFrame> _lastSliceFrames = new();
 		private string _lastSliceFolder = "";
 		private DispatcherTimer? _animationTimer;
+		private DispatcherTimer? _renderShotTimer;
 		private int _animationIndex;
 		private bool _loopAnimation = true;
 		private bool _animationPlaying;
@@ -129,7 +130,7 @@ namespace Mesen.Windows
 		private ListBox _assetList = null!, _spriteGalleryList = null!, _backgroundList = null!;
 		private TextBox _assetSearchBox = null!;
 		private ComboBox _statusFilterBox = null!;
-		private TextBlock _assetCountText = null!, _thumbnailSizeText = null!;
+		private TextBlock _assetCountText = null!, _assetCountsDetailText = null!, _thumbnailSizeText = null!;
 		private Slider _thumbnailSizeSlider = null!;
 		private Button _gridViewButton = null!, _listViewButton = null!, _loadMoreAssetsButton = null!;
 
@@ -143,6 +144,7 @@ namespace Mesen.Windows
 		private ComboBox _anchorBox = null!;
 		private CheckBox _cropCheck = null!, _removeBackgroundCheck = null!, _keepLargestCheck = null!, _checkerToggleCheck = null!;
 		private CheckBox _allPalettesCheck = null!, _mirrorCheck = null!, _matchBgPriorityCheck = null!, _allowSharedCheck = null!;
+		private TextBox _extraConditionBox = null!;
 		private WrapPanel _paletteList = null!;
 		private TextBlock _paletteCountText = null!, _cropInfoText = null!, _sharedKeysText = null!, _assetIdText = null!, _provenanceText = null!, _hardwareText = null!, _tileListText = null!;
 		private TextBlock _inspectorStatusText = null!;
@@ -172,7 +174,7 @@ namespace Mesen.Windows
 		private TextBlock _captureFramesText = null!, _captureAssetsText = null!, _capturePatternsText = null!, _captureNewText = null!;
 		private TextBlock _candidateFilterText = null!, _candidateHintText = null!;
 		private Border _captureStateBadge = null!;
-		private ComboBox _discoveryModeBox = null!;
+		private ComboBox _discoveryModeBox = null!, _samplingModeBox = null!;
 		private NumericUpDown _discoveryBudgetBox = null!, _discoveryChunkBox = null!, _discoverySeedBox = null!;
 		private CheckBox _discoveryRestartCheck = null!, _discoveryObserveBgCheck = null!;
 		private Button _discoverStartButton = null!, _discoverCancelButton = null!, _selectObjectButton = null!;
@@ -284,6 +286,7 @@ namespace Mesen.Windows
 			_assetSearchBox = C<TextBox>("AssetSearchBox");
 			_statusFilterBox = C<ComboBox>("StatusFilterBox");
 			_assetCountText = C<TextBlock>("AssetCountText");
+			_assetCountsDetailText = C<TextBlock>("AssetCountsDetailText");
 			_thumbnailSizeText = C<TextBlock>("ThumbnailSizeText");
 			_thumbnailSizeSlider = C<Slider>("ThumbnailSizeSlider");
 			_gridViewButton = C<Button>("GridViewButton");
@@ -315,6 +318,7 @@ namespace Mesen.Windows
 			_allPalettesCheck = C<CheckBox>("AllPalettesCheck");
 			_mirrorCheck = C<CheckBox>("MirrorCheck");
 			_matchBgPriorityCheck = C<CheckBox>("MatchBgPriorityCheck");
+			_extraConditionBox = C<TextBox>("ExtraConditionBox");
 			_allowSharedCheck = C<CheckBox>("AllowSharedCheck");
 			_paletteList = C<WrapPanel>("PaletteList");
 			_paletteCountText = C<TextBlock>("PaletteCountText");
@@ -372,6 +376,7 @@ namespace Mesen.Windows
 			_candidateFilterText = C<TextBlock>("CandidateFilterText");
 			_candidateHintText = C<TextBlock>("CandidateHintText");
 			_discoveryModeBox = C<ComboBox>("DiscoveryModeBox");
+			_samplingModeBox = C<ComboBox>("SamplingModeBox");
 			_discoveryBudgetBox = C<NumericUpDown>("DiscoveryBudgetBox");
 			_discoveryChunkBox = C<NumericUpDown>("DiscoveryChunkBox");
 			_discoverySeedBox = C<NumericUpDown>("DiscoverySeedBox");
@@ -496,6 +501,18 @@ namespace Mesen.Windows
 			_allPalettesCheck.Click += (_, _) => EditorControlChanged();
 			_mirrorCheck.Click += (_, _) => EditorControlChanged();
 			_matchBgPriorityCheck.Click += (_, _) => EditorControlChanged();
+			_extraConditionBox.TextChanged += (_, _) => {
+				if(_syncingEditor) return;
+				_editSettings.ExtraCondition = _extraConditionBox.Text?.Trim() ?? "";
+				List<string> errors = new();
+				HdStudioArtwork.GetCustomConditionDefinitions(_editSettings.ExtraCondition, errors);
+				_sharedKeysText.Text = errors.Count > 0
+					? "Condition error: " + errors[0]
+					: string.IsNullOrWhiteSpace(_editSettings.ExtraCondition)
+						? "No extra condition; shared graphics require explicit approval."
+						: "Advanced condition will be emitted as a standard Mesen <condition>.";
+				MarkDirty();
+			};
 			_allowSharedCheck.Click += (_, _) => EditorControlChanged();
 			_toleranceBox.ValueChanged += (_, _) => {
 				if(_syncingEditor) return;
@@ -545,7 +562,7 @@ namespace Mesen.Windows
 
 		private void ApplyTheme()
 		{
-			//v0.3 Alpha ships the validated dark appearance. The palette is centralized so a
+			//v0.5 Alpha ships the validated dark appearance. The palette is centralized so a
 			//light variant can be added without touching individual pages.
 			bool light = false;
 			_settings.Theme = "dark";
@@ -799,7 +816,10 @@ namespace Mesen.Windows
 				UpdateExportPaths();
 			}
 			if(!string.IsNullOrWhiteSpace(renderShot)) {
+				//Keep a strong reference: a local DispatcherTimer can be collected before
+				//its first tick, which made the offscreen screenshot nondeterministic.
 				DispatcherTimer shotTimer = new() { Interval = TimeSpan.FromMilliseconds(3200) };
+				_renderShotTimer = shotTimer;
 				shotTimer.Tick += (_, _) => {
 					shotTimer.Stop();
 					try {
@@ -1247,6 +1267,7 @@ namespace Mesen.Windows
 				_assetRows.Clear();
 				_assetList.ItemsSource = null;
 				_assetCountText.Text = "No catalog loaded";
+				_assetCountsDetailText.Text = "Raw patterns · compositions · animations · backgrounds · approved · verified";
 				return;
 			}
 			string search = _assetSearchBox.Text?.Trim() ?? "";
@@ -1281,6 +1302,30 @@ namespace Mesen.Windows
 			string? selectedId = _selectedAsset?.Id;
 			_assetList.ItemsSource = _assetRows.ToList();
 			_assetCountText.Text = $"{_assetRows.Count:N0} of {filtered.Count:N0} assets";
+			int rawPatterns = _catalog.Assets.SelectMany(a => a.Tiles)
+				.Select(t => HdStudioCatalog.GetTileKey(t))
+				.Where(k => !string.IsNullOrWhiteSpace(k)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+			int compositions = _catalog.Assets.Count(a => a.Kind is "metasprite" or "semanticObject" or "pickedObject" or "manualComposition");
+			int sequences = _catalog.Assets.Count(a => a.Kind == "animationSequence");
+			int backgrounds = _catalog.Assets.Count(a => a.Kind is "backgroundBlock" or "backgroundTile" or "pickedBackground");
+			int approved = _project?.Replacements.Count(r => r.Approved) ?? 0;
+			//A verify screenshot does not prove which approved replacement produced it.
+			//Only per-replacement verification records count; otherwise report zero.
+			int verified = _project?.Replacements.Count(r => r.Approved &&
+				r.Validation.Any(v => v.StartsWith("verified", StringComparison.OrdinalIgnoreCase))) ?? 0;
+			Dictionary<string, int> keyUsers = new(StringComparer.OrdinalIgnoreCase);
+			foreach(HdStudioCatalogAsset asset in _catalog.Assets.Where(a => a.Kind != "rawPattern" && a.Tiles.Count > 0)) {
+				foreach(string key in asset.Tiles.Select(t => HdStudioCatalog.GetTileKey(t) + "|" + t.Palette.ToUpperInvariant()).Distinct(StringComparer.OrdinalIgnoreCase)) {
+					keyUsers[key] = keyUsers.TryGetValue(key, out int count) ? count + 1 : 1;
+				}
+			}
+			int conflicts = _catalog.Assets.Count(a => a.Kind != "rawPattern" && a.Tiles.Any(t => {
+				string key = HdStudioCatalog.GetTileKey(t) + "|" + t.Palette.ToUpperInvariant();
+				return keyUsers.TryGetValue(key, out int users) && users > 1;
+			}));
+			_assetCountsDetailText.Text =
+				$"{rawPatterns:N0} raw · {compositions:N0} compositions · {sequences:N0} sequences · " +
+				$"{backgrounds:N0} backgrounds · {approved:N0} approved · {verified:N0} verified · {conflicts:N0} shared-key";
 			_loadMoreAssetsButton.IsVisible = filtered.Count > _assetRows.Count;
 			ApplyThumbnailSizeToRows();
 			if(_assetRows.Count > 0) {
@@ -1330,7 +1375,7 @@ namespace Mesen.Windows
 			bool locked = row.Locked;
 			bool unsupported = asset.Tiles.Count == 0 && asset.Kind != "animationSequence" && asset.Kind != "other";
 			bool shared = replacement != null && !replacement.AllowSharedReplacement && HasSharedRisk(asset);
-			bool verified = replacement != null && replacement.Approved && HasVerifyImages();
+			bool verified = IsReplacementVerified(replacement);
 
 			if(locked) {
 				SetStatus(row, "Icon.Lock", "StudioWarningBrush", "Locked frame — excluded from automatic frame assignment.");
@@ -1371,7 +1416,7 @@ namespace Mesen.Windows
 				"Artwork assigned" => replacement != null,
 				"Draft replacement" => replacement != null && !replacement.Approved,
 				"Approved replacement" => replacement != null && replacement.Approved,
-				"Verified in emulator" => replacement != null && replacement.Approved && HasVerifyImages(),
+				"Verified in emulator" => IsReplacementVerified(replacement),
 				"Shared graphics conflict" => replacement != null && HasSharedRisk(asset),
 				"Unsupported replacement" => asset.Tiles.Count == 0 && asset.Kind is not ("animationSequence" or "other"),
 				"Unclassified" => asset.Kind is "other" or "" || asset.Name.Contains("unknown", StringComparison.OrdinalIgnoreCase),
@@ -1383,9 +1428,11 @@ namespace Mesen.Windows
 		private void RefreshSpriteGallery()
 		{
 			_spriteRows.Clear();
+			//The ListBox virtualizes its rows and thumbnails load lazily. Do not truncate the
+			//sprite library: every observed composition/animation frame must be reachable.
 			foreach(HdStudioCatalogAsset asset in _catalog.Assets
 				.Where(a => a.Category is "Objects" or "Rendered metasprites" || a.Kind == "animationFrame")
-				.OrderBy(a => a.Category).ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase).Take(160)) {
+				.OrderBy(a => a.Category).ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)) {
 				_spriteRows.Add(CreateAssetRow(asset));
 			}
 			_spriteGalleryList.ItemsSource = _spriteRows.ToList();
@@ -1692,7 +1739,7 @@ namespace Mesen.Windows
 			} else if(replacement == null) {
 				status = _newAssetIds.Contains(asset.Id) ? "NEW" : "DISCOVERED"; badgeClass = _newAssetIds.Contains(asset.Id) ? "info" : "";
 			} else if(replacement.Approved) {
-				status = HasVerifyImages() ? "VERIFIED" : "APPROVED"; badgeClass = "success";
+				status = IsReplacementVerified(replacement) ? "VERIFIED" : "APPROVED"; badgeClass = "success";
 			} else {
 				status = "DRAFT"; badgeClass = "";
 			}
@@ -1843,6 +1890,9 @@ namespace Mesen.Windows
 			_allPalettesCheck.IsChecked = _editSettings.AllPaletteVariants;
 			_mirrorCheck.IsChecked = _editSettings.MirrorConditions;
 			_matchBgPriorityCheck.IsChecked = _editSettings.MatchBackgroundPriority;
+			_syncingEditor = true;
+			_extraConditionBox.Text = _editSettings.ExtraCondition;
+			_syncingEditor = false;
 			_showGridCheck.IsChecked = _replacementCanvas.ShowTileGrid;
 			_showCheckerCheck.IsChecked = _replacementCanvas.ShowCheckerboard;
 			_checkerToggleCheck.IsChecked = _replacementCanvas.ShowCheckerboard;
@@ -1861,6 +1911,7 @@ namespace Mesen.Windows
 			_editSettings.AllPaletteVariants = _allPalettesCheck.IsChecked == true;
 			_editSettings.MirrorConditions = _mirrorCheck.IsChecked == true;
 			_editSettings.MatchBackgroundPriority = _matchBgPriorityCheck.IsChecked == true;
+			_editSettings.ExtraCondition = _extraConditionBox.Text?.Trim() ?? "";
 			_sourcePathBox.Text = _editSourcePath;
 		}
 
@@ -1935,12 +1986,18 @@ namespace Mesen.Windows
 			if(dialog.AllowShared) {
 				_allowSharedCheck.IsChecked = true;
 				_editSettings.ExtraCondition = "";
+				_syncingEditor = true;
+				_extraConditionBox.Text = "";
+				_syncingEditor = false;
 				_sharedKeysText.Text = "Shared replacement approved explicitly for this asset.";
 				SetStatus("Shared replacement approved. Build to apply it.");
 				MarkDirty();
 			} else if(!string.IsNullOrWhiteSpace(dialog.ChosenRule)) {
 				_allowSharedCheck.IsChecked = false;
 				_editSettings.ExtraCondition = dialog.ChosenRule.Trim('[', ']');
+				_syncingEditor = true;
+				_extraConditionBox.Text = _editSettings.ExtraCondition;
+				_syncingEditor = false;
 				_sharedKeysText.Text = "Context rule: " + dialog.ChosenRule + " - other occurrences keep their original graphics.";
 				SetStatus("Context rule selected: " + dialog.ChosenRule + ". Apply to compile it as a standard Mesen condition.");
 				MarkDirty();
@@ -2719,7 +2776,13 @@ namespace Mesen.Windows
 				return;
 			}
 			try {
-				_liveSession = HdStudioLiveCapture.Start(_project, 2, 30, Log);
+				string samplingMode = _samplingModeBox.SelectedIndex switch {
+					0 => HdStudioSamplingModes.Efficient,
+					2 => HdStudioSamplingModes.Exhaustive,
+					3 => HdStudioSamplingModes.SingleFrame,
+					_ => HdStudioSamplingModes.Balanced
+				};
+				_liveSession = HdStudioLiveCapture.Start(_project, samplingMode, Log);
 				_pausedLiveFrame = null;
 				_captureActive = true;
 				_capturePaused = false;
@@ -2764,11 +2827,25 @@ namespace Mesen.Windows
 			_dockCaptureFrames.Text = status.Samples.ToString("N0");
 			_dockCaptureChunks.Text = "-";
 			_dockCaptureReason.Text = status.Paused ? "paused" : "recording";
+			double overhead = status.Samples > 0 ? status.SampleMicros / 1000.0 / status.Samples : 0;
+			string evidence = status.OamFallbackSamples > 0
+				? $"{status.DisplaySpriteSamples:N0} render-time, {status.OamFallbackSamples:N0} OAM fallback"
+				: $"{status.DisplaySpriteSamples:N0} render-time samples";
+			string limit = status.PatternLimitReached ? " PATTERN BUDGET REACHED." : "";
 			string message = status.Paused
-				? $"Live capture paused at frame {status.Frame:N0}. The game keeps running; the frozen frame is ready for picking."
-				: $"Live: frame {status.Frame:N0}, {status.Samples:N0} samples, {status.SpriteOccurrences:N0} sprite occurrences, {status.Patterns:N0} patterns, {status.BackgroundBlocks:N0} background blocks.";
+				? $"Live capture paused at frame {status.Frame:N0}. The game keeps running; the frozen frame is ready for picking. {evidence}, {overhead:0.0} ms/sample average.{limit}"
+				: $"Live ({status.CaptureMode}): frame {status.Frame:N0}, {status.Samples:N0} samples, {status.SpriteOccurrences:N0} sprite occurrences, {status.Patterns:N0} patterns, {status.BackgroundBlocks:N0} background blocks. {evidence}, {overhead:0.0} ms/sample.{limit}";
 			_discoveryStatusText.Text = message;
 			_dockCaptureStatus.Text = message;
+			if(status.Paused && !_capturePaused) {
+				_capturePaused = true;
+				SetCaptureState("LIVE-PAUSED");
+				_discoveryProgress.IsIndeterminate = false;
+			} else if(!status.Paused && _capturePaused && _liveSession != null) {
+				_capturePaused = false;
+				SetCaptureState("LIVE");
+				_discoveryProgress.IsIndeterminate = true;
+			}
 			if(status.Paused && _pausedLiveFrame == null) {
 				LoadLivePauseFrame();
 			}
@@ -2798,12 +2875,38 @@ namespace Mesen.Windows
 				_dockCaptureFrames.Text = samples.ToString("N0");
 				_dockCaptureMode.Text = "Live gameplay";
 				_dockCaptureReason.Text = "paused";
-				string message = $"Live capture paused at frame {frame:N0}: {samples:N0} samples, {occurrences:N0} sprite occurrences, {patterns:N0} patterns, {blocks:N0} background blocks.";
+				int displaySamples = Int("displaySpriteSamples");
+				int fallbackSamples = Int("oamFallbackSamples");
+				long sampleMicros = root.TryGetProperty("sampleMicros", out var micros) && micros.TryGetInt64(out long sm) ? sm : 0;
+				double overhead = samples > 0 ? sampleMicros / 1000.0 / samples : 0;
+				string message = $"Live capture paused at frame {frame:N0}: {samples:N0} samples, {occurrences:N0} sprite occurrences, {patterns:N0} patterns, {blocks:N0} background blocks. {displaySamples:N0} render-time / {fallbackSamples:N0} OAM fallback, {overhead:0.0} ms/sample.";
 				_discoveryStatusText.Text = message;
 				_dockCaptureStatus.Text = message;
 				_discoveryProgress.IsIndeterminate = false;
 				_discoveryProgress.Value = 0;
 			} catch { }
+		}
+
+		private void EmulatorPause_Click(object? sender, RoutedEventArgs e)
+		{
+			if(!EmuApi.IsRunning()) {
+				SetStatus("No emulator is running. Open a game first.");
+				return;
+			}
+			EmuApi.Pause();
+			SetStatus("Emulator paused. This is separate from Pause capture: recording state is unchanged.");
+			Log("Emulator paused explicitly from HD Studio (recorder state unchanged).");
+		}
+
+		private void EmulatorResume_Click(object? sender, RoutedEventArgs e)
+		{
+			if(!EmuApi.IsRunning()) {
+				SetStatus("No emulator is running. Open a game first.");
+				return;
+			}
+			EmuApi.Resume();
+			SetStatus("Emulator resumed. Recording state is unchanged.");
+			Log("Emulator resumed explicitly from HD Studio (recorder state unchanged).");
 		}
 
 		private async void PauseLiveCapture()
@@ -2895,7 +2998,7 @@ namespace Mesen.Windows
 			int y = parts.Min(p => p.Y);
 			int w = parts.Max(p => p.X + 8) - x;
 			int h = parts.Max(p => p.Y + 8) - y;
-			_gameplayCanvas.HardwareBoxes.Add((x, y, Math.Max(8, w), Math.Max(8, h), "OAM " + parts[0].Oam));
+			_gameplayCanvas.HardwareBoxes.Add((x, y, Math.Max(8, w), Math.Max(8, h), "slot " + parts[0].Oam));
 		}
 
 		private void HandleGameplayPointPicked(Point point)
@@ -3581,6 +3684,12 @@ namespace Mesen.Windows
 			_verifySummaryText.Text = "Verification folder: " + folder + ". Use Verify to compare the same frames with and without the HD Pack.";
 		}
 
+		private static bool IsReplacementVerified(HdStudioReplacement? replacement)
+		{
+			return replacement != null && replacement.Approved &&
+				replacement.Validation.Any(v => v.StartsWith("verified", StringComparison.OrdinalIgnoreCase));
+		}
+
 		private bool HasVerifyImages()
 		{
 			try {
@@ -3975,7 +4084,7 @@ namespace Mesen.Windows
 		{
 			if(!_initialized) return;
 			_settings.Theme = "dark";
-			SetStatus("Dark appearance is the validated theme for v0.3 Alpha.");
+			SetStatus("Dark appearance is the validated theme for v0.5 Alpha.");
 		}
 
 

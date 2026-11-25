@@ -299,6 +299,7 @@
             <StackPanel>
               <TextBlock Classes="section" Text="ASSET LIBRARY" />
               <TextBlock Name="AssetCountText" Classes="caption" Text="No catalog loaded" Margin="0,3,0,0" />
+              <TextBlock Name="AssetCountsDetailText" Classes="dim" FontSize="9.5" TextWrapping="Wrap" Margin="0,2,0,0" Text="Raw patterns · compositions · animations · backgrounds · approved · verified" />
             </StackPanel>
             <Button Grid.Column="1" Name="GridViewButton" Classes="tool active" Click="GridView_Click" ToolTip.Tip="Grid view">
               <Path Classes="icon" Data="{StaticResource Icon.LayoutGrid}" />
@@ -319,6 +320,7 @@
             <Button Name="CategoryObjectButton" Classes="chip" Content="Objects" Tag="Objects" Click="AssetCategory_Click" Margin="0,0,5,5" />
             <Button Name="CategoryBackgroundButton" Classes="chip" Content="Backgrounds" Tag="Backgrounds" Click="AssetCategory_Click" Margin="0,0,5,5" />
             <Button Name="CategoryAnimationButton" Classes="chip" Content="Animations" Tag="Animation frames" Click="AssetCategory_Click" Margin="0,0,5,5" />
+            <Button Name="CategoryRawButton" Classes="chip" Content="Raw tiles" Tag="Raw patterns" Click="AssetCategory_Click" Margin="0,0,5,5" />
           </WrapPanel>
 
           <Grid Grid.Row="3" ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,0,0,8">
@@ -385,7 +387,7 @@
                   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                     <StackPanel Spacing="12">
                       <Border Classes="badge" HorizontalAlignment="Left">
-                        <TextBlock Text="RETROARCDO HD STUDIO · v0.3 ALPHA" />
+                        <TextBlock Text="RETROARCDO HD STUDIO · v0.5 ALPHA" />
                       </Border>
                       <TextBlock Classes="h1" Text="Remember the game.&#10;Reimagine the art." TextWrapping="Wrap" MaxWidth="680" />
                       <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" MaxWidth="660"
@@ -558,6 +560,9 @@
                       <Button Classes="tool" ToolTip.Tip="Resume capture" Click="ResumeCapture_Click"><Path Classes="icon" Data="{StaticResource Icon.Play}" /></Button>
                       <Button Classes="tool" ToolTip.Tip="Stop capture" Click="StopCapture_Click"><Path Classes="icon" Data="{StaticResource Icon.Square}" /></Button>
                       <Border Classes="vdivider" Margin="4,4" />
+                      <Button Classes="tool" ToolTip.Tip="Pause the EMULATOR only. Live recording and the frozen picking frame are unaffected." Click="EmulatorPause_Click"><Path Classes="icon" Data="{StaticResource Icon.CirclePause}" /></Button>
+                      <Button Classes="tool" ToolTip.Tip="Resume the EMULATOR only. Recording continues." Click="EmulatorResume_Click"><Path Classes="icon" Data="{StaticResource Icon.CirclePlay}" /></Button>
+                      <Border Classes="vdivider" Margin="4,4" />
                       <Button Classes="tool" ToolTip.Tip="Capture one deterministic gameplay frame" Click="CaptureFrame_Click"><Path Classes="icon" Data="{StaticResource Icon.ImagePlus}" /></Button>
                       <Button Name="SelectObjectButton" Classes="tool" ToolTip.Tip="Select a graphical object in the paused frame" Click="SelectObject_Click"><Path Classes="icon" Data="{StaticResource Icon.SquareDashedMousePointer}" /></Button>
                       <Button Classes="tool" ToolTip.Tip="Inspect background objects" Click="InspectBackground_Click"><Path Classes="icon" Data="{StaticResource Icon.Layers}" /></Button>
@@ -623,6 +628,15 @@
                         <ComboBoxItem Content="Replay capture (movie)" />
                         <ComboBoxItem Content="Assisted exploration (script)" />
                       </ComboBox>
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Live sampling depth" Classes="caption" />
+                        <ComboBox Name="SamplingModeBox" SelectedIndex="1" HorizontalAlignment="Stretch">
+                          <ComboBoxItem Content="Efficient — sprites /4 frames, backgrounds /60" />
+                          <ComboBoxItem Content="Balanced — sprites /2 frames, backgrounds /30" />
+                          <ComboBoxItem Content="Exhaustive — every displayed frame" />
+                          <ComboBoxItem Content="Single-frame inspection — capture one frame, then pause recording" />
+                        </ComboBox>
+                      </StackPanel>
                       <Grid ColumnDefinitions="*,6,*">
                         <StackPanel><TextBlock Text="Frames" Classes="caption" /><NumericUpDown Name="DiscoveryBudgetBox" Minimum="300" Maximum="3600000" Value="18000" Increment="1800" /></StackPanel>
                         <StackPanel Grid.Column="2"><TextBlock Text="Chunk" Classes="caption" /><NumericUpDown Name="DiscoveryChunkBox" Minimum="300" Maximum="36000" Value="1800" Increment="300" /></StackPanel>
@@ -1217,7 +1231,7 @@
                       </Grid>
                       <CheckBox Name="DefaultGridCheck" Content="Show NES tile grid by default" IsChecked="True" Click="DefaultGrid_Click" />
                       <CheckBox Name="DefaultCheckerCheck" Content="Show transparency checkerboard" IsChecked="True" Click="DefaultChecker_Click" />
-                      <TextBlock Classes="caption" Text="Dark is the validated v0.3 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
+                      <TextBlock Classes="caption" Text="Dark is the validated v0.5 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                   <Border Grid.Column="2" Classes="panel" Padding="14">
@@ -1266,7 +1280,7 @@
                     <ProgressBar Name="BuildProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
                     <TextBlock Name="ProjectSummaryText" Classes="caption" TextWrapping="Wrap" />
                     <TextBlock Name="ValidationText" Classes="caption" TextWrapping="Wrap" />
-                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.3 Alpha · Original NES geometry preserved." />
+                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.5 Alpha · Original NES geometry preserved." />
                   </StackPanel>
                 </Border>
 
@@ -1553,6 +1567,10 @@
                 <CheckBox Name="MirrorCheck" Content="Mirror-specific variants" />
                 <CheckBox Name="MatchBgPriorityCheck" Content="Match background priority" />
                 <CheckBox Name="AllowSharedCheck" Content="Allow shared graphics replacement" />
+                <TextBlock Text="Advanced standard condition (optional)" Classes="caption" Margin="0,4,0,0" />
+                <TextBox Name="ExtraConditionBox" FontFamily="Cascadia Mono, Consolas, monospace" FontSize="10.5"
+                         PlaceholderText="hmirror&amp;!vmirror or spriteNearby:8,0,06,FF0F1A2A"
+                         ToolTip.Tip="Supported: hmirror, !hmirror, vmirror, !vmirror, bgpriority, !bgpriority, sppalette0-3; or spriteNearby:x,y,tile,palette[,ignorePalette], tileNearby:..., positionCheckX:operator,value (and Y/origin variants)." />
                 <TextBlock Name="SharedKeysText" Classes="warning" FontSize="10.5" TextWrapping="Wrap" />
               </StackPanel>
 
