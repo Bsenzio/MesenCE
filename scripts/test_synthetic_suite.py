@@ -33,7 +33,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mesen", default=r"D:\MesenHigh\bin\win-x64\Release\Mesen.exe")
     ap.add_argument("--home", default=os.environ.get("MESEN_HOME", ""))
-    ap.add_argument("--rom-dir", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "test-roms"))
+    ap.add_argument("--rom-dir", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "examples", "test-roms"))
     ap.add_argument("--keep", action="store_true")
     args = ap.parse_args()
 
