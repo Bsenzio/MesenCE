@@ -36,9 +36,24 @@ and native Library/Batch workspaces.
 
 ## v0.7 headline
 
-Filled by the final run; see `docs/FINAL_ENGINEERING_REPORT_v0.7.md` and
-`validation/v0.7/metrics.json`. Counts are separated into unique games, test rows
-and graphical assets.
+| Check | Actual |
+|---|---:|
+| Main development batch | 300 attempted / 240 verified / 240 unique ROMs |
+| Combined evidence | 286 verified rows / 266 unique ROMs / 254 base titles |
+| Strict independent rows | 13 |
+| Context-independent multi-scene rows | 18 |
+| Scene-independent shared-key rows | 211 |
+| Explicit shared rows | 26 |
+| Background pass | 10 attempted / 9 verified / 9 unique games |
+| Homebrew candidates | 16 / 22 rows |
+| Frozen holdout replacement subset | 13 / 16 rows |
+| Animation runtime | 3 tested / 0 multi-frame verified |
+| ROM integrity rows | 306 / 306 passed |
+| Scale mix | 298 rows at 2x / 8 cached rows at 4x |
+
+The 300-unique-game target was missed by 34; the 75-background and 30-animation
+targets were not achieved. Counts separate unique games, rows and graphical assets.
+See `docs/FINAL_ENGINEERING_REPORT_v0.7.md` and `validation/v0.7/metrics.json`.
 
 ## Rendering-time background proof
 
