@@ -55,6 +55,17 @@ def compact_result(row):
     return result
 
 
+def unique_by_hash(rows):
+    seen = set()
+    result = []
+    for row in rows:
+        h = row.get("sha256")
+        if h and h not in seen:
+            seen.add(h)
+            result.append(row)
+    return result
+
+
 def write_csv(path, rows, fields):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -141,24 +152,20 @@ def main():
                "markerPixelsOutside", "changedPixelsInside", "changedPixelsOutside",
                "sceneExact", "sceneMatchRatio", "stateIdentical", "hdPackActive",
                "originalRomIntegrity", "elapsedSeconds", "failure"])
-    background = [r for r in compact if r.get("targetMode") == "background"
-                  or r.get("assetKind") == "pickedBackground" or "background" in str(r.get("status"))]
+    bg_list_path = os.path.join(args.work, "background-30.txt")
+    bg_hashes = set()
+    if os.path.exists(bg_list_path):
+        bg_hashes = {line.strip() for line in open(bg_list_path, encoding="utf-8") if line.strip()}
+    background = load(os.path.join(args.work, "replacements-background",
+                                   "replacement-results-consolidated.json"), []) or []
+    if not background:
+        background = [r for r in compact if r.get("sha256") in bg_hashes]
     dump(os.path.join(args.docs, "background-results.json"), {
         "attempted": len(background),
         "verified": sum(1 for r in background if str(r.get("status")).startswith("verified")),
         "rows": background,
     })
     homebrew_names = ("croom", "cybercoaster", "files__", "irritat", "rhde", "thwaite")
-    def unique_by_hash(rows):
-        seen = set()
-        result = []
-        for row in rows:
-            h = row.get("sha256")
-            if h and h not in seen:
-                seen.add(h)
-                result.append(row)
-        return result
-
     homebrew_repl = unique_by_hash([r for r in compact if any(n in (r.get("rom") or "").lower() for n in homebrew_names)])
     homebrew_smoke = unique_by_hash([r for r in smoke if any(n in (r.get("romName") or "").lower() for n in homebrew_names)])
     holdout_repl = unique_by_hash([r for r in compact if r.get("split") == "holdout"])
@@ -240,7 +247,7 @@ def main():
         "replacementSceneIndependent": sum(1 for r in compact if "scene-independent" in str(r.get("status"))),
         "replacementShared": sum(1 for r in compact if str(r.get("status")) in ("verified-shared", "verified-background-shared")),
         "replacementIndependent": sum(1 for r in compact if str(r.get("status")) in ("verified-independent", "verified-background-independent")),
-        "backgroundAttempted": len(background),
+        "backgroundAttempted": len(bg_hashes) if bg_hashes else len(background),
         "backgroundVerified": sum(1 for r in background if str(r.get("status")).startswith("verified")),
         "holdoutCaptured": sum(1 for r in holdout if r.get("captureCompleted") == "passed"),
         "holdoutTotal": len(holdout),

@@ -76,7 +76,7 @@ def main():
     A(f"- Tier-2 deep rows (1,800 frames): **{m.get('deepRows', 0)} attempted**, gameplay signatures **{m.get('deepGameplay', 0)}**.")
     A(f"- Authored replacements: **{m.get('replacementUniqueVerified', 0)} unique games verified** ({m.get('replacementUniqueSpriteVerified', 0)} sprite/tile, {m.get('replacementUniqueBackgroundVerified', 0)} background) out of **{m.get('replacementUniqueAttempted', 0)} unique attempted**; row-level classes are in the matrix.")
     A(f"- Background-mode pass: **{m.get('backgroundVerified', 0)}/{m.get('backgroundAttempted', 0)} verified**; all verified background rows are shared-key terrain/block replacements.")
-    A(f"- Strict independent / scene-independent shared-key / shared rows: **{m.get('replacementIndependent', 0)} / {m.get('replacementSceneIndependent', 0)} / {m.get('replacementShared', 0)}**.")
+    A(f"- Row-level classes: **{m.get('replacementIndependent', 0)} strict independent / {m.get('replacementSceneIndependent', 0)} scene-independent shared-key / {m.get('replacementShared', 0)} shared or background**. Duplicate rows are retained when the same game was verified in more than one subset.")
     A(f"- Independent homebrew candidates: **{homebrew.get('smokeCaptured', 0)} captured**, **{homebrew.get('replacementVerified', 0)} authored replacement(s) verified**.")
     A(f"- Frozen holdout smoke: **{m.get('holdoutCaptured', 0)}/{m.get('holdoutTotal', 0)} captured**; holdout replacements **{m.get('holdoutReplacementVerified', 0)}/{m.get('holdoutReplacementAttempted', 0)}** verified.")
     A(f"- Regression suite: **{reg.get('passed', 0)} passed / {reg.get('failed', 0)} failed / {reg.get('skipped', 0)} skipped** of {reg.get('executed', 0)} executed tests.")
@@ -286,7 +286,7 @@ def main():
     A(f"| Tier-1 ROMs per hour | {perf.get('smokeThroughput', {}).get('romsPerHour', 'n/a')} |")
     A(f"| Tier-1 total processing seconds | {perf.get('smokeThroughput', {}).get('totalProcessingSeconds', 'n/a')} |")
     A(f"| Tier-1 wall seconds | {perf.get('smokeThroughput', {}).get('wallSeconds', 'n/a')} |")
-    for mode in (perf.get("modes") or []):
+    for mode in (perf.get("rows") or []):
         A(f"| Sampling {mode.get('mode')} | {mode.get('millisecondsPerSample')} ms/sample, {mode.get('samples')} samples |")
     A("")
     A("Sampling-mode numbers are recorder CPU time at maximum-speed headless execution,")
