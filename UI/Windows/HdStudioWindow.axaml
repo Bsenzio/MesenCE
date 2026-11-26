@@ -387,7 +387,7 @@
                   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                     <StackPanel Spacing="12">
                       <Border Classes="badge" HorizontalAlignment="Left">
-                        <TextBlock Text="RETROARCDO HD STUDIO · v0.5 ALPHA" />
+                        <TextBlock Text="RETROARCDO HD STUDIO - v0.6 ALPHA" />
                       </Border>
                       <TextBlock Classes="h1" Text="Remember the game.&#10;Reimagine the art." TextWrapping="Wrap" MaxWidth="680" />
                       <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" MaxWidth="660"
@@ -533,8 +533,8 @@
           <Grid Name="DiscoveryPage" IsVisible="False" RowDefinitions="Auto,*,Auto">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,9">
               <StackPanel>
-                <TextBlock Classes="h2" Text="Discovery" />
-                <TextBlock Classes="caption" Text="Record the running game, inspect a still frame and open any object in the Artwork Workshop." />
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Discovery" />
+                <TextBlock Classes="caption" Margin="0,6,0,0" Text="Record the running game, inspect a still frame and open any object in the Artwork Workshop." />
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                 <Border Name="CaptureStateBadge" Classes="badge"><TextBlock Name="CaptureStateText" Text="IDLE" /></Border>
@@ -690,8 +690,8 @@
           <Grid Name="SpritesPage" IsVisible="False" RowDefinitions="Auto,*,Auto">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
               <StackPanel>
-                <TextBlock Classes="h2" Text="Sprite Library" />
-                <TextBlock Name="SpriteLibrarySubtitle" Classes="caption" Text="Original compositions reconstructed from captured OAM data." />
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Sprite Library" />
+                <TextBlock Name="SpriteLibrarySubtitle" Classes="caption" Margin="0,6,0,0" Text="Original compositions reconstructed from captured OAM data." />
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                 <Button Classes="subtle" Click="FilterSpriteShared_Click">
@@ -749,8 +749,8 @@
           <Grid Name="BackgroundsPage" IsVisible="False" RowDefinitions="Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
               <StackPanel>
-                <TextBlock Classes="h2" Text="Background Workshop" />
-                <TextBlock Name="BackgroundsSubtitle" Classes="caption" Text="Original 16×16 blocks and 8×8 tiles, reconstructed from NES memory." />
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Background Workshop" />
+                <TextBlock Name="BackgroundsSubtitle" Classes="caption" Margin="0,6,0,0" Text="Original 16×16 blocks and 8×8 tiles, reconstructed from NES memory." />
               </StackPanel>
               <Button Grid.Column="1" Classes="cta" Click="OpenBackground_Click">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -797,8 +797,8 @@
           <Grid Name="AnimationsPage" IsVisible="False" RowDefinitions="Auto,*,Auto">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,9">
               <StackPanel>
-                <TextBlock Classes="h2" Text="Animation Timeline" />
-                <TextBlock Name="AnimationSubtitle" Classes="caption" Text="Captured frame sequences. Timing and frame order come from the game and are never edited." />
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Animation Timeline" />
+                <TextBlock Name="AnimationSubtitle" Classes="caption" Margin="0,6,0,0" Text="Captured frame sequences. Timing and frame order come from the game and are never edited." />
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                 <Button Classes="subtle" Click="OpenAnimation_Click">
@@ -921,8 +921,8 @@
           <Grid Name="ArtworkPage" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
               <StackPanel>
-                <TextBlock Name="WorkshopTitleText" Classes="h2" Text="Artwork Workshop" />
-                <TextBlock Name="WorkshopSubtitleText" Classes="caption" Text="Select an asset from the library to begin." />
+                <TextBlock Name="WorkshopTitleText" Classes="h2" Margin="0,0,0,8" Text="Artwork Workshop" />
+                <TextBlock Name="WorkshopSubtitleText" Classes="caption" Margin="0,6,0,0" Text="Select an asset from the library to begin." />
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                 <Button Classes="tool" Click="SelectTool_Click" ToolTip.Tip="Select and position artwork"><Path Classes="icon" Data="{StaticResource Icon.MousePointer}" /></Button>
@@ -1004,7 +1004,7 @@
           <Grid Name="PreviewPage" IsVisible="False" RowDefinitions="Auto,Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
               <StackPanel>
-                <TextBlock Classes="h2" Text="Game Preview" />
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Game Preview" />
                 <TextBlock Classes="caption" Text="The real Mesen renderer compares the original and HD build with deterministic input." />
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
@@ -1073,7 +1073,7 @@
           <Grid Name="ExportPage" IsVisible="False" RowDefinitions="Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
               <StackPanel>
-                <TextBlock Classes="h2" Text="Export HD Pack" />
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Export HD Pack" />
                 <TextBlock Classes="caption" Text="A validated, distributable standard Mesen pack. The original ROM is never included." />
               </StackPanel>
               <Border Grid.Column="1" Classes="badge success" VerticalAlignment="Center"><TextBlock Text="STANDARD MESEN FORMAT" /></Border>
@@ -1214,7 +1214,7 @@
           <!-- SETTINGS / PROJECT -->
           <Grid Name="SettingsPage" IsVisible="False" RowDefinitions="Auto,*">
             <StackPanel Grid.Row="0" Margin="0,0,0,10">
-              <TextBlock Classes="h2" Text="Studio Settings" />
+              <TextBlock Classes="h2" Margin="0,0,0,8" Text="Studio Settings" />
               <TextBlock Classes="caption" Text="Appearance, project persistence, validation and diagnostics." />
             </StackPanel>
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -1231,7 +1231,7 @@
                       </Grid>
                       <CheckBox Name="DefaultGridCheck" Content="Show NES tile grid by default" IsChecked="True" Click="DefaultGrid_Click" />
                       <CheckBox Name="DefaultCheckerCheck" Content="Show transparency checkerboard" IsChecked="True" Click="DefaultChecker_Click" />
-                      <TextBlock Classes="caption" Text="Dark is the validated v0.5 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
+                      <TextBlock Classes="caption" Text="Dark is the validated v0.6 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                   <Border Grid.Column="2" Classes="panel" Padding="14">
@@ -1280,7 +1280,7 @@
                     <ProgressBar Name="BuildProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
                     <TextBlock Name="ProjectSummaryText" Classes="caption" TextWrapping="Wrap" />
                     <TextBlock Name="ValidationText" Classes="caption" TextWrapping="Wrap" />
-                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.5 Alpha · Original NES geometry preserved." />
+                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.6 Alpha - Original NES geometry preserved." />
                   </StackPanel>
                 </Border>
 

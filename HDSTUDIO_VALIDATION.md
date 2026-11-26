@@ -1,5 +1,26 @@
 ﻿# HD Studio validation
 
+## v0.6 (2026-11-26)
+
+The v0.6 engine is validated on the 1,291-ROM local library with a resumable
+Tier-1 queue, a frozen 772/324/195 split, a 120-title deep set, and automated
+authored replacements replayed at the exact captured frame.
+
+Priority exact-scene results (real 1024x960 HD pass, same frame, same input):
+
+| Game | Scene frame | Target | Marker inside | Marker outside | State | Result |
+|---|---:|---|---:|---:|---|---|
+| Don Doko Don 2 | 1210 | 30x32 composition | 7,667 | 0 | identical | verified, scene independent / shared keys |
+| Guardian Legend | 1220 | 15x35 composition | 5,658 | 0 | identical | verified, scene independent / shared keys |
+| Little Mermaid | 1210 | 12x14 composition | 442 | 566 | identical | verified shared |
+| Super Mario Bros. 3 | 1220 | 16x16 composition | 3,008 | 0 | identical | verified, scene independent / shared keys |
+| Toki | 1210 | 16x16 composition | 3,472 | 0 | identical | verified, scene independent / shared keys |
+| Don Doko Don 2 (background) | 1210 | 16x16 block | 2,304 | 83,712 | identical | verified shared background |
+
+The full library, deep, replacement, homebrew, holdout, regression and release
+numbers are in `validation/v0.6/` and
+`docs/FINAL_ENGINEERING_REPORT_v0.6.md`.
+
 ## v0.5 (2026-11-25)
 
 The final v0.5 binaries were exercised against all 170 unique ROMs in the local

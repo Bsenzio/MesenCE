@@ -90,6 +90,8 @@ def main():
     ap.add_argument("--home", default=r"D:\MesenHighWork\mesen-home")
     ap.add_argument("--rom", default=r"D:\MesenHighWork\test-roms-new2\hdstudio_holdout.nes")
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--out", default="", help="optional JSON evidence path")
+    ap.add_argument("--label", default="synthetic-holdout", help="measurement label")
     args = ap.parse_args()
     rom = os.path.abspath(args.rom)
 
@@ -111,14 +113,22 @@ def main():
     if any(r["oamFallbackSamples"] for r in results):
         raise SystemExit("a mode fell back to end-of-frame OAM despite render-time support")
 
-    print(json.dumps({
+    summary = {
         "passed": True,
         "modes": [r["mode"] for r in results],
         "sampleCounts": {r["mode"]: r["samples"] for r in results},
         "msPerSample": {r["mode"]: r["millisecondsPerSample"] for r in results},
         "renderTimeEvidence": True,
-        "measurement": "maximum-speed headless CPU time; not interactive wall-clock"
-    }, indent=2))
+        "measurement": "maximum-speed headless CPU time; not interactive wall-clock",
+        "label": args.label,
+        "rom": rom,
+        "rows": results,
+    }
+    if args.out:
+        os.makedirs(os.path.dirname(args.out), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=1)
+    print(json.dumps(summary, indent=2))
     if not args.keep:
         for r in results:
             shutil.rmtree(os.path.dirname(r["pack"]), ignore_errors=True)

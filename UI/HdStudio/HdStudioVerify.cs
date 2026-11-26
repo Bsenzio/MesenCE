@@ -32,7 +32,7 @@ namespace Mesen.HdStudio
 		private readonly List<string> _hdStateHashes = new();
 		private readonly List<string> _originalStateHashes = new();
 
-		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log)
+		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log, int verifyAt = -1)
 		{
 			_romPath = romPath;
 			_moviePath = moviePath;
@@ -43,8 +43,16 @@ namespace Mesen.HdStudio
 			_log = log;
 
 			shots = Math.Clamp(shots, 1, 20);
-			for(int i = 1; i <= shots; i++) {
-				_checkpoints.Add((uint)Math.Max(10, (long)frames * i / (shots + 1)));
+			if(verifyAt > 0) {
+				//Exact-scene replay: the caller selected a frame from a deterministic
+				//capture and needs the screenshots at that same frame, not at evenly
+				//spaced checkpoints. This is what makes target-presence validation
+				//possible instead of inferring it from a later scene.
+				_checkpoints.Add((uint)verifyAt);
+			} else {
+				for(int i = 1; i <= shots; i++) {
+					_checkpoints.Add((uint)Math.Max(10, (long)frames * i / (shots + 1)));
+				}
 			}
 		}
 

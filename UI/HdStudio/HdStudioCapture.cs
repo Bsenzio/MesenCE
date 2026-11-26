@@ -9,6 +9,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
 
 namespace Mesen.HdStudio
@@ -77,6 +78,8 @@ namespace Mesen.HdStudio
 	///   --verify          Check the HD pack instead of capturing: plays the game with and without the pack and
 	///                     saves screenshots of the same frames side by side (HdStudio/verify/verify.html)
 	///   --shots=N         Number of screenshots for --verify (default 4, spread over --frames, default 1200 here)
+	///   --verify-at=N     Exact verification frame; replays the deterministic input to the same frame where the
+	///                     object was picked (one checkpoint, used by the authored-replacement benchmark)
 	/// </summary>
 	internal static class HdStudioCapture
 	{
@@ -154,6 +157,7 @@ namespace Mesen.HdStudio
 			public string? DisasmPath;
 			public bool FramesSpecified;
 			public int Shots = 4;
+			public int VerifyAt = -1;
 			public bool Live;
 			public string LiveMode = HdStudioSamplingModes.Balanced;
 			public string? PickPoint;
@@ -420,7 +424,7 @@ namespace Mesen.HdStudio
 
 			if(opt.Verify) {
 				int frames = opt.FramesSpecified ? opt.Frames : 1200;
-				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, opt.Generate, outFolder, frames, opt.Shots, Log).Run();
+				return new HdStudioVerify(opt.RomPath, opt.MoviePath, opt.LuaScripts, opt.Generate, outFolder, frames, opt.Shots, Log, opt.VerifyAt).Run();
 			}
 
 			if(opt.Maps) {
@@ -441,7 +445,7 @@ namespace Mesen.HdStudio
 					string reportPath = mapsReport.Generate(opt.RomPath!);
 					Log("Report: " + reportPath);
 				} catch(Exception ex) {
-					Log("Error while generating the report: " + ex.Message);
+					Log("Error while generating the report: " + ex);
 					return -2;
 				}
 				return 0;
@@ -466,7 +470,9 @@ namespace Mesen.HdStudio
 				string reportPath = report.Generate(opt.RomPath);
 				Log("Report: " + reportPath);
 			} catch(Exception ex) {
-				Log("Error while generating the report: " + ex.Message);
+				//Full exception helps diagnose malformed-header/mapper cases that only
+				//fail while drawing the report sheet. The message alone loses the frame.
+				Log("Error while generating the report: " + ex);
 				return -2;
 			}
 
@@ -621,6 +627,11 @@ namespace Mesen.HdStudio
 						break;
 					}
 				} else if(frames >= opt.Frames) {
+					break;
+				} else if(opt.Live && IsLiveCaptureStopped(outFolder)) {
+					//The live Lua script marks itself stopped after the caller's pause/stop
+					//commands have been written. Saving immediately keeps the pack valid
+					//and removes a multi-second idle wait from every automated capture.
 					break;
 				}
 
@@ -943,6 +954,21 @@ namespace Mesen.HdStudio
 			return EmuApi.GetTimingInfo(CpuType.Nes).FrameCount;
 		}
 
+		private static bool IsLiveCaptureStopped(string outFolder)
+		{
+			try {
+				string statusPath = Path.Combine(outFolder, HdStudioReport.StudioFolderName, "live", "live-status.json");
+				if(!File.Exists(statusPath)) {
+					return false;
+				}
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(statusPath));
+				return doc.RootElement.TryGetProperty("stopped", out JsonElement stopped) &&
+					stopped.ValueKind == JsonValueKind.True;
+			} catch {
+				return false;
+			}
+		}
+
 		/// <summary>Scripts from UI/HdStudio/Scripts, embedded in Mesen.exe (explore.lua or explore_deep.lua)</summary>
 		private static int ReadLivePatternBudget()
 		{
@@ -1163,6 +1189,11 @@ namespace Mesen.HdStudio
 								opt.Errors.Add("invalid screenshot count (1-20): " + value);
 							}
 							break;
+						case "verify-at":
+							if(!int.TryParse(value, out opt.VerifyAt) || opt.VerifyAt < 1) {
+								opt.Errors.Add("invalid exact verification frame (>=1): " + value);
+							}
+							break;
 						case "scale":
 							if(uint.TryParse(value, out uint scale) && scale >= 1 && scale <= 10) {
 								opt.Scale = scale;
@@ -1257,7 +1288,7 @@ namespace Mesen.HdStudio
 		private static void PrintUsage()
 		{
 			Log("");
-			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--demo] [--reportonly] [--verify [--shots=4]]");
+			Log("Usage: Mesen --hdstudio game.nes [movie.mmo|movie.bk2|movie.fm2] [script.lua] [--scale=4] [--filter=xbrz|hqx|scale2x|prescale] [--frames=18000] [--out=folder] [--timeout=1800] [--log=file.txt] [--generate] [--levels [--sweep]] [--disasm=folder] [--maps] [--playerforms] [--demo] [--reportonly] [--verify [--shots=4] [--verify-at=FRAME]]");
 			Log("  --maps with --disasm=FOLDER: full level maps as PNG + exact per-level tile usage (uses the game's own level generator).");
 			Log("  --playerforms: SMB3 (USA) only: all eight player suits plus Death and their named poses, exact sprite palettes.");
 			Log("  --atlasrender: render the mapper-aware object-atlas CSV captures in HdStudio/sprites (does not run the game).");

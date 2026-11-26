@@ -30,7 +30,7 @@ using System.Threading.Tasks;
 namespace Mesen.Windows
 {
 	/// <summary>
-	/// RetroArcDo HD Studio v0.5 - graphical authoring shell.
+	/// RetroArcDo HD Studio v0.6 - graphical authoring shell.
 	///
 	/// All file, catalog, compiler and exporter work remains in the shared HdStudio services.
 	/// This window owns presentation only: it selects an asset, edits the project's adaptation
@@ -39,7 +39,7 @@ namespace Mesen.Windows
 	/// </summary>
 	public partial class HdStudioWindow : MesenWindow
 	{
-		private const string Version = "0.5.0 Alpha";
+		private const string Version = "0.6.0 Alpha";
 
 		private string _romPath = "";
 		private string _packFolder = "";
@@ -562,7 +562,7 @@ namespace Mesen.Windows
 
 		private void ApplyTheme()
 		{
-			//v0.5 Alpha ships the validated dark appearance. The palette is centralized so a
+			//v0.6 Alpha ships the validated dark appearance. The palette is centralized so a
 			//light variant can be added without touching individual pages.
 			bool light = false;
 			_settings.Theme = "dark";
@@ -4084,7 +4084,7 @@ namespace Mesen.Windows
 		{
 			if(!_initialized) return;
 			_settings.Theme = "dark";
-			SetStatus("Dark appearance is the validated theme for v0.5 Alpha.");
+			SetStatus("Dark appearance is the validated theme for v0.6 Alpha.");
 		}
 
 

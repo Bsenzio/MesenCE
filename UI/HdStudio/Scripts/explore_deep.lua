@@ -34,6 +34,8 @@ local MUTATION_CHANCE = 0.5      -- part of the episodes that start with a RAM m
 local MUTATION_CREDIT = { P = 20, S = 3, L = 1 }
 local BOOT_LIMIT_FRAMES = 3000   -- keep trying to leave the title/menu before Go-Explore saves cells
 local GAMEPLAY_CHECKS_NEEDED = 3
+local WEAK_GAMEPLAY_CHECKS_NEEDED = 8
+local MENU_ESCAPE_INTERVAL = 240 -- while gameplay is unconfirmed, periodically try Start/A/Down
 
 local nesDebug = emu.memType.nesDebug
 local ramType = emu.memType.nesInternalRam
@@ -61,8 +63,11 @@ local pendingSave = nil   -- key of a cell to save at the next NMI
 local pendingLoad = nil   -- cell to restore at the next NMI
 local totalFrames = 0
 local gameplayStarted = false
+local gameplayConfirmed = false
 local gameplayChecks = 0
+local weakGameplayChecks = 0
 local bootFrames = 0
+local menuEscapeFrame = 0
 
 -- Input state
 local previousSample = nil
@@ -169,6 +174,7 @@ end
 local function spritesMoved()
   local oam = {}
   local moved = false
+  local movedCount = 0
   local count = 0
   for i = 0, 63 do
     local y = emu.read(i * 4, emu.memType.nesSpriteRam)
@@ -179,10 +185,11 @@ local function spritesMoved()
     end
     if previousOam and previousOam[i] ~= v then
       moved = true
+      movedCount = movedCount + 1
     end
   end
   previousOam = oam
-  return moved, count
+  return moved, count, movedCount
 end
 
 local previousScrollX = nil
@@ -194,7 +201,7 @@ local function look()
   for i = 1, #buffer, 61 do
     sample[#sample + 1] = buffer[i]
   end
-  local moved, spriteCount = spritesMoved()
+  local moved, spriteCount, movedCount = spritesMoved()
   local ppu = emu.getPpuInfo()
   local scrollMoved = false
   if ppu then
@@ -223,18 +230,30 @@ local function look()
 
   --Gameplay detection: a scrolling or clearly changing playfield with sprites.
   --A minimum boot time keeps animated logos from being mistaken for gameplay.
-  local active = totalFrames >= 900 and (scrollMoved or changedRatio > 0.08 or (spriteCount >= 2 and changedRatio > 0.03))
+  --A weaker sustained signal covers static-screen games (puzzles, RPG battles)
+  --and games whose title animation never becomes fully still.
+  local active = totalFrames >= 900 and (scrollMoved or changedRatio > 0.08 or
+    (spriteCount >= 2 and changedRatio > 0.03) or
+    (spriteCount >= 6 and movedCount >= 2 and changedRatio > 0.01))
   if active then
     gameplayChecks = gameplayChecks + 1
   else
     gameplayChecks = math.max(0, gameplayChecks - 1)
   end
-  if not gameplayStarted and gameplayChecks >= GAMEPLAY_CHECKS_NEEDED then
+  local weakActive = totalFrames >= 900 and spriteCount >= 4 and (moved or changedRatio > 0.005)
+  if weakActive then
+    weakGameplayChecks = weakGameplayChecks + 1
+  else
+    weakGameplayChecks = math.max(0, weakGameplayChecks - 1)
+  end
+  local detected = gameplayChecks >= GAMEPLAY_CHECKS_NEEDED or weakGameplayChecks >= WEAK_GAMEPLAY_CHECKS_NEEDED
+  if detected and not gameplayConfirmed then
+    gameplayConfirmed = true
     gameplayStarted = true
     episodeFrames = 0
     stillChecks = 0
     cooldown = 0
-    emu.log(string.format("HD Studio explorer: gameplay detected at frame %d (%d sprites)", totalFrames, spriteCount))
+    emu.log(string.format("HD Studio explorer: gameplay detected at frame %d (%d sprites, strong=%d weak=%d)", totalFrames, spriteCount, gameplayChecks, weakGameplayChecks))
   end
 
   checkNovelty(buffer)
@@ -462,6 +481,23 @@ local function onInputPolled()
     if episodeFrames % 8 >= 6 then
       input.a = false
       input.b = false
+    end
+  end
+
+  --A forced start (BOOT_LIMIT_FRAMES) is exploration, not proof of gameplay.
+  --While the signature is still unconfirmed, keep tapping menu controls so a
+  --title/attract screen that survived the boot sequence can eventually be left.
+  if not gameplayConfirmed then
+    menuEscapeFrame = menuEscapeFrame + 1
+    local phase = menuEscapeFrame % MENU_ESCAPE_INTERVAL
+    if phase < 5 then
+      input.start = true
+    elseif phase >= 30 and phase < 35 then
+      input.a = true
+    elseif phase >= 60 and phase < 65 then
+      input.down = true
+    elseif phase >= 90 and phase < 95 then
+      input.right = true
     end
   end
 

@@ -632,13 +632,25 @@ namespace Mesen.HdStudio
 				sheetWidth = Math.Max(sheetWidth, x);
 			}
 			int sheetHeight = y + shelfHeight + padding;
+			//The right/bottom padding is part of the allocated sheet. Without this the
+			//last shelf can be exactly at the edge and a malformed object dimension can
+			//push a copy past the destination array.
+			sheetWidth = Math.Max(sheetWidth, maxWidth);
 
 			uint[] sheet = new uint[sheetWidth * sheetHeight];
 			foreach(var p in placed) {
 				uint[] pixels = HdStudioPng.Upscale(RenderObject(p.Group.Variants[0], p.Group.Width, p.Group.Height), p.Group.Width, p.Group.Height, _scale);
 				int w = p.Group.Width * _scale;
+				if(w <= 0 || p.X < 0 || p.Y < 0 || p.X + w > sheetWidth || p.Y + p.Group.Height * _scale > sheetHeight) {
+					continue;
+				}
+				int sourceLength = pixels.Length;
 				for(int py = 0; py < p.Group.Height * _scale; py++) {
-					Array.Copy(pixels, py * w, sheet, (p.Y + py) * sheetWidth + p.X, w);
+					int sourceOffset = py * w;
+					if(sourceOffset < 0 || sourceOffset + w > sourceLength) {
+						break;
+					}
+					Array.Copy(pixels, sourceOffset, sheet, (p.Y + py) * sheetWidth + p.X, w);
 				}
 			}
 			HdStudioPng.Write(pngPath, sheet, sheetWidth, sheetHeight);
@@ -833,12 +845,16 @@ namespace Mesen.HdStudio
 				sheetWidth = Math.Max(sheetWidth, x);
 			}
 			int sheetHeight = y + shelfHeight + padding;
+			sheetWidth = Math.Max(sheetWidth, maxWidth);
 
 			uint[] sheet = new uint[sheetWidth * sheetHeight];
 			foreach(var p in placed) {
 				uint[] pixels = RenderBlock(p.Block);
 				uint[] scaled = HdStudioPng.Upscale(pixels, 16, 16, _scale);
 				int w = 16 * _scale;
+				if(w <= 0 || p.X < 0 || p.Y < 0 || p.X + w > sheetWidth || p.Y + w > sheetHeight || scaled.Length < w * w) {
+					continue;
+				}
 				for(int py = 0; py < w; py++) {
 					Array.Copy(scaled, py * w, sheet, (p.Y + py) * sheetWidth + p.X, w);
 				}
@@ -1581,12 +1597,19 @@ namespace Mesen.HdStudio
 		public byte[] GetChrTile(int index)
 		{
 			byte[] data = new byte[16];
+			if(index < 0 || index * 16 + 16 > Chr.Length) {
+				//Malformed/truncated CHR data must not abort the whole report.
+				return data;
+			}
 			Array.Copy(Chr, index * 16, data, 0, 16);
 			return data;
 		}
 
 		public bool IsBlankTile(int index)
 		{
+			if(index < 0 || index * 16 + 16 > Chr.Length) {
+				return true;
+			}
 			for(int i = 0; i < 16; i++) {
 				if(Chr[index * 16 + i] != 0) {
 					return false;
@@ -1622,9 +1645,15 @@ namespace Mesen.HdStudio
 			rom.ChrSize = chrUnits * 8192;
 
 			int chrOffset = offset + rom.PrgSize;
+			//Malformed/expanded headers can declare a PRG size larger than the file.
+			//Clamp both the source index and the copy length: Array.Copy rejects an
+			//out-of-range source index even when the requested length is zero.
+			chrOffset = Math.Clamp(chrOffset, 0, data.Length);
 			int available = Math.Max(0, Math.Min(rom.ChrSize, data.Length - chrOffset));
 			rom.Chr = new byte[available];
-			Array.Copy(data, chrOffset, rom.Chr, 0, available);
+			if(available > 0) {
+				Array.Copy(data, chrOffset, rom.Chr, 0, available);
+			}
 
 			rom.Sha1NoHeader = Convert.ToHexString(SHA1.HashData(data.AsSpan(offset)));
 			return rom;

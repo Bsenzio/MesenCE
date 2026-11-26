@@ -5,6 +5,47 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
+## v0.6 Alpha - large-scale remastering validation and generalized engine work (2026-11-26)
+
+Implemented in this release:
+
+- **Exact-scene authored verification:** `--verify-at=FRAME` replays the same
+  deterministic input to the frame where the object was picked. A replacement is
+  only counted when the target scene matches, marker pixels appear inside the
+  selected footprint, the HD pack is active and the HD/original gameplay state
+  hashes are identical at that exact frame.
+- **Deterministic, resolution-independent test input:**
+  `scripts/deterministic_input.lua` reads the emulator frame counter and never
+  reads the screen, so enabling the HD pack cannot change controller input.
+- **Isolated test packs:** automated replacement tests compile a minimal pack with
+  only the authored cells. Marker pixels outside the target therefore measure
+  sharing/collateral instead of being hidden in the wildcard capture pack.
+- **Resumable Tier-1 queue:** `scripts/hdstudio_v06_smoke.py` caches by ROM
+  SHA-256 + engine binary SHA-256 + capture configuration, supports retries,
+  worker counts and explicit failure categories.
+- **Inventory and frozen splits:** `scripts/hdstudio_v06_inventory.py` records
+  1,291 unique ROMs with mapper/submapper, CHR type, sizes, region/revision,
+  multicart/homebrew flags and a frozen 60/25/15 split.
+- **Background validation mode:** `--target-mode background` selects a tile that
+  is provably visible in the paused screenshot, then verifies the exact scene.
+- **Live capture lifecycle:** the capture loop stops as soon as the live Lua
+  script reports `stopped`, saving the pack immediately instead of waiting for a
+  long timeout.
+- **Exploration fallback:** the deep explorer keeps a weak sustained-activity
+  gameplay signal and periodic menu escape taps when the boot sequence did not
+  produce a strong gameplay signature.
+
+Known v0.6 limits: the native Studio still does not expose a full library/batch
+workspace (large-scale runs use the resumable CLI queue); automatic nearby-rule
+proposal and manual split/persistent custom names remain incomplete; pause-frame
+background evidence is sampled at end of frame, which can disagree with the
+rendered pattern table on some mapper 4 scenes. The Don Doko Don 2 background
+path is verified; the SMB3 background key is not, and is reported as a failure
+in the validation data.
+
+See `HDSTUDIO_VALIDATION.md` and `docs/FINAL_ENGINEERING_REPORT_v0.6.md` in the
+documentation repository for measured results.
+
 ## v0.5 Alpha - large-scale compatibility and replacement accuracy (2026-11-25)
 
 - **Full v0.5 report:** <https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.5.md>
@@ -337,6 +378,7 @@ prompt immediately; add `| Out-Host` to make it wait. Paths with spaces must be 
 | `--reportonly` | | Only regenerate the report from an existing capture |
 | `--verify` | | Check the HD pack instead of capturing (see below) |
 | `--shots=N` | `4` | Number of screenshots taken by `--verify`, spread over `--frames` (default 1200 for `--verify`) |
+| `--verify-at=N` | | One exact verification checkpoint at frame N; used to replay the same scene where an object was picked |
 
 How the game is played during the capture:
 
