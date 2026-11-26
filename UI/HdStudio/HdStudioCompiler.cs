@@ -73,8 +73,15 @@ namespace Mesen.HdStudio
 			result.SkippedReplacements = project.Replacements.Count(r => !r.Approved);
 
 			List<string> conditionErrors = new();
+			List<string> conditionExpressions = new();
+			foreach(HdStudioReplacement replacement in managed) {
+				if(!string.IsNullOrWhiteSpace(replacement.Settings.ExtraCondition)) {
+					conditionExpressions.Add(replacement.Settings.ExtraCondition);
+				}
+				conditionExpressions.AddRange(replacement.Settings.CellConditions.Values.Where(c => !string.IsNullOrWhiteSpace(c)));
+			}
 			List<string> customConditions = HdStudioArtwork.GetCustomConditionDefinitions(
-				string.Join("&", managed.Select(r => r.Settings.ExtraCondition).Where(c => !string.IsNullOrWhiteSpace(c))),
+				string.Join("&", conditionExpressions),
 				conditionErrors);
 			foreach(string error in conditionErrors) {
 				result.Errors.Add(error);
@@ -114,7 +121,8 @@ namespace Mesen.HdStudio
 						FlipH = t.FlipH,
 						FlipV = t.FlipV,
 						BackgroundPriority = t.BackgroundPriority,
-						Palette = t.Palette
+						Palette = t.Palette,
+						Condition = HdStudioArtwork.LookupCellCondition(replacement.Settings.CellConditions, t.Pattern, t.X, t.Y)
 					}).ToList() : replacement.Cells.Select(c => new HdStudioArtwork.TileSpec() {
 						Pattern = c.Key,
 						Palette = c.Palette,
@@ -155,12 +163,13 @@ namespace Mesen.HdStudio
 					if(asset != null) {
 						List<HdStudioCatalogAsset> sharedAssets = HdStudioCatalog.FindAssetsSharingKeys(catalog, asset.Id,
 							cells.Select(c => (c.Key, c.Palette)));
-						bool contextSpecific = !string.IsNullOrWhiteSpace(replacement.Settings.ExtraCondition);
+						bool contextSpecific = !string.IsNullOrWhiteSpace(replacement.Settings.ExtraCondition) || replacement.Settings.CellConditions.Count > 0;
 						if(sharedAssets.Count > 0 && contextSpecific) {
 							string names = string.Join(", ", sharedAssets.Take(4).Select(a => a.Name));
+							string ruleLabel = !string.IsNullOrWhiteSpace(replacement.Settings.ContextRule) ? replacement.Settings.ContextRule : cells[0].Condition;
 							replacement.Warnings.Clear();
-							replacement.Warnings.Add($"Context-specific replacement ({cells[0].Condition}); {sharedAssets.Count} other asset(s) share the keys ({names}) and are left on their original graphics.");
-							result.Warnings.Add($"{replacement.AssetName}: context condition {cells[0].Condition} keeps {sharedAssets.Count} shared asset(s) unchanged ({names}).");
+							replacement.Warnings.Add($"Context-specific replacement ({ruleLabel}); {sharedAssets.Count} other asset(s) share the keys ({names}) and are left on their original graphics.");
+							result.Warnings.Add($"{replacement.AssetName}: context condition {ruleLabel} keeps {sharedAssets.Count} shared asset(s) unchanged ({names}).");
 						} else if(sharedAssets.Count > 0) {
 							string names = string.Join(", ", sharedAssets.Take(4).Select(a => a.Name));
 							if(sharedAssets.Count > 4) {

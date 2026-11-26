@@ -29,6 +29,7 @@ local spritesPath = OUTPUT_DIR .. "/live-sprites.tsv"
 local patternsPath = OUTPUT_DIR .. "/live-patterns.tsv"
 local framesPath = OUTPUT_DIR .. "/live-frames.tsv"
 local blocksPath = OUTPUT_DIR .. "/live-backgrounds.tsv"
+local renderedBgFramesPath = OUTPUT_DIR .. "/live-background-frames.tsv"
 local statusPath = OUTPUT_DIR .. "/live-status.json"
 local pausePath = OUTPUT_DIR .. "/pause-frame.json"
 local logPath = OUTPUT_DIR .. "/live-capture.log"
@@ -51,6 +52,8 @@ local screenHash = ""
 local patternLimitReached = false
 local displaySpriteSamples = 0
 local oamFallbackSamples = 0
+local renderedBackgroundSamples = 0
+local backgroundFallbackSamples = 0
 local sampleMicros = 0
 
 local patterns = {}
@@ -128,6 +131,17 @@ local function spritePalette(attr)
     emu.read(base + 2, palType), emu.read(base + 3, palType))
 end
 
+--The rendered-background API reports the four displayed palette colors. Map those
+--back to the attribute palette index so the existing block grouping keeps working.
+local function backgroundPaletteIndex(palette)
+  for i = 0, 3 do
+    if paletteKey(i) == palette then
+      return i
+    end
+  end
+  return 0
+end
+
 local function patternInfo(ppuAddress)
   local info = emu.getChrTileInfo(ppuAddress)
   if not info or not info.hasPattern then
@@ -182,15 +196,97 @@ local function writeBlocks()
   f:close()
 end
 
+--Render-time background evidence. Returns nil when the API is unavailable, an empty
+--table when the frame really had no visible non-blank background tile, or the records.
+local function sampleRenderedBackground()
+  if not emu.getRenderedBackgroundInfo then
+    return nil
+  end
+  local ok, records = pcall(emu.getRenderedBackgroundInfo)
+  if not ok or type(records) ~= "table" then
+    return nil
+  end
+  local result = {}
+  local blank = string.rep("0", 32)
+  for _, r in ipairs(records) do
+    local data = r.data or ""
+    if data ~= "" and data ~= blank then
+      local palette = r.palette or "00000000"
+      result[#result + 1] = {
+        x = r.x, y = r.y,
+        tileX = r.tileX, tileY = r.tileY,
+        mapX = r.mapX or r.tileX, mapY = r.mapY or r.tileY,
+        tile = r.tile or 0,
+        paletteIndex = backgroundPaletteIndex(palette),
+        palette = palette,
+        pattern = r.chrType == "NesChrRam" and data or string.format("%X", math.floor((r.chrAddress or 0) / 16)),
+        chrType = r.chrType or "",
+        chrAddress = r.chrAddress or -1,
+        data = data,
+        scrollX = r.scrollX or 0,
+        scrollY = r.scrollY or 0,
+        nametable = r.nametable or 0,
+        nametableAddress = r.nametableAddress or 0,
+        spriteCount = r.spriteCount or 0,
+        evidence = "render-time"
+      }
+    end
+  end
+  return result
+end
+
+local function appendRenderedBackgroundFrame(records)
+  if not records or #records == 0 then return end
+  local f = io.open(renderedBgFramesPath, "a")
+  if not f then return end
+  for _, r in ipairs(records) do
+    f:write(string.format("%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\t%s\t%s\t%d\t%s\t%d\t%d\t%d\t%d\n",
+      frame, r.x, r.y, r.tileX, r.tileY, r.mapX, r.mapY, r.tile, r.palette,
+      r.pattern, r.chrType, r.chrAddress, r.data, r.scrollX, r.scrollY,
+      r.nametable, r.nametableAddress))
+  end
+  f:close()
+end
+
+local function writeRenderedBlocks(records)
+  if not records or #records == 0 then return end
+  local cells = {}
+  for _, r in ipairs(records) do
+    cells[r.mapY * 64 + r.mapX] = r
+  end
+  for my = 0, 58, 2 do
+    for mx = 0, 62, 2 do
+      local a = cells[my * 64 + mx]
+      local b = cells[my * 64 + mx + 1]
+      local c = cells[(my + 1) * 64 + mx]
+      local d = cells[(my + 1) * 64 + mx + 1]
+      if a and b and c and d and a.palette == b.palette and a.palette == c.palette and a.palette == d.palette then
+        local keys = { a.pattern, b.pattern, c.pattern, d.pattern }
+        local data = { a.data, b.data, c.data, d.data }
+        local palette = a.palette
+        local sig = palette .. "|" .. table.concat(keys, "|")
+        local block = blocks[sig]
+        if not block then
+          block = { palette = palette, uses = 0, keys = keys, data = data, firstFrame = frame }
+          blocks[sig] = block
+          blockOrder[#blockOrder + 1] = sig
+        end
+        block.uses = block.uses + 1
+        block.lastFrame = frame
+      end
+    end
+  end
+end
+
 local function writeStatus()
   local f = io.open(statusPath, "w")
   if not f then return end
   f:write(string.format(
-    '{"schemaVersion":"1.1.0","captureMode":"%s","frame":%d,"samples":%d,"patterns":%d,"spriteOccurrences":%d,"backgroundBlocks":%d,"gameplayFrames":%d,"paused":%s,"stopped":%s,"startedAt":%d,"updatedAt":%d,"screenHash":"%s","displaySpriteSamples":%d,"oamFallbackSamples":%d,"sampleMicros":%d,"patternLimit":%d,"patternLimitReached":%s,"singleFrame":%s}\n',
+    '{"schemaVersion":"1.2.0","captureMode":"%s","frame":%d,"samples":%d,"patterns":%d,"spriteOccurrences":%d,"backgroundBlocks":%d,"gameplayFrames":%d,"paused":%s,"stopped":%s,"startedAt":%d,"updatedAt":%d,"screenHash":"%s","displaySpriteSamples":%d,"oamFallbackSamples":%d,"renderedBackgroundSamples":%d,"backgroundFallbackSamples":%d,"sampleMicros":%d,"patternLimit":%d,"patternLimitReached":%s,"singleFrame":%s}\n',
     CAPTURE_MODE, frame, samples, #patternOrder, spriteCount, #blockOrder, gameplayFrames,
     paused and "true" or "false", stopped and "true" or "false", startedAt, os.time(), screenHash,
-    displaySpriteSamples, oamFallbackSamples, sampleMicros, MAX_PATTERNS,
-    patternLimitReached and "true" or "false", SINGLE_FRAME and "true" or "false"))
+    displaySpriteSamples, oamFallbackSamples, renderedBackgroundSamples, backgroundFallbackSamples,
+    sampleMicros, MAX_PATTERNS, patternLimitReached and "true" or "false", SINGLE_FRAME and "true" or "false"))
   f:close()
 end
 
@@ -221,7 +317,7 @@ local function currentControl()
   return command
 end
 
-local function writePauseFrame(sprites, ppu)
+local function writePauseFrame(sprites, ppu, renderedBackground)
   local screenshotName = string.format("pause-%s-%08d.png", sessionTag, frame)
   local screenshotPath = OUTPUT_DIR .. "/" .. screenshotName
   local ok, shot = pcall(emu.takeScreenshot)
@@ -250,28 +346,45 @@ local function writePauseFrame(sprites, ppu)
       s.pattern or "", s.chrType or "", s.chrAddr or -1, s.data or "", s.evidence or "oam-fallback"))
   end
   f:write('],"background":[')
-  for ty = 0, 29 do
-    for tx = 0, 31 do
-      local bt = emu.getBackgroundTile(tx * 8, ty * 8)
-      if bt and bt.chrAddress and bt.chrAddress >= 0 then
-        local info = emu.getChrTileInfo(bt.ppuAddress)
-        local key = ""
-        if info and info.hasPattern then
-          key = (info.type == "NesChrRam") and info.data or string.format("%X", math.floor(info.address / 16))
-        end
-        if key ~= "" then
-          if tx > 0 or ty > 0 then f:write(",") end
-          f:write(string.format(
-            '{"x":%d,"y":%d,"px":%d,"py":%d,"tile":%d,"tileX":%d,"tileY":%d,"paletteIndex":%d,"palette":"%s","pattern":"%s","chrType":"%s","chrAddress":%d,"data":"%s"}',
-            tx * 8, ty * 8, tx * 8, ty * 8, bt.tile, tx, ty, bt.paletteIndex,
-            paletteKey(bt.paletteIndex), key, info.type, info.address, info.data or ""))
+  local first = true
+  if renderedBackground then
+    --Authoritative path: the exact tiles that contributed pixels to this frame,
+    --including the pattern/palette/scroll state at the moment they were drawn.
+    for _, r in ipairs(renderedBackground) do
+      if not first then f:write(",") end
+      first = false
+      f:write(string.format(
+        '{"x":%d,"y":%d,"px":%d,"py":%d,"tile":%d,"tileX":%d,"tileY":%d,"mapX":%d,"mapY":%d,"paletteIndex":%d,"palette":"%s","pattern":"%s","chrType":"%s","chrAddress":%d,"data":"%s","scrollX":%d,"scrollY":%d,"nametable":%d,"nametableAddress":%d,"spriteCount":%d,"evidence":"render-time"}',
+        r.x, r.y, r.x, r.y, r.tile, r.tileX, r.tileY, r.mapX, r.mapY, r.paletteIndex,
+        r.palette, r.pattern, r.chrType, r.chrAddress, r.data, r.scrollX, r.scrollY,
+        r.nametable, r.nametableAddress, r.spriteCount))
+    end
+  else
+    for ty = 0, 29 do
+      for tx = 0, 31 do
+        local bt = emu.getBackgroundTile(tx * 8, ty * 8)
+        if bt and bt.chrAddress and bt.chrAddress >= 0 then
+          local info = emu.getChrTileInfo(bt.ppuAddress)
+          local key = ""
+          if info and info.hasPattern then
+            key = (info.type == "NesChrRam") and info.data or string.format("%X", math.floor(info.address / 16))
+          end
+          if key ~= "" then
+            if not first then f:write(",") end
+            first = false
+            f:write(string.format(
+              '{"x":%d,"y":%d,"px":%d,"py":%d,"tile":%d,"tileX":%d,"tileY":%d,"paletteIndex":%d,"palette":"%s","pattern":"%s","chrType":"%s","chrAddress":%d,"data":"%s","evidence":"end-of-frame"}',
+              tx * 8, ty * 8, tx * 8, ty * 8, bt.tile, tx, ty, bt.paletteIndex,
+              paletteKey(bt.paletteIndex), key, info.type, info.address, info.data or ""))
+          end
         end
       end
     end
   end
-  f:write(']}\n')
+  f:write('],"backgroundEvidence":"' .. (renderedBackground and "render-time" or "end-of-frame") .. '"}\n')
   f:close()
-  log("paused at frame " .. frame .. " (" .. #sprites .. " sprite parts)")
+  log("paused at frame " .. frame .. " (" .. #sprites .. " sprite parts, " ..
+    tostring(renderedBackground and #renderedBackground or 0) .. " rendered background cells)")
 end
 
 local function registerPattern(key, chrType, chrAddr, data)
@@ -465,7 +578,7 @@ local function onEndFrame()
       paused = true
       local ppu = emu.getPpuInfo()
       if ppu then
-        writePauseFrame(sampleSprites(ppu), ppu)
+        writePauseFrame(sampleSprites(ppu), ppu, sampleRenderedBackground())
       end
       writePatterns()
       writeBlocks()
@@ -503,7 +616,15 @@ local function onEndFrame()
   if active then gameplayFrames = gameplayFrames + 1 end
 
   if frame % BG_SAMPLE_EVERY == 0 then
-    sampleBackground(ppu)
+    local renderedBackground = sampleRenderedBackground()
+    if renderedBackground then
+      renderedBackgroundSamples = renderedBackgroundSamples + 1
+      appendRenderedBackgroundFrame(renderedBackground)
+      writeRenderedBlocks(renderedBackground)
+    else
+      backgroundFallbackSamples = backgroundFallbackSamples + 1
+      sampleBackground(ppu)
+    end
   end
   sampleMicros = sampleMicros + math.floor((os.clock() - sampleStart) * 1000000)
 
@@ -527,7 +648,7 @@ local function onEndFrame()
     --One displayed frame is the complete request in this mode. Freeze the recorder
     --(the emulator continues running) and write the hardware pick frame immediately.
     paused = true
-    writePauseFrame(sprites, ppu)
+    writePauseFrame(sprites, ppu, sampleRenderedBackground())
     writePatterns()
     writeBlocks()
     writeStatus()
@@ -547,6 +668,10 @@ local function initialize()
 
   ensureHeader(spritesPath, "#frame\toam\tpart\tx\ty\ttile\tpalette\tflipH\tflipV\tpriority\tpattern\tchrType\tchrAddr")
   ensureHeader(framesPath, "#frame\tscrollX\tscrollY\tmirroring\tlargeSprites\tsprites\tblocks\tscreenHash\tactive")
+  ensureHeader(renderedBgFramesPath, "#frame\tx\ty\ttileX\ttileY\tmapX\tmapY\ttile\tpalette\tpattern\tchrType\tchrAddr\tdata\tscrollX\tscrollY\tnametable\tnametableAddress")
+  if emu.setRenderedBackgroundCapture then
+    emu.setRenderedBackgroundCapture(true)
+  end
   loadExistingPatterns()
   loadExistingBlocks()
   if not fileExists(patternsPath) then writePatterns() end

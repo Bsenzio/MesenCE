@@ -280,10 +280,11 @@ namespace Mesen.HdStudio
 		public string ParentId = "";
 		public int FrameIndex = -1;
 		public string AnimationId = "";
+		public string CustomCategory = "";
 		public readonly List<string> PaletteVariants = new();
 		public readonly List<HdStudioCatalogTile> Tiles = new();
 
-		public string Category => Kind switch {
+		public string Category => !string.IsNullOrWhiteSpace(CustomCategory) ? CustomCategory : Kind switch {
 			"semanticObject" => "Objects",
 			"metasprite" => "Rendered metasprites",
 			"animationFrame" => "Animation frames",
@@ -312,7 +313,8 @@ namespace Mesen.HdStudio
 				OriginalImage = HdStudioCatalog.GetString(element, "originalImage"),
 				ParentId = HdStudioCatalog.GetString(element, "parentId"),
 				AnimationId = HdStudioCatalog.GetString(element, "animationId"),
-				FrameIndex = HdStudioCatalog.GetInt(element, "frameIndex", -1)
+				FrameIndex = HdStudioCatalog.GetInt(element, "frameIndex", -1),
+				CustomCategory = HdStudioCatalog.GetString(element, "customCategory")
 			};
 			if(element.TryGetProperty("confidence", out JsonElement confidence) && confidence.TryGetDouble(out double conf)) {
 				asset.Confidence = conf;

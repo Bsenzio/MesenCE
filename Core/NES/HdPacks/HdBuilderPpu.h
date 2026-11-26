@@ -51,6 +51,11 @@ private:
 	NesTileInfoEx _previousTileEx = {};
 	NesTileInfoEx _currentTileEx = {};
 	NesTileInfoEx _nextTileEx = {};
+	//HD Studio v0.7: render-time background evidence uses the same structure as the
+	//HD PPU. The builder has no HdScreenInfo, so the tile identity is taken directly
+	//from the mapper-resolved fetch state below.
+	uint16_t _backgroundNameTableAddress = 0;
+	uint8_t _backgroundPalette = 0;
 
 public:
 	__forceinline bool RemoveSpriteLimit() { return _console->GetNesConfig().RemoveSpriteLimit; }
@@ -58,6 +63,7 @@ public:
 	void* OnBeforeSendFrame()
 	{
 		CaptureSpriteFrame();
+		CommitRenderedBackgrounds();
 		return nullptr;
 	}
 
@@ -143,6 +149,7 @@ public:
 		uint16_t tileAddr = (tileIndex << 4) | (_videoRamAddr >> 12) | _control.BackgroundPatternAddr;
 
 		_nextTileEx.OffsetY = _videoRamAddr >> 12;
+		_nextTileEx.NameTableAddress = GetNameTableAddr();
 		_nextTileEx.TileAddr = tileAddr;
 		_nextTileEx.AbsoluteTileAddr = _mapper->GetPpuAbsoluteAddress(tileAddr).Address;
 	}
@@ -227,6 +234,17 @@ public:
 					//Pixels where transparency is required update the tile flags: never cache them
 					UpdateCache(_bgCache, lastTileEx.AbsoluteTileAddr, tilePalette, handle, !hasBgSprite);
 				}
+
+				if(_collectRenderedBackgrounds && ((_cycle - 1) & 0x07) == 0 && (_scanline & 0x07) == 0) {
+					uint8_t tileData[16] = {};
+					mapper->CopyChrTile(lastTileEx.AbsoluteTileAddr & 0xFFFFFFF0, tileData);
+					uint32_t paletteColors = ReadPaletteRam(tilePalette + 3) | (ReadPaletteRam(tilePalette + 2) << 8) |
+						(ReadPaletteRam(tilePalette + 1) << 16) | (ReadPaletteRam(0) << 24);
+					AddRenderedBackground((int16_t)(_cycle - 1), _scanline, (int32_t)(lastTileEx.AbsoluteTileAddr / 16),
+						paletteColors, tileData, (int16_t)GetHorizontalScroll(), (int16_t)GetVerticalScroll(),
+						lastTileEx.NameTableAddress, (uint8_t)((lastTileEx.NameTableAddress >> 10) & 0x03),
+						hasBgSprite ? 1 : 0);
+				}
 			}
 		} else {
 			//"If the current VRAM address points in the range $3F00-$3FFF during forced blanking, the color indicated by this palette location will be shown on screen instead of the backdrop color."
@@ -263,5 +281,6 @@ public:
 		_chrRamIndexMask = chrRamBankSize - 1;
 		_needChrHash = true;
 		EnableRenderedSpriteCapture();
+		EnableRenderedBackgroundCapture();
 	}
 };

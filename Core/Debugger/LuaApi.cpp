@@ -175,6 +175,8 @@ int LuaApi::GetLibrary(lua_State* lua)
 		{ "getBackgroundTile", LuaApi::GetBackgroundTile },
 		{ "getOamInfo", LuaApi::GetOamInfo },
 		{ "getRenderedSpriteInfo", LuaApi::GetRenderedSpriteInfo },
+		{ "getRenderedBackgroundInfo", LuaApi::GetRenderedBackgroundInfo },
+		{ "setRenderedBackgroundCapture", LuaApi::SetRenderedBackgroundCapture },
 		{ NULL, NULL }
 	};
 
@@ -1257,6 +1259,8 @@ int LuaApi::GetPpuInfo(lua_State* lua)
 	lua_setfield(lua, -2, "hasChrRam");
 	lua_pushboolean(lua, ppu->SupportsRenderedSpriteCapture());
 	lua_setfield(lua, -2, "renderedSpriteCapture");
+	lua_pushboolean(lua, ppu->IsRenderedBackgroundCaptureEnabled());
+	lua_setfield(lua, -2, "renderedBackgroundCapture");
 	return 1;
 }
 
@@ -1407,6 +1411,95 @@ int LuaApi::GetRenderedSpriteInfo(lua_State* lua)
 		lua_pushlstring(lua, hex.data(), hex.size());
 		lua_setfield(lua, -2, "data");
 		lua_rawseti(lua, -2, i + 1);
+	}
+	return 1;
+}
+
+//HD Studio v0.7: the background tiles that were actually fetched and displayed during
+//the last frame, captured by the PPU at render time. Unlike emu.getBackgroundTile(), this
+//is not reconstructed from end-of-frame scroll/nametable state, so mapper 4 and other
+//mid-frame pattern-table changes are reported exactly.
+int LuaApi::GetRenderedBackgroundInfo(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	checkparams();
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	NesConsole* nesConsole = static_cast<NesConsole*>(console.get());
+	BaseNesPpu* ppu = nesConsole->GetPpu();
+	BaseMapper* mapper = nesConsole->GetMapper();
+	if(!ppu || !mapper) {
+		lua_pushnil(lua);
+		return 1;
+	}
+
+	int count = 0;
+	const NesRenderedBackgroundInfo* tiles = ppu->GetLastRenderedBackgrounds(count);
+	bool isChrRam = mapper->HasChrRam();
+	string chrType = isChrRam ? "NesChrRam" : "NesChrRom";
+
+	lua_newtable(lua);
+	for(int i = 0; i < count; i++) {
+		const NesRenderedBackgroundInfo& b = tiles[i];
+		lua_newtable(lua);
+		LuaPushIntValue(lua, "x", b.X);
+		LuaPushIntValue(lua, "y", b.Y);
+		LuaPushIntValue(lua, "tileX", b.X >> 3);
+		LuaPushIntValue(lua, "tileY", b.Y >> 3);
+		LuaPushIntValue(lua, "tileIndex", b.TileIndex);
+		LuaPushIntValue(lua, "tile", b.TileIndex & 0xFF);
+		LuaPushIntValue(lua, "scrollX", b.ScrollX);
+		LuaPushIntValue(lua, "scrollY", b.ScrollY);
+		LuaPushIntValue(lua, "nametableAddress", b.NameTableAddress);
+		LuaPushIntValue(lua, "nametable", b.Nametable);
+		LuaPushIntValue(lua, "mapX", b.MapX);
+		LuaPushIntValue(lua, "mapY", b.MapY);
+		LuaPushIntValue(lua, "spriteCount", b.SpriteCount);
+		LuaPushIntValue(lua, "paletteColors", (int)b.PaletteColors);
+		string paletteHex = HexUtilities::ToHex(b.PaletteColors, true);
+		lua_pushstring(lua, paletteHex.c_str());
+		lua_setfield(lua, -2, "palette");
+		LuaPushIntValue(lua, "chrAddress", b.TileIndex * 16);
+		lua_pushstring(lua, chrType.c_str());
+		lua_setfield(lua, -2, "chrType");
+		string hex;
+		hex.reserve(32);
+		for(int j = 0; j < 16; j++) {
+			hex += HexUtilities::ToHex(b.TileData[j]);
+		}
+		lua_pushlstring(lua, hex.data(), hex.size());
+		lua_setfield(lua, -2, "data");
+		lua_rawseti(lua, -2, i + 1);
+	}
+	return 1;
+}
+
+//HD Studio v0.7: opt in to render-time background evidence. The capture script calls this
+//once; normal HD playback does not pay the per-cell bookkeeping cost.
+int LuaApi::SetRenderedBackgroundCapture(lua_State* lua)
+{
+	LuaCallHelper l(lua);
+	bool enabled = l.ReadBool(true);
+	checkparams();
+
+	shared_ptr<IConsole> console = _emu->GetConsole();
+	if(!console || console->GetConsoleType() != ConsoleType::Nes) {
+		lua_pushboolean(lua, false);
+		return 1;
+	}
+	BaseNesPpu* ppu = static_cast<NesConsole*>(console.get())->GetPpu();
+	if(ppu) {
+		if(enabled) {
+			ppu->EnableRenderedBackgroundCapture();
+		}
+		lua_pushboolean(lua, ppu->IsRenderedBackgroundCaptureEnabled());
+	} else {
+		lua_pushboolean(lua, false);
 	}
 	return 1;
 }

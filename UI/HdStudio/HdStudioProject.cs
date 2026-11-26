@@ -404,6 +404,14 @@ namespace Mesen.HdStudio
 		/// <summary>Standard Mesen global condition(s) chosen to disambiguate a shared
 		/// pattern, e.g. "!hmirror" or "bgpriority". Empty means unconditional.</summary>
 		public string ExtraCondition = "";
+		/// <summary>Per-pattern standard Mesen condition expressions. A key is the
+		/// uppercase pattern/CHR-RAM key; the value is a '&amp;'-separated list of
+		/// parser-supported conditions. This allows a multi-tile object to anchor each
+		/// cell on a different neighbour relationship instead of forcing one global rule.</summary>
+		public readonly Dictionary<string, string> CellConditions = new(StringComparer.OrdinalIgnoreCase);
+		/// <summary>Human-readable explanation of the automatically proposed rule set.</summary>
+		public string ContextRule = "";
+		public string ContextStatus = "";
 		public int CropLeft;
 		public int CropTop;
 		public int CropRight;
@@ -428,6 +436,13 @@ namespace Mesen.HdStudio
 			json.WriteBoolean("matchBackgroundPriority", MatchBackgroundPriority);
 			json.WriteBoolean("allPaletteVariants", AllPaletteVariants);
 			json.WriteString("extraCondition", ExtraCondition);
+			json.WriteString("contextRule", ContextRule);
+			json.WriteString("contextStatus", ContextStatus);
+			json.WriteStartObject("cellConditions");
+			foreach(KeyValuePair<string, string> pair in CellConditions.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)) {
+				json.WriteString(pair.Key, pair.Value);
+			}
+			json.WriteEndObject();
 			json.WriteNumber("cropLeft", CropLeft);
 			json.WriteNumber("cropTop", CropTop);
 			json.WriteNumber("cropRight", CropRight);
@@ -456,6 +471,16 @@ namespace Mesen.HdStudio
 			MatchBackgroundPriority = a.TryGetProperty("matchBackgroundPriority", out JsonElement mbp) && mbp.ValueKind == JsonValueKind.True;
 			AllPaletteVariants = !a.TryGetProperty("allPaletteVariants", out JsonElement ap) || ap.ValueKind != JsonValueKind.False;
 			ExtraCondition = a.TryGetProperty("extraCondition", out JsonElement ec) && ec.ValueKind == JsonValueKind.String ? ec.GetString() ?? "" : "";
+			ContextRule = a.TryGetProperty("contextRule", out JsonElement ctx) && ctx.ValueKind == JsonValueKind.String ? ctx.GetString() ?? "" : "";
+			ContextStatus = a.TryGetProperty("contextStatus", out JsonElement cts) && cts.ValueKind == JsonValueKind.String ? cts.GetString() ?? "" : "";
+			CellConditions.Clear();
+			if(a.TryGetProperty("cellConditions", out JsonElement cc) && cc.ValueKind == JsonValueKind.Object) {
+				foreach(JsonProperty property in cc.EnumerateObject()) {
+					if(property.Value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(property.Name)) {
+						CellConditions[property.Name.ToUpperInvariant()] = property.Value.GetString() ?? "";
+					}
+				}
+			}
 			CropLeft = a.TryGetProperty("cropLeft", out JsonElement cl) && cl.TryGetInt32(out int clv) ? Math.Max(0, clv) : 0;
 			CropTop = a.TryGetProperty("cropTop", out JsonElement ct) && ct.TryGetInt32(out int ctv) ? Math.Max(0, ctv) : 0;
 			CropRight = a.TryGetProperty("cropRight", out JsonElement cr2) && cr2.TryGetInt32(out int crv) ? Math.Max(0, crv) : 0;

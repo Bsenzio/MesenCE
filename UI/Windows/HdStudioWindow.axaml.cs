@@ -24,13 +24,14 @@ using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Mesen.Windows
 {
 	/// <summary>
-	/// RetroArcDo HD Studio v0.6 - graphical authoring shell.
+	/// RetroArcDo HD Studio v0.7 - graphical authoring shell.
 	///
 	/// All file, catalog, compiler and exporter work remains in the shared HdStudio services.
 	/// This window owns presentation only: it selects an asset, edits the project's adaptation
@@ -39,7 +40,7 @@ namespace Mesen.Windows
 	/// </summary>
 	public partial class HdStudioWindow : MesenWindow
 	{
-		private const string Version = "0.6.0 Alpha";
+		private const string Version = "0.7.0 Alpha";
 
 		private string _romPath = "";
 		private string _packFolder = "";
@@ -125,6 +126,16 @@ namespace Mesen.Windows
 		private GridSplitter _assetSplitter = null!, _inspectorSplitter = null!;
 		private Grid _homePage = null!, _discoveryPage = null!, _spritesPage = null!, _backgroundsPage = null!;
 		private Grid _animationsPage = null!, _artworkPage = null!, _previewPage = null!, _exportPage = null!, _settingsPage = null!;
+		private Grid _libraryPage = null!, _batchPage = null!;
+		private ListBox _romLibraryList = null!, _batchGameList = null!;
+		private readonly List<HdStudioRomRow> _romRows = new();
+		private readonly List<HdStudioBatchRow> _batchRows = new();
+		private HdStudioRomLibrary.Catalog? _romCatalog;
+		private Process? _batchProcess;
+		private DispatcherTimer? _batchTimer;
+		private string _batchOutputRoot = "";
+		private string _batchResultsPath = "";
+		private DateTime _batchStartedUtc;
 
 		//Asset library
 		private ListBox _assetList = null!, _spriteGalleryList = null!, _backgroundList = null!;
@@ -279,6 +290,10 @@ namespace Mesen.Windows
 			_previewPage = C<Grid>("PreviewPage");
 			_exportPage = C<Grid>("ExportPage");
 			_settingsPage = C<Grid>("SettingsPage");
+			_libraryPage = C<Grid>("LibraryPage");
+			_batchPage = C<Grid>("BatchPage");
+			_romLibraryList = C<ListBox>("RomLibraryList");
+			_batchGameList = C<ListBox>("BatchGameList");
 
 			_assetList = C<ListBox>("AssetList");
 			_spriteGalleryList = C<ListBox>("SpriteGalleryList");
@@ -1169,7 +1184,7 @@ namespace Mesen.Windows
 				"project" or "build" => "settings",
 				_ => target
 			};
-			if(!new[] { "home", "discover", "sprites", "backgrounds", "animations", "artwork", "preview", "export", "settings" }.Contains(target)) {
+			if(!new[] { "home", "discover", "sprites", "backgrounds", "animations", "artwork", "preview", "export", "library", "batch", "settings" }.Contains(target)) {
 				target = "home";
 			}
 			_activeWorkspace = target;
@@ -1181,6 +1196,8 @@ namespace Mesen.Windows
 			_artworkPage.IsVisible = target == "artwork";
 			_previewPage.IsVisible = target == "preview";
 			_exportPage.IsVisible = target == "export";
+			_libraryPage.IsVisible = target == "library";
+			_batchPage.IsVisible = target == "batch";
 			_settingsPage.IsVisible = target == "settings";
 
 			bool library = target is "artwork" or "sprites" or "backgrounds" or "animations";
@@ -1204,6 +1221,12 @@ namespace Mesen.Windows
 			}
 			if(target == "animations") {
 				EnsureAnimationTimeline();
+			}
+			if(target == "library" && _romRows.Count == 0) {
+				InitializeLibraryWorkspace();
+			}
+			if(target == "batch" && _batchRows.Count == 0) {
+				PopulateBatchRows();
 			}
 			if(target == "backgrounds" && !string.Equals(SelectedCategory(), "Backgrounds", StringComparison.OrdinalIgnoreCase)) {
 				SetCategoryFilterFor("Backgrounds");
@@ -1229,6 +1252,432 @@ namespace Mesen.Windows
 		{
 			ShowWorkspace((sender as Button)?.Tag?.ToString() ?? "home");
 		}
+
+		//------------------------------------------------------------------ ROM library
+
+		private string InventoryPath()
+		{
+			string[] candidates = {
+				Path.Combine(Program.OriginalFolder, "..", "MesenHighWork", "validation-v06", "inventory", "library-inventory.json"),
+				Path.Combine(Program.OriginalFolder, "HdStudio", "library-inventory.json"),
+				"D:\\MesenHighWork\\validation-v06\\inventory\\library-inventory.json"
+			};
+			return candidates.FirstOrDefault(File.Exists) ?? "";
+		}
+
+		private void InitializeLibraryWorkspace()
+		{
+			TextBox rootBox = C<TextBox>("LibraryRootBox");
+			if(string.IsNullOrWhiteSpace(rootBox.Text)) {
+				rootBox.Text = Directory.Exists("D:\\NESGames\\Library") ? "D:\\NESGames\\Library" : "";
+			}
+			if(!string.IsNullOrWhiteSpace(rootBox.Text)) {
+				LoadLibrary(rootBox.Text);
+			}
+		}
+
+		private void LoadLibrary(string root)
+		{
+			try {
+				_romCatalog = HdStudioRomLibrary.Load(root, InventoryPath(), Log);
+				_romRows.Clear();
+				foreach(HdStudioRomLibrary.RomEntry entry in _romCatalog.Entries) {
+					string pack = HdStudioRomLibrary.FindPackFolder(entry);
+					string project = string.IsNullOrWhiteSpace(pack) ? "" : Path.Combine(pack, HdStudioReport.StudioFolderName, "project.hdstudio.json");
+					bool hasProject = File.Exists(project);
+					bool hasHdPack = !string.IsNullOrWhiteSpace(pack) && File.Exists(Path.Combine(pack, "hires.txt"));
+					bool captured = !string.IsNullOrWhiteSpace(pack) &&
+						File.Exists(Path.Combine(pack, HdStudioReport.StudioFolderName, "live", "pause-frame.json"));
+					string replacement = "No authored replacement";
+					if(hasProject) {
+						try {
+							HdStudioProject p = HdStudioProject.Load(project);
+							int approved = p.Replacements.Count(r => r.Approved);
+							replacement = approved > 0 ? $"{approved} approved" : "Project draft";
+						} catch {
+							replacement = "Project present";
+						}
+					}
+					_romRows.Add(new HdStudioRomRow() {
+						Name = entry.Name,
+						Path = entry.Path,
+						Mapper = HdStudioRomLibrary.FormatMapper(entry),
+						ChrType = HdStudioRomLibrary.FormatChrType(entry),
+						ProjectStatus = hasProject ? "Project" : "No project",
+						CaptureStatus = captured ? "Captured" : "Not captured",
+						ReplacementStatus = replacement,
+						HdPackStatus = hasHdPack ? "HD Pack" : "",
+						HasProject = hasProject,
+						HasHdPack = hasHdPack,
+						ThumbnailLoader = row => {
+							QueueRomThumbnail(row);
+							return null;
+						}
+					});
+				}
+				C<TextBlock>("LibraryStatusText").Text = _romCatalog.Error.Length > 0
+					? _romCatalog.Error
+					: $"{_romRows.Count:N0} NES ROM(s) indexed. Showing only local metadata; ROM contents are not modified.";
+				C<TextBlock>("LibraryFooterText").Text = "Thumbnails come from local captured frames or project previews. " +
+					"Double-click a game to open it; existing projects are loaded from the standard Mesen HD Pack folder.";
+				ApplyLibraryFilter();
+				PopulateBatchRows();
+			} catch(Exception ex) {
+				C<TextBlock>("LibraryStatusText").Text = "Library error: " + ex.Message;
+				Log("ERROR: " + ex);
+			}
+		}
+
+		private void QueueRomThumbnail(HdStudioRomRow row)
+		{
+			if(_romCatalog == null) return;
+			HdStudioRomLibrary.RomEntry? entry = _romCatalog.Entries.FirstOrDefault(e =>
+				string.Equals(e.Path, row.Path, StringComparison.OrdinalIgnoreCase));
+			if(entry == null) return;
+			_ = Task.Run(async () => {
+				await _thumbnailGate.WaitAsync();
+				try {
+					string thumb = HdStudioRomLibrary.FindThumbnail(_romCatalog, entry);
+					if(string.IsNullOrWhiteSpace(thumb) || !File.Exists(thumb)) return;
+					Dispatcher.UIThread.Post(() => row.SetThumbnail(LoadBitmap(thumb)));
+				} catch {
+					//A missing thumbnail is never a library error.
+				} finally {
+					_thumbnailGate.Release();
+				}
+			});
+		}
+
+		private void ApplyLibraryFilter()
+		{
+			if(_romCatalog == null) return;
+			string search = C<TextBox>("LibrarySearchBox").Text?.Trim() ?? "";
+			int mapperFilter = C<ComboBox>("LibraryMapperFilter").SelectedIndex;
+			int chrFilter = C<ComboBox>("LibraryChrFilter").SelectedIndex;
+			int statusFilter = C<ComboBox>("LibraryStatusFilter").SelectedIndex;
+			IEnumerable<HdStudioRomRow> rows = _romRows;
+			if(search.Length > 0) {
+				rows = rows.Where(r => r.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
+			}
+			if(mapperFilter > 0) {
+				string wanted = mapperFilter <= 6 ? (mapperFilter - 1).ToString(CultureInfo.InvariantCulture) : "";
+				rows = mapperFilter == 7
+					? rows.Where(r => !r.Mapper.StartsWith("Mapper 0", StringComparison.OrdinalIgnoreCase) &&
+						!r.Mapper.StartsWith("Mapper 1", StringComparison.OrdinalIgnoreCase) &&
+						!r.Mapper.StartsWith("Mapper 2", StringComparison.OrdinalIgnoreCase) &&
+						!r.Mapper.StartsWith("Mapper 3", StringComparison.OrdinalIgnoreCase) &&
+						!r.Mapper.StartsWith("Mapper 4", StringComparison.OrdinalIgnoreCase) &&
+						!r.Mapper.StartsWith("Mapper 5", StringComparison.OrdinalIgnoreCase))
+					: rows.Where(r => r.Mapper.StartsWith("Mapper " + wanted, StringComparison.OrdinalIgnoreCase));
+			}
+			if(chrFilter == 1) rows = rows.Where(r => r.ChrType == "CHR-ROM");
+			if(chrFilter == 2) rows = rows.Where(r => r.ChrType == "CHR-RAM");
+			if(statusFilter == 1) rows = rows.Where(r => r.HasProject);
+			if(statusFilter == 2) rows = rows.Where(r => r.HasHdPack);
+			if(statusFilter == 3) rows = rows.Where(r => !r.HasProject && !r.HasHdPack);
+			List<HdStudioRomRow> list = rows.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+			_romLibraryList.ItemsSource = list;
+			C<TextBlock>("LibraryCountBadge").Text = list.Count.ToString("N0", CultureInfo.InvariantCulture) + " GAMES";
+			UpdateLibrarySelection();
+		}
+
+		private void UpdateLibrarySelection()
+		{
+			HdStudioRomRow? row = _romLibraryList.SelectedItem as HdStudioRomRow;
+			C<TextBlock>("LibrarySelectedName").Text = row?.Name ?? "No game selected";
+			C<TextBlock>("LibrarySelectedDetail").Text = row == null ? "" : row.Detail;
+			C<TextBlock>("LibrarySelectedPath").Text = row == null ? "" : row.Path;
+		}
+
+		private void LibrarySearch_TextChanged(object? sender, TextChangedEventArgs e) => ApplyLibraryFilter();
+		private void LibraryFilter_Changed(object? sender, SelectionChangedEventArgs e) => ApplyLibraryFilter();
+		private void ClearLibraryFilters_Click(object? sender, RoutedEventArgs e)
+		{
+			C<TextBox>("LibrarySearchBox").Text = "";
+			C<ComboBox>("LibraryMapperFilter").SelectedIndex = 0;
+			C<ComboBox>("LibraryChrFilter").SelectedIndex = 0;
+			C<ComboBox>("LibraryStatusFilter").SelectedIndex = 0;
+			ApplyLibraryFilter();
+		}
+		private void RomLibraryList_SelectionChanged(object? sender, SelectionChangedEventArgs e) => UpdateLibrarySelection();
+		private void BrowseLibrary_Click(object? sender, RoutedEventArgs e) => _ = BrowseLibraryAsync();
+		private async Task BrowseLibraryAsync()
+		{
+			var folders = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions() {
+				Title = "Choose the folder that contains your NES ROM library",
+				AllowMultiple = false
+			});
+			if(folders.Count == 0) return;
+			string path = folders[0].Path.LocalPath;
+			C<TextBox>("LibraryRootBox").Text = path;
+			LoadLibrary(path);
+		}
+		private void RefreshLibrary_Click(object? sender, RoutedEventArgs e) => LoadLibrary(C<TextBox>("LibraryRootBox").Text ?? "");
+		private void RomLibraryList_DoubleTapped(object? sender, TappedEventArgs e) => OpenSelectedRom_Click(sender, new RoutedEventArgs());
+		private void OpenSelectedRom_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_romLibraryList.SelectedItem is not HdStudioRomRow row) {
+				SetStatus("Select a ROM in the library first.");
+				return;
+			}
+			if(_romCatalog != null) {
+				string project = _romCatalog.FindProject(new HdStudioRomLibrary.RomEntry() { Path = row.Path, Stem = Path.GetFileNameWithoutExtension(row.Path), Name = row.Name });
+				if(!string.IsNullOrWhiteSpace(project)) {
+					OpenProjectFile(project);
+					return;
+				}
+			}
+			OpenRomPath(row.Path);
+		}
+		private void OpenLibraryProject_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_romLibraryList.SelectedItem is not HdStudioRomRow row || _romCatalog == null) {
+				SetStatus("Select a ROM in the library first.");
+				return;
+			}
+			string project = _romCatalog.FindProject(new HdStudioRomLibrary.RomEntry() { Path = row.Path, Stem = Path.GetFileNameWithoutExtension(row.Path), Name = row.Name });
+			if(!string.IsNullOrWhiteSpace(project)) {
+				OpenProjectFile(project);
+			} else {
+				SetStatus("This game has no HD Studio project yet. Choose Open game to start discovery.");
+			}
+		}
+
+		//------------------------------------------------------------------ batch workspace
+
+		private void PopulateBatchRows()
+		{
+			_batchRows.Clear();
+			foreach(HdStudioRomRow row in _romRows) {
+				_batchRows.Add(new HdStudioBatchRow() {
+					Name = row.Name,
+					Path = row.Path,
+					Sha256 = "",
+					Mapper = row.Mapper,
+					ChrType = row.ChrType,
+					Eligible = true,
+					IsSelected = false
+				});
+			}
+			_batchGameList.ItemsSource = _batchRows;
+			C<TextBlock>("BatchCountBadge").Text = "0 SELECTED";
+			C<TextBlock>("BatchFooterText").Text = _batchRows.Count == 0
+				? "Load the ROM library first; batch selection uses the same catalog."
+				: $"{_batchRows.Count:N0} game(s) available. Select a subset or all eligible games.";
+		}
+
+		private void BatchSelectAll_Click(object? sender, RoutedEventArgs e) => SetBatchSelection(r => true);
+		private void BatchSelectEligible_Click(object? sender, RoutedEventArgs e) => SetBatchSelection(r => r.Eligible);
+		private void SetBatchSelection(Func<HdStudioBatchRow, bool> predicate)
+		{
+			foreach(HdStudioBatchRow row in _batchRows) {
+				row.IsSelected = predicate(row);
+			}
+			UpdateBatchCount();
+		}
+		private void BatchRow_Checked(object? sender, RoutedEventArgs e) => UpdateBatchCount();
+		private void UpdateBatchCount()
+		{
+			int count = _batchRows.Count(r => r.IsSelected);
+			C<TextBlock>("BatchCountBadge").Text = count.ToString("N0", CultureInfo.InvariantCulture) + " SELECTED";
+		}
+
+		private string FindBatchScript()
+		{
+			string[] candidates = {
+				Path.Combine(Program.OriginalFolder, "Tools", "hdstudio_v07_autoreplace.py"),
+				Path.Combine(Program.OriginalFolder, "scripts", "hdstudio_v07_autoreplace.py"),
+				Path.Combine(Program.OriginalFolder, "..", "RetroArcDo_HDStudio", "source", "scripts", "hdstudio_v07_autoreplace.py"),
+				"D:\\RetroArcDo_HDStudio\\source\\scripts\\hdstudio_v07_autoreplace.py"
+			};
+			return candidates.FirstOrDefault(File.Exists) ?? "";
+		}
+
+		private void BatchStart_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_batchProcess != null) {
+				SetStatus("A batch job is already running.");
+				return;
+			}
+			List<HdStudioBatchRow> selected = _batchRows.Where(r => r.IsSelected).ToList();
+			if(selected.Count == 0) {
+				SetStatus("Select at least one game for batch processing.");
+				return;
+			}
+			string script = FindBatchScript();
+			if(string.IsNullOrWhiteSpace(script)) {
+				SetStatus("The validation queue script is not installed next to the Studio. The queue is available in the development package.");
+				return;
+			}
+			string outRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "RetroArcDo HD Studio", "Batch");
+			Directory.CreateDirectory(outRoot);
+			string selectionFile = Path.Combine(outRoot, "selection-v07.txt");
+			File.WriteAllLines(selectionFile, selected.Select(r => r.Name));
+			string python = "python";
+			string mode = C<ComboBox>("BatchModeBox").SelectedIndex switch {
+				1 => "background",
+				2 => "auto",
+				_ => "sprite"
+			};
+			string depth = C<ComboBox>("BatchDepthBox").SelectedIndex switch {
+				1 => "300",
+				2 => "6000",
+				_ => "1800"
+			};
+			int workers = (int)(C<NumericUpDown>("BatchWorkersBox").Value ?? 3);
+			bool allowShared = C<CheckBox>("BatchAllowSharedCheck").IsChecked == true;
+			_batchOutputRoot = outRoot;
+			_batchResultsPath = Path.Combine(outRoot, "replacement-results.json");
+			_batchStartedUtc = DateTime.UtcNow;
+			ProcessStartInfo info = new() {
+				FileName = python,
+				UseShellExecute = false,
+				CreateNoWindow = true,
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				WorkingDirectory = Path.GetDirectoryName(script) ?? outRoot
+			};
+			info.ArgumentList.Add(script);
+			info.ArgumentList.Add("--mesen");
+			info.ArgumentList.Add(Program.ExePath);
+			info.ArgumentList.Add("--base-home");
+			info.ArgumentList.Add(ConfigManager.HomeFolder);
+			info.ArgumentList.Add("--scale");
+			info.ArgumentList.Add("2");
+			info.ArgumentList.Add("--selected");
+			info.ArgumentList.Add(string.Join(";", selected.Select(r => r.Name)));
+			info.ArgumentList.Add("--target-frames");
+			info.ArgumentList.Add(depth);
+			info.ArgumentList.Add("--target-mode");
+			info.ArgumentList.Add(mode);
+			info.ArgumentList.Add("--workers");
+			info.ArgumentList.Add(workers.ToString(CultureInfo.InvariantCulture));
+			info.ArgumentList.Add("--verify-scenes");
+			info.ArgumentList.Add("3");
+			info.ArgumentList.Add("--out-root");
+			info.ArgumentList.Add(outRoot);
+			if(allowShared) info.ArgumentList.Add("--allow-shared");
+			try {
+				_batchProcess = Process.Start(info);
+				if(_batchProcess == null) {
+					SetStatus("The batch process could not start.");
+					return;
+				}
+				_batchProcess.OutputDataReceived += (_, args) => {
+					if(string.IsNullOrWhiteSpace(args.Data)) return;
+					Dispatcher.UIThread.Post(() => UpdateBatchFromLine(args.Data));
+				};
+				_batchProcess.BeginOutputReadLine();
+				_batchProcess.BeginErrorReadLine();
+				_captureState = "RECORDING";
+				C<TextBlock>("BatchStatusText").Text = $"Running {selected.Count} game(s), {workers} worker(s), {mode} mode.";
+				C<TextBlock>("BatchFooterText").Text = "Results are written to " + outRoot + ". Pause stops the current queue; Resume continues with cached rows.";
+				_batchTimer = new DispatcherTimer() { Interval = TimeSpan.FromSeconds(1) };
+				_batchTimer.Tick += (_, _) => PollBatchResults();
+				_batchTimer.Start();
+				UpdateStatusBar();
+			} catch(Exception ex) {
+				SetStatus("Batch start failed: " + ex.Message);
+			}
+		}
+
+		private void UpdateBatchFromLine(string line)
+		{
+			//The queue prints "[index/total] ROM -> status". Map it to the visible rows.
+			int close = line.IndexOf(']');
+			if(line.StartsWith("[", StringComparison.Ordinal) && close > 0) {
+				string rest = line.Substring(close + 1).Trim();
+				int arrow = rest.IndexOf(" -> ", StringComparison.Ordinal);
+				if(arrow > 0) {
+					string name = rest.Substring(0, arrow).Trim();
+					string status = rest.Substring(arrow + 4).Trim();
+					HdStudioBatchRow? row = _batchRows.FirstOrDefault(r => string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase));
+					if(row != null) {
+						row.Status = status.StartsWith("verified", StringComparison.OrdinalIgnoreCase) ? "Verified" : "Failed";
+						row.Detail = status;
+					}
+				}
+			}
+			C<TextBlock>("BatchStatusText").Text = line.Length > 220 ? line.Substring(0, 220) + "..." : line;
+		}
+
+		private void PollBatchResults()
+		{
+			if(_batchProcess == null) return;
+			try {
+				if(File.Exists(_batchResultsPath)) {
+					using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(_batchResultsPath));
+					if(doc.RootElement.ValueKind == JsonValueKind.Array) {
+						int verified = 0, shared = 0, failed = 0;
+						foreach(JsonElement row in doc.RootElement.EnumerateArray()) {
+							string status = row.TryGetProperty("status", out JsonElement s) ? s.GetString() ?? "" : "";
+							if(status.StartsWith("verified", StringComparison.OrdinalIgnoreCase)) verified++;
+							else failed++;
+							if(status.Contains("shared", StringComparison.OrdinalIgnoreCase)) shared++;
+						}
+						C<TextBlock>("BatchProcessedText").Text = doc.RootElement.GetArrayLength().ToString(CultureInfo.InvariantCulture);
+						C<TextBlock>("BatchVerifiedText").Text = verified.ToString(CultureInfo.InvariantCulture);
+						C<TextBlock>("BatchSharedText").Text = shared.ToString(CultureInfo.InvariantCulture);
+						C<TextBlock>("BatchFailedText").Text = failed.ToString(CultureInfo.InvariantCulture);
+						if(_batchRows.Count > 0) {
+							C<ProgressBar>("BatchProgress").Value = Math.Clamp(100.0 * doc.RootElement.GetArrayLength() / _batchRows.Count(r => r.IsSelected), 0, 100);
+						}
+					}
+				}
+			} catch {
+				//Partial JSON is written atomically; a transient read must never fail the UI.
+			}
+			if(_batchProcess.HasExited) {
+				int code = _batchProcess.ExitCode;
+				_batchProcess.Dispose();
+				_batchProcess = null;
+				_batchTimer?.Stop();
+				_batchTimer = null;
+				C<TextBlock>("BatchStatusText").Text = "Batch finished (exit " + code.ToString(CultureInfo.InvariantCulture) + ").";
+				C<TextBlock>("BatchFooterText").Text = "Open results or review failures from the buttons. Verified rows are cached for the next run.";
+				C<ProgressBar>("BatchProgress").Value = 100;
+				_captureState = "IDLE";
+				UpdateStatusBar();
+			}
+		}
+
+		private void BatchPause_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_batchProcess == null) return;
+			try {
+				_batchProcess.Kill(entireProcessTree: true);
+			} catch { }
+			C<TextBlock>("BatchStatusText").Text = "Paused. Verified rows remain cached; press Resume to continue.";
+			C<TextBlock>("BatchFooterText").Text = "Resume starts the same selection again. Completed exact-scene rows are skipped from cache.";
+		}
+		private void BatchResume_Click(object? sender, RoutedEventArgs e) => BatchStart_Click(sender, e);
+		private void BatchCancel_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_batchProcess == null) return;
+			try { _batchProcess.Kill(entireProcessTree: true); } catch { }
+			C<TextBlock>("BatchStatusText").Text = "Batch cancelled.";
+			_captureState = "IDLE";
+			UpdateStatusBar();
+		}
+		private void BatchOpenResults_Click(object? sender, RoutedEventArgs e) => OpenFolder(_batchOutputRoot);
+		private void BatchOpenFailures_Click(object? sender, RoutedEventArgs e)
+		{
+			if(string.IsNullOrWhiteSpace(_batchOutputRoot) || !Directory.Exists(_batchOutputRoot)) {
+				SetStatus("No batch output yet.");
+				return;
+			}
+			string failures = Path.Combine(_batchOutputRoot, "failures.txt");
+			try {
+				List<string> failed = Directory.EnumerateFiles(_batchOutputRoot, "result.json", SearchOption.AllDirectories)
+					.Select(p => { try { using JsonDocument d = JsonDocument.Parse(File.ReadAllText(p)); return d.RootElement.TryGetProperty("status", out JsonElement s) && !(s.GetString() ?? "").StartsWith("verified", StringComparison.OrdinalIgnoreCase) ? p : ""; } catch { return ""; } })
+					.Where(p => p.Length > 0).ToList();
+				File.WriteAllLines(failures, failed);
+				SetStatus($"{failed.Count} failure record(s) listed in {failures}.");
+			} catch(Exception ex) {
+				SetStatus("Could not collect failures: " + ex.Message);
+			}
+		}
+		private void BatchOpenProjects_Click(object? sender, RoutedEventArgs e) => OpenFolder(_batchOutputRoot);
 
 		private void BottomTab_Click(object? sender, RoutedEventArgs e)
 		{
@@ -1709,6 +2158,8 @@ namespace Mesen.Windows
 		{
 			int scale = Math.Clamp(_project?.OutputScale ?? IntValue(_scaleBox, 4), 1, 10);
 			_inspectorAssetName.Text = asset.Name;
+			C<TextBox>("AssetNameBox").Text = asset.Name;
+			C<TextBox>("AssetCategoryBox").Text = asset.CustomCategory;
 			_inspectorAssetKind.Text = $"{FriendlyCategory(asset)} · {asset.Tiles.Count} tiles";
 			_assetInfoText.Text = string.IsNullOrWhiteSpace(asset.Provenance) ? "Captured from the original game." : asset.Provenance;
 			_logicalSizeText.Text = asset.Width > 0 && asset.Height > 0 ? $"{asset.Width}×{asset.Height} NES px" : "—";
@@ -2447,6 +2898,12 @@ namespace Mesen.Windows
 			target.MatchBackgroundPriority = source.MatchBackgroundPriority;
 			target.AllPaletteVariants = source.AllPaletteVariants;
 			target.ExtraCondition = source.ExtraCondition;
+			target.ContextRule = source.ContextRule;
+			target.ContextStatus = source.ContextStatus;
+			target.CellConditions.Clear();
+			foreach(KeyValuePair<string, string> pair in source.CellConditions) {
+				target.CellConditions[pair.Key] = pair.Value;
+			}
 			target.CropLeft = source.CropLeft;
 			target.CropTop = source.CropTop;
 			target.CropRight = source.CropRight;
@@ -3069,6 +3526,103 @@ namespace Mesen.Windows
 				ShowWorkspace("artwork");
 				SetStatus($"Manual composition saved to {asset.Name} ({path}).");
 			}
+		}
+
+		/// <summary>
+		/// Manual composition splitting: every selected hardware cell becomes its own
+		/// persistent picked asset. This keeps the original pattern/palette/position
+		/// evidence and lets the user edit or replace individual parts without changing
+		/// the original game geometry.
+		/// </summary>
+		private void AnalyzeContext_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_selectedAsset == null || string.IsNullOrWhiteSpace(_packFolder)) {
+				SetStatus("Select an asset after a live capture first.");
+				return;
+			}
+			string path = Path.Combine(_packFolder, HdStudioReport.StudioFolderName, "context-plan.json");
+			int code = HdStudioContextPlanner.WritePlan(_packFolder, _selectedAsset.Id, path, Log);
+			string? status = null;
+			try {
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+				status = doc.RootElement.TryGetProperty("status", out JsonElement s) ? s.GetString() : null;
+			} catch { }
+			SetStatus(status == null
+				? "Context analysis finished (exit " + code + ")."
+				: $"Context: {status}. Measure intended/unrelated occurrences in {path}.");
+		}
+
+		private void SaveAssetMetadata_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_selectedAsset == null) {
+				SetStatus("Select an asset first.");
+				return;
+			}
+			string name = C<TextBox>("AssetNameBox").Text?.Trim() ?? "";
+			string category = C<TextBox>("AssetCategoryBox").Text?.Trim() ?? "";
+			if(name.Length == 0) {
+				SetStatus("The asset name cannot be empty.");
+				return;
+			}
+			_selectedAsset.Name = name;
+			_selectedAsset.CustomCategory = category;
+			bool persisted = HdStudioPicking.RenamePickedAsset(_packFolder, _selectedAsset.Id, name, category, Log);
+			RefreshAssetRows();
+			RefreshSpriteGallery();
+			RefreshBackgroundRows();
+			SelectAsset(_selectedAsset, navigate: false);
+			SetStatus(persisted
+				? $"Saved metadata for {name}."
+				: "The name is updated in this session. Persistent custom names are available for picked assets; automatic discoveries are regenerated from measured evidence.");
+		}
+
+		private void SplitCandidates_Click(object? sender, RoutedEventArgs e)
+		{
+			if(_pausedLiveFrame == null) {
+				SetStatus("Pause live capture and pick an object first.");
+				return;
+			}
+			List<HdStudioCandidateRow> selectedRows = _gameplayCandidateList.SelectedItems?
+				.OfType<HdStudioCandidateRow>()
+				.Where(r => r.Pick != null).ToList() ?? new List<HdStudioCandidateRow>();
+			if(selectedRows.Count == 0) {
+				SetStatus("Select one or more candidate rows to split.");
+				return;
+			}
+			int savedCount = 0;
+			int part = 1;
+			foreach(HdStudioCandidateRow row in selectedRows) {
+				HdStudioPicking.PickCandidate source = row.Pick!;
+				foreach(HdStudioPicking.PauseSprite sprite in source.Sprites) {
+					HdStudioPicking.PickCandidate partCandidate = new() {
+						Kind = "hardwareSprite",
+						Name = "Split part " + part,
+						Detail = $"split from {source.Name}, render slot {sprite.Oam} part {sprite.Part}",
+						Confidence = 1.0
+					};
+					partCandidate.Sprites.Add(sprite);
+					HdStudioCatalogAsset asset = HdStudioPicking.BuildManualComposition(partCandidate, _pausedLiveFrame, _palette);
+					HdStudioPicking.SavePickedAsset(_packFolder, asset, Log);
+					part++;
+					savedCount++;
+				}
+				foreach(HdStudioPicking.PauseBackgroundTile tile in source.Background) {
+					HdStudioPicking.PickCandidate partCandidate = new() {
+						Kind = "backgroundTile",
+						Name = "Split background part " + part,
+						Detail = $"split from {source.Name}, nametable {tile.TileX},{tile.TileY}",
+						Confidence = 1.0
+					};
+					partCandidate.Background.Add(tile);
+					HdStudioCatalogAsset asset = HdStudioPicking.BuildManualComposition(partCandidate, _pausedLiveFrame, _palette);
+					HdStudioPicking.SavePickedAsset(_packFolder, asset, Log);
+					part++;
+					savedCount++;
+				}
+			}
+			RefreshFromDisk();
+			C<TextBlock>("CandidateHintText").Text = $"{savedCount} individual part(s) saved as persistent assets. Each keeps its original pattern and palette.";
+			SetStatus($"{savedCount} split asset(s) saved. Select any part in the Asset Library to edit it independently.");
 		}
 
 		private void PauseCapture_Click(object? sender, RoutedEventArgs e)

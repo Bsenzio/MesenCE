@@ -3,6 +3,7 @@
 #include "NES/INesMemoryHandler.h"
 #include "Utilities/ISerializable.h"
 #include "NES/NesTypes.h"
+#include "NES/NesConstants.h"
 
 enum class ConsoleRegion;
 
@@ -30,6 +31,28 @@ struct NesRenderedSpriteInfo
 	uint8_t Part;
 };
 
+//HD Studio v0.7: one background tile that was actually fetched and displayed by the
+//renderer during the frame. Unlike the end-of-frame nametable snapshot, this records
+//the pattern-table identity, palette, scroll and nametable cell at the moment the tile
+//was drawn, so mid-frame CHR bank changes and mapper 4 pattern-table switches are
+//captured correctly. X/Y are screen pixels; MapX/MapY are the 64x60 nametable-space
+//coordinates (two nametables horizontally, two vertically).
+struct NesRenderedBackgroundInfo
+{
+	int16_t X;
+	int16_t Y;
+	int32_t TileIndex;
+	uint32_t PaletteColors;
+	uint8_t TileData[16];
+	int16_t ScrollX;
+	int16_t ScrollY;
+	uint16_t NameTableAddress;
+	uint8_t MapX;
+	uint8_t MapY;
+	uint8_t Nametable;
+	uint8_t SpriteCount;
+};
+
 class BaseNesPpu : public INesMemoryHandler, public ISerializable
 {
 public:
@@ -37,6 +60,9 @@ public:
 	{
 		for(int i = 0; i < 128; i++) {
 			_renderedTileBySlotPart[i] = -1;
+		}
+		for(int i = 0; i < 1024; i++) {
+			_renderedBgSignature[i] = 0xFFFFFFFF;
 		}
 	}
 
@@ -121,6 +147,15 @@ protected:
 	int _renderedSpriteCount = 0;
 	NesRenderedSpriteInfo _lastRenderedSprites[128] = {};
 	int _lastRenderedSpriteCount = 0;
+	//HD Studio v0.7: render-time background evidence. One record per visible 8x8 cell
+	//(a mid-frame pattern change appends a second record for the same cell). The
+	//signature array is an O(1) de-duplication path and is reset at every frame.
+	NesRenderedBackgroundInfo _renderedBackgrounds[1024] = {};
+	int _renderedBackgroundCount = 0;
+	NesRenderedBackgroundInfo _lastRenderedBackgrounds[1024] = {};
+	int _lastRenderedBackgroundCount = 0;
+	uint32_t _renderedBgSignature[1024] = {};
+	bool _collectRenderedBackgrounds = false;
 	//Source primary-OAM entry for each secondary-OAM shifter slot. This preserves the
 	//hardware's documented OAM proximity evidence even though the PPU draws from
 	//secondary OAM (which does not retain the original slot number).
@@ -227,6 +262,79 @@ public:
 	{
 		count = _lastRenderedSpriteCount;
 		return _lastRenderedSprites;
+	}
+
+	//HD Studio v0.7: record the background tile identity at the first display pixel of
+	//each 8x8 cell. A different signature for the same cell (mid-frame CHR/pattern change)
+	//is appended as another evidence record instead of overwriting the first one.
+	void AddRenderedBackground(int16_t x, int16_t y, int32_t tileIndex, uint32_t paletteColors,
+		const uint8_t* tileData, int16_t scrollX, int16_t scrollY, uint16_t nameTableAddress,
+		uint8_t nametable, uint8_t spriteCount)
+	{
+		if(!_collectRenderedBackgrounds) {
+			return;
+		}
+		if(x < 0 || x >= NesConstants::ScreenWidth || y < 0 || y >= NesConstants::ScreenHeight) {
+			return;
+		}
+		int cell = ((y >> 3) * 32) + (x >> 3);
+		if(cell < 0 || cell >= 1024) {
+			return;
+		}
+		uint32_t signature = ((uint32_t)tileIndex * 2654435761u) ^ paletteColors ^
+			((uint32_t)nameTableAddress << 16) ^ ((uint32_t)(uint16_t)scrollX << 8) ^ (uint32_t)(uint16_t)scrollY;
+		if(tileData != nullptr) {
+			//CHR-RAM content is part of the identity (the pattern index alone is not stable).
+			for(int i = 0; i < 16; i += 4) {
+				signature ^= ((uint32_t)tileData[i] << 24) | ((uint32_t)tileData[i + 1] << 16) |
+					((uint32_t)tileData[i + 2] << 8) | tileData[i + 3];
+			}
+		}
+		if(_renderedBgSignature[cell] == signature) {
+			return;
+		}
+		_renderedBgSignature[cell] = signature;
+		if(_renderedBackgroundCount >= (int)(sizeof(_renderedBackgrounds) / sizeof(_renderedBackgrounds[0]))) {
+			return;
+		}
+		NesRenderedBackgroundInfo& info = _renderedBackgrounds[_renderedBackgroundCount++];
+		info.X = x;
+		info.Y = y;
+		info.TileIndex = tileIndex;
+		info.PaletteColors = paletteColors;
+		if(tileData != nullptr) {
+			memcpy(info.TileData, tileData, 16);
+		} else {
+			memset(info.TileData, 0, 16);
+		}
+		info.NameTableAddress = nameTableAddress;
+		info.Nametable = nametable & 0x03;
+		info.MapX = (uint8_t)(((nametable & 0x01) * 32) + (nameTableAddress & 0x1F));
+		info.MapY = (uint8_t)((((nametable >> 1) & 0x01) * 30) + ((nameTableAddress >> 5) & 0x1F));
+		//Derive the scroll from the actual nametable cell being displayed, not from the
+		//loopy v register (which points at the next fetch and increments during the line).
+		info.ScrollX = (int16_t)((((int)info.MapX * 8) - x) & 0x1FF);
+		info.ScrollY = (int16_t)((((int)info.MapY * 8) - y) & 0x1FF);
+		info.SpriteCount = spriteCount;
+	}
+
+	void CommitRenderedBackgrounds()
+	{
+		memcpy(_lastRenderedBackgrounds, _renderedBackgrounds, sizeof(NesRenderedBackgroundInfo) * (size_t)_renderedBackgroundCount);
+		_lastRenderedBackgroundCount = _renderedBackgroundCount;
+		_renderedBackgroundCount = 0;
+		for(int i = 0; i < 1024; i++) {
+			_renderedBgSignature[i] = 0xFFFFFFFF;
+		}
+	}
+
+	void EnableRenderedBackgroundCapture() { _collectRenderedBackgrounds = true; }
+	bool IsRenderedBackgroundCaptureEnabled() const { return _collectRenderedBackgrounds; }
+
+	const NesRenderedBackgroundInfo* GetLastRenderedBackgrounds(int& count) const
+	{
+		count = _lastRenderedBackgroundCount;
+		return _lastRenderedBackgrounds;
 	}
 
 	uint8_t GetSecondaryOamSource(uint32_t shifterSlot) const

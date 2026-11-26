@@ -39,6 +39,7 @@ namespace Mesen.HdStudio
 			public bool MatchBackgroundPriority;
 			public bool AllPaletteVariants;
 			public string ExtraCondition = "";
+			public string ConditionMapPath = "";
 			public bool Minimal;
 			public bool DryRun;
 		}
@@ -101,6 +102,7 @@ namespace Mesen.HdStudio
 				AllPaletteVariants = options.AllPaletteVariants,
 				ExtraCondition = options.ExtraCondition
 			};
+			LoadConditionMap(options.ConditionMapPath, settings, log);
 
 			HdStudioArtwork.ArtworkImage source = HdStudioArtwork.LoadImage(options.ImagePath);
 			if(settings.RemoveBackground) {
@@ -129,7 +131,8 @@ namespace Mesen.HdStudio
 				FlipH = t.FlipH,
 				FlipV = t.FlipV,
 				BackgroundPriority = t.BackgroundPriority,
-				Palette = t.Palette
+				Palette = t.Palette,
+				Condition = HdStudioArtwork.LookupCellCondition(settings.CellConditions, t.Pattern, t.X, t.Y) is { Length: > 0 } mapped ? mapped : settings.ExtraCondition
 			}).ToList();
 
 			uint[] original = HdStudioArtwork.RenderOriginal(tileSpecs, rom, nesPalette, Math.Max(8, asset.Width), Math.Max(8, asset.Height));
@@ -167,7 +170,8 @@ namespace Mesen.HdStudio
 
 			string hiresPath = Path.Combine(outFolder, "hires.txt");
 			if(!options.DryRun && !managed) {
-				WriteHires(hiresPath, sheetName, cells, packScale, rom, options.Minimal, settings.ExtraCondition, log);
+				string conditionSource = string.Join("&", new[] { settings.ExtraCondition }.Concat(settings.CellConditions.Values));
+				WriteHires(hiresPath, sheetName, cells, packScale, rom, options.Minimal, conditionSource, log);
 			}
 
 			string manifestPath = WriteManifest(importsFolder, slug, options, asset, cells, sheetName, width, height, targetWidth, targetHeight, packScale);
@@ -232,6 +236,12 @@ namespace Mesen.HdStudio
 				replacement.Settings.MatchBackgroundPriority = settings.MatchBackgroundPriority;
 				replacement.Settings.AllPaletteVariants = settings.AllPaletteVariants;
 				replacement.Settings.ExtraCondition = settings.ExtraCondition;
+				replacement.Settings.ContextRule = settings.ContextRule;
+				replacement.Settings.ContextStatus = settings.ContextStatus;
+				replacement.Settings.CellConditions.Clear();
+				foreach(KeyValuePair<string, string> pair in settings.CellConditions) {
+					replacement.Settings.CellConditions[pair.Key] = pair.Value;
+				}
 				replacement.Warnings.Clear();
 				if(sharedAssets.Count > 0) {
 					string names = string.Join(", ", sharedAssets.Take(6).Select(a => a.Name));
@@ -255,6 +265,40 @@ namespace Mesen.HdStudio
 			} catch(Exception ex) {
 				log("Import: warning: the project file could not be updated: " + ex.Message);
 				return null;
+			}
+		}
+
+		/// <summary>
+		/// Loads an automatic context-rule plan. The plan maps each observed pattern key to
+		/// a parser-supported standard Mesen condition expression. Keys are matched by the
+		/// same uppercase pattern/CHR-RAM identity used by the compiler.
+		/// </summary>
+		private static void LoadConditionMap(string path, HdStudioAdaptationSettings settings, Action<string> log)
+		{
+			if(string.IsNullOrWhiteSpace(path)) {
+				return;
+			}
+			try {
+				using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+				JsonElement root = doc.RootElement;
+				if(root.TryGetProperty("contextRule", out JsonElement rule) && rule.ValueKind == JsonValueKind.String) {
+					settings.ContextRule = rule.GetString() ?? "";
+				}
+				if(root.TryGetProperty("status", out JsonElement status) && status.ValueKind == JsonValueKind.String) {
+					settings.ContextStatus = status.GetString() ?? "";
+				}
+				if(root.TryGetProperty("cellConditions", out JsonElement cells) && cells.ValueKind == JsonValueKind.Object) {
+					foreach(JsonProperty property in cells.EnumerateObject()) {
+						string key = property.Name.Trim().ToUpperInvariant();
+						string value = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() ?? "" : "";
+						if(key.Length > 0 && value.Length > 0) {
+							settings.CellConditions[key] = value;
+						}
+					}
+				}
+				log($"Import: context plan loaded ({settings.CellConditions.Count} cell rule(s), status {settings.ContextStatus}).");
+			} catch(Exception ex) {
+				log("Import: warning: the context plan could not be read: " + ex.Message);
 			}
 		}
 

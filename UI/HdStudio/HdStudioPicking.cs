@@ -6,6 +6,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Mesen.HdStudio
 {
@@ -44,6 +45,8 @@ namespace Mesen.HdStudio
 			public int Y;
 			public int TileX;
 			public int TileY;
+			public int MapX;
+			public int MapY;
 			public int Tile;
 			public int PaletteIndex;
 			public string Palette = "";
@@ -51,6 +54,12 @@ namespace Mesen.HdStudio
 			public string ChrType = "";
 			public int ChrAddress = -1;
 			public string Data = "";
+			public int ScrollX;
+			public int ScrollY;
+			public int Nametable;
+			public int NametableAddress;
+			public int SpriteCount;
+			public string Evidence = "";
 		}
 
 		internal sealed class PauseFrame
@@ -65,6 +74,7 @@ namespace Mesen.HdStudio
 			public int SpritePatternAddr;
 			public int BackgroundPatternAddr;
 			public int MapperId;
+			public string BackgroundEvidence = "";
 			public readonly List<PauseSprite> Sprites = new();
 			public readonly List<PauseBackgroundTile> Background = new();
 
@@ -86,7 +96,8 @@ namespace Mesen.HdStudio
 						LargeSprites = GetBool(root, "largeSprites"),
 						SpritePatternAddr = GetInt(root, "spritePatternAddr"),
 						BackgroundPatternAddr = GetInt(root, "backgroundPatternAddr"),
-						MapperId = GetInt(root, "mapperId")
+						MapperId = GetInt(root, "mapperId"),
+						BackgroundEvidence = GetString(root, "backgroundEvidence")
 					};
 					frame.ScreenshotPath = string.IsNullOrEmpty(frame.Screenshot) ? "" :
 						Path.Combine(Path.GetDirectoryName(path) ?? "", frame.Screenshot);
@@ -116,13 +127,21 @@ namespace Mesen.HdStudio
 								Y = GetInt(item, "y"),
 								TileX = GetInt(item, "tileX"),
 								TileY = GetInt(item, "tileY"),
+								MapX = GetInt(item, "mapX", GetInt(item, "tileX")),
+								MapY = GetInt(item, "mapY", GetInt(item, "tileY")),
 								Tile = GetInt(item, "tile"),
 								PaletteIndex = GetInt(item, "paletteIndex"),
 								Palette = GetString(item, "palette"),
 								Pattern = GetString(item, "pattern"),
 								ChrType = GetString(item, "chrType"),
 								ChrAddress = GetInt(item, "chrAddress", -1),
-								Data = GetString(item, "data")
+								Data = GetString(item, "data"),
+								ScrollX = GetInt(item, "scrollX"),
+								ScrollY = GetInt(item, "scrollY"),
+								Nametable = GetInt(item, "nametable"),
+								NametableAddress = GetInt(item, "nametableAddress"),
+								SpriteCount = GetInt(item, "spriteCount"),
+								Evidence = GetString(item, "evidence")
 							});
 						}
 					}
@@ -398,6 +417,50 @@ namespace Mesen.HdStudio
 			return path;
 		}
 
+		/// <summary>
+		/// Persists a user-visible name and category for a picked asset. The name is part
+		/// of the asset record, not derived from the ROM or hardware key, and survives a
+		/// later --assets export. Automatic discovery assets keep their measured names.
+		/// </summary>
+		public static bool RenamePickedAsset(string packFolder, string assetId, string name, string category, Action<string>? log = null)
+		{
+			string path = Path.Combine(packFolder, HdStudioReport.StudioFolderName, "live", PickedFileName);
+			if(!File.Exists(path)) {
+				return false;
+			}
+			try {
+				JsonNode? root = JsonNode.Parse(File.ReadAllText(path));
+				if(root is not JsonObject document || document["assets"] is not JsonArray assets) {
+					return false;
+				}
+				bool changed = false;
+				foreach(JsonNode? node in assets) {
+					if(node is JsonObject asset && string.Equals(asset["id"]?.GetValue<string>(), assetId, StringComparison.OrdinalIgnoreCase)) {
+						asset["name"] = name;
+						asset["customCategory"] = category;
+						changed = true;
+						break;
+					}
+				}
+				if(!changed) {
+					return false;
+				}
+				string temp = path + ".tmp";
+				using(MemoryStream stream = new()) {
+					using(Utf8JsonWriter writer = new(stream, new JsonWriterOptions() { Indented = true })) {
+						document.WriteTo(writer);
+					}
+					File.WriteAllBytes(temp, stream.ToArray());
+				}
+				File.Move(temp, path, true);
+				log?.Invoke($"Asset metadata updated: {name} ({assetId}).");
+				return true;
+			} catch(Exception ex) {
+				log?.Invoke("Asset metadata could not be updated: " + ex.Message);
+				return false;
+			}
+		}
+
 		/// <summary>Merged into assets.json by the exporter so a subsequent --assets run
 		/// never loses a user selection made during live play.</summary>
 		public static List<JsonElement> ReadPickedAssetElements(string packFolder)
@@ -425,6 +488,7 @@ namespace Mesen.HdStudio
 			json.WriteString("kind", asset.Kind);
 			json.WriteString("name", asset.Name);
 			json.WriteString("label", asset.Label);
+			json.WriteString("customCategory", asset.CustomCategory);
 			json.WriteString("source", asset.Source);
 			json.WriteString("provenance", asset.Provenance);
 			json.WriteNumber("confidence", Math.Round(asset.Confidence, 2));

@@ -6,7 +6,7 @@
 > and standard Mesen HD Pack export. The original ROM and gameplay are never modified.
 > Changes started on 2026-11-18. Distributed under the same GPLv3 license.
 >
-> **v0.3 Alpha:** [HDSTUDIO.md](HDSTUDIO.md) · [full engineering report](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.3.md) ·
+> **v0.7 Alpha:** [HDSTUDIO.md](HDSTUDIO.md) · [full engineering report](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/docs/FINAL_ENGINEERING_REPORT_v0.7.md) ·
 > [media gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GALLERY.md) ·
 > [game gallery](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/GAMES.md) ·
 > [AI-enhanced experiments](https://git.capricorn.co.jp/senziosavino_b/RetroArcDo_HDStudio/blob/main/AI_ENHANCEMENTS.md)

@@ -282,6 +282,18 @@
               <TextBlock Text="Export" FontSize="9.5" HorizontalAlignment="Center" />
             </StackPanel>
           </Button>
+          <Button Classes="nav" Tag="library" Click="Navigate_Click" ToolTip.Tip="ROM library">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.Folder}" />
+              <TextBlock Text="Library" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Classes="nav" Tag="batch" Click="Navigate_Click" ToolTip.Tip="Batch processing">
+            <StackPanel Spacing="3">
+              <Path Classes="icon" Data="{StaticResource Icon.List}" />
+              <TextBlock Text="Batch" FontSize="9.5" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <Border Classes="divider" Margin="8,6" />
           <Button Classes="nav" Tag="settings" Click="Navigate_Click" ToolTip.Tip="Settings and project">
             <StackPanel Spacing="3">
@@ -387,7 +399,7 @@
                   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                     <StackPanel Spacing="12">
                       <Border Classes="badge" HorizontalAlignment="Left">
-                        <TextBlock Text="RETROARCDO HD STUDIO - v0.6 ALPHA" />
+                        <TextBlock Text="RETROARCDO HD STUDIO - v0.7 ALPHA" />
                       </Border>
                       <TextBlock Classes="h1" Text="Remember the game.&#10;Reimagine the art." TextWrapping="Wrap" MaxWidth="680" />
                       <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" MaxWidth="660"
@@ -608,6 +620,12 @@
                       </Grid>
                       <ListBox Name="GameplayCandidateList" MaxHeight="190" SelectionMode="Multiple" ItemTemplate="{StaticResource CandidateTemplate}" />
                       <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                        <Button Name="SplitCandidatesButton" Classes="subtle" Click="SplitCandidates_Click" ToolTip.Tip="Split the selected composition into its individual hardware cells">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Path Classes="icon small" Data="{StaticResource Icon.Grid2x2}" />
+                            <TextBlock Text="Split selection" />
+                          </StackPanel>
+                        </Button>
                         <Button Name="GroupCandidatesButton" Classes="subtle" Click="GroupCandidates_Click" ToolTip.Tip="Merge the selected hardware sprites into one manual composition">
                           <StackPanel Orientation="Horizontal" Spacing="5">
                             <Path Classes="icon small" Data="{StaticResource Icon.Layers}" />
@@ -1231,7 +1249,7 @@
                       </Grid>
                       <CheckBox Name="DefaultGridCheck" Content="Show NES tile grid by default" IsChecked="True" Click="DefaultGrid_Click" />
                       <CheckBox Name="DefaultCheckerCheck" Content="Show transparency checkerboard" IsChecked="True" Click="DefaultChecker_Click" />
-                      <TextBlock Classes="caption" Text="Dark is the validated v0.6 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
+                      <TextBlock Classes="caption" Text="Dark is the validated v0.7 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                   <Border Grid.Column="2" Classes="panel" Padding="14">
@@ -1280,7 +1298,7 @@
                     <ProgressBar Name="BuildProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
                     <TextBlock Name="ProjectSummaryText" Classes="caption" TextWrapping="Wrap" />
                     <TextBlock Name="ValidationText" Classes="caption" TextWrapping="Wrap" />
-                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.6 Alpha - Original NES geometry preserved." />
+                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.7 Alpha - Original NES geometry preserved." />
                   </StackPanel>
                 </Border>
 
@@ -1298,6 +1316,228 @@
                 </Border>
               </StackPanel>
             </ScrollViewer>
+          </Grid>
+
+          <!-- ROM LIBRARY -->
+          <Grid Name="LibraryPage" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <StackPanel>
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="ROM Library" />
+                <TextBlock Classes="caption" Margin="0,6,0,0" Text="Browse the local NES catalog, find existing projects and open a game for discovery." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Border Classes="badge"><TextBlock Name="LibraryCountBadge" Text="0 GAMES" /></Border>
+                <Button Classes="cta" Click="OpenSelectedRom_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Gamepad2}" />
+                    <TextBlock Text="Open game" />
+                  </StackPanel>
+                </Button>
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" Classes="panel" Padding="10" Margin="0,0,0,9">
+              <StackPanel Spacing="7">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                  <StackPanel>
+                    <TextBlock Text="ROM library folder" Classes="caption" />
+                    <TextBox Name="LibraryRootBox" PlaceholderText="Choose the folder that contains your NES ROMs" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="subtle" Click="BrowseLibrary_Click" VerticalAlignment="Bottom" Margin="0,0,0,1">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                      <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+                      <TextBlock Text="Browse" />
+                    </StackPanel>
+                  </Button>
+                  <Button Grid.Column="2" Classes="subtle" Click="RefreshLibrary_Click" VerticalAlignment="Bottom" Margin="0,0,0,1">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                      <Path Classes="icon small" Data="{StaticResource Icon.RefreshCw}" />
+                      <TextBlock Text="Refresh" />
+                    </StackPanel>
+                  </Button>
+                </Grid>
+                <Grid ColumnDefinitions="2*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                  <TextBox Name="LibrarySearchBox" PlaceholderText="Search titles..." TextChanged="LibrarySearch_TextChanged" />
+                  <ComboBox Grid.Column="1" Name="LibraryMapperFilter" Width="130" SelectedIndex="0" SelectionChanged="LibraryFilter_Changed">
+                    <ComboBoxItem Content="All mappers" />
+                    <ComboBoxItem Content="Mapper 0" />
+                    <ComboBoxItem Content="Mapper 1" />
+                    <ComboBoxItem Content="Mapper 2" />
+                    <ComboBoxItem Content="Mapper 3" />
+                    <ComboBoxItem Content="Mapper 4" />
+                    <ComboBoxItem Content="Mapper 5" />
+                    <ComboBoxItem Content="Other" />
+                  </ComboBox>
+                  <ComboBox Grid.Column="2" Name="LibraryChrFilter" Width="120" SelectedIndex="0" SelectionChanged="LibraryFilter_Changed">
+                    <ComboBoxItem Content="All CHR" />
+                    <ComboBoxItem Content="CHR-ROM" />
+                    <ComboBoxItem Content="CHR-RAM" />
+                  </ComboBox>
+                  <ComboBox Grid.Column="3" Name="LibraryStatusFilter" Width="150" SelectedIndex="0" SelectionChanged="LibraryFilter_Changed">
+                    <ComboBoxItem Content="Any project state" />
+                    <ComboBoxItem Content="Existing project" />
+                    <ComboBoxItem Content="Has HD Pack" />
+                    <ComboBoxItem Content="Never opened" />
+                  </ComboBox>
+                  <Button Grid.Column="4" Classes="tool" Click="ClearLibraryFilters_Click" ToolTip.Tip="Clear library filters">
+                    <Path Classes="icon" Data="{StaticResource Icon.X}" />
+                  </Button>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+              <ListBox Name="RomLibraryList" Classes="assetList" SelectionChanged="RomLibraryList_SelectionChanged" DoubleTapped="RomLibraryList_DoubleTapped"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="assetCard" Margin="2" Padding="6">
+                      <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="9">
+                        <Border Width="64" Height="56" Background="{DynamicResource StudioCanvasBrush}" CornerRadius="4" ClipToBounds="True">
+                          <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="2" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" MaxLines="1" />
+                          <TextBlock Text="{Binding Detail}" Classes="caption" FontSize="10" MaxLines="1" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Spacing="3">
+                          <Border Classes="badge" IsVisible="{Binding HasProject}"><TextBlock Text="PROJECT" /></Border>
+                          <Border Classes="badge success" IsVisible="{Binding HasHdPack}"><TextBlock Text="HD PACK" /></Border>
+                          <TextBlock Text="{Binding ReplacementStatus}" Classes="caption" FontSize="9.5" HorizontalAlignment="Right" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel Grid.Column="1" Width="180" Margin="8,0,0,0" Spacing="5">
+                <Border Classes="card" Padding="10">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="section" Text="SELECTED ROM" />
+                    <TextBlock Name="LibrarySelectedName" Classes="h3" Text="No game selected" TextWrapping="Wrap" />
+                    <TextBlock Name="LibrarySelectedDetail" Classes="caption" TextWrapping="Wrap" />
+                    <TextBlock Name="LibrarySelectedPath" Classes="mono" FontSize="9.5" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+                <Button Classes="cta" Click="OpenSelectedRom_Click" HorizontalAlignment="Stretch">
+                  <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Scan}" />
+                    <TextBlock Text="Discover this game" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="subtle" Click="OpenLibraryProject_Click" HorizontalAlignment="Stretch" Content="Open existing project" />
+                <TextBlock Name="LibraryStatusText" Classes="caption" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="3" Classes="panel" Padding="9" Margin="0,9,0,0">
+              <TextBlock Name="LibraryFooterText" Classes="caption" Text="Choose a library folder to begin. Thumbnails are loaded asynchronously; thousands of entries stay responsive." TextWrapping="Wrap" />
+            </Border>
+          </Grid>
+
+          <!-- BATCH PROCESSING -->
+          <Grid Name="BatchPage" IsVisible="False" RowDefinitions="Auto,Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+              <StackPanel>
+                <TextBlock Classes="h2" Margin="0,0,0,8" Text="Batch Processing" />
+                <TextBlock Classes="caption" Margin="0,6,0,0" Text="Run the resumable deterministic queue without typing commands. Selection, depth, mode and workers stay visible." />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Border Classes="badge"><TextBlock Name="BatchCountBadge" Text="0 SELECTED" /></Border>
+                <Button Classes="subtle" Click="BatchSelectAll_Click" Content="Select all" />
+                <Button Classes="subtle" Click="BatchSelectEligible_Click" Content="All eligible" />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" Classes="panel" Padding="10" Margin="0,0,0,9">
+              <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="8">
+                <StackPanel>
+                  <TextBlock Text="Capture depth" Classes="caption" />
+                  <ComboBox Name="BatchDepthBox" SelectedIndex="0" Width="170">
+                    <ComboBoxItem Content="Deep gameplay (1,800 frames)" />
+                    <ComboBoxItem Content="Quick scan (300 frames)" />
+                    <ComboBoxItem Content="Extended (6,000 frames)" />
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="Replacement mode" Classes="caption" />
+                  <ComboBox Name="BatchModeBox" SelectedIndex="0" Width="150">
+                    <ComboBoxItem Content="Sprite / object" />
+                    <ComboBoxItem Content="Background" />
+                    <ComboBoxItem Content="Automatic" />
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Workers" Classes="caption" />
+                  <NumericUpDown Name="BatchWorkersBox" Minimum="1" Maximum="16" Value="3" Increment="1" Width="100" />
+                </StackPanel>
+                <CheckBox Grid.Column="3" Name="BatchAllowSharedCheck" Content="Allow shared-key measurements" VerticalAlignment="Bottom" />
+                <Button Grid.Column="4" Classes="cta" Click="BatchStart_Click" VerticalAlignment="Bottom">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Play}" />
+                    <TextBlock Text="Start" />
+                  </StackPanel>
+                </Button>
+                <Button Grid.Column="5" Classes="subtle" Click="BatchPause_Click" VerticalAlignment="Bottom" Content="Pause" />
+                <Button Grid.Column="6" Classes="subtle" HorizontalAlignment="Left" Click="BatchResume_Click" VerticalAlignment="Bottom" Content="Resume" />
+              </Grid>
+            </Border>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+              <ListBox Name="BatchGameList" Classes="assetList" SelectionMode="Multiple">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="assetCard" Margin="2" Padding="6">
+                      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" Click="BatchRow_Checked" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Spacing="1">
+                          <TextBlock Text="{Binding Name}" FontWeight="SemiBold" MaxLines="1" />
+                          <TextBlock Text="{Binding SelectionLabel}" Classes="caption" FontSize="10" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                          <TextBlock Text="{Binding Status}" Classes="mono" FontSize="10" />
+                          <TextBlock Text="{Binding Detail}" Classes="caption" FontSize="9.5" MaxLines="1" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel Grid.Column="1" Width="220" Margin="8,0,0,0" Spacing="6">
+                <Border Classes="card" Padding="10">
+                  <StackPanel Spacing="5">
+                    <TextBlock Classes="section" Text="RUN STATUS" />
+                    <ProgressBar Name="BatchProgress" Height="7" Minimum="0" Maximum="100" Value="0" />
+                    <TextBlock Name="BatchStatusText" Classes="caption" TextWrapping="Wrap" Text="Idle. Select games and press Start." />
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="5">
+                      <StackPanel><TextBlock Text="Processed" Classes="caption" /><TextBlock Name="BatchProcessedText" Classes="mono" Text="0" /></StackPanel>
+                      <StackPanel Grid.Column="1"><TextBlock Text="Verified" Classes="caption" /><TextBlock Name="BatchVerifiedText" Classes="mono" Text="0" /></StackPanel>
+                      <StackPanel Grid.Row="1"><TextBlock Text="Shared" Classes="caption" /><TextBlock Name="BatchSharedText" Classes="mono" Text="0" /></StackPanel>
+                      <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="Failed" Classes="caption" /><TextBlock Name="BatchFailedText" Classes="mono" Text="0" /></StackPanel>
+                    </Grid>
+                  </StackPanel>
+                </Border>
+                <Button Classes="subtle" Click="BatchOpenResults_Click" HorizontalAlignment="Stretch" Content="Open results" />
+                <Button Classes="subtle" Click="BatchOpenFailures_Click" HorizontalAlignment="Stretch" Content="Review failures" />
+                <Button Classes="subtle" Click="BatchOpenProjects_Click" HorizontalAlignment="Stretch" Content="Open generated projects" />
+                <Button Classes="subtle" Click="BatchCancel_Click" HorizontalAlignment="Stretch" Content="Cancel run" />
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="The queue is resumable and keyed by ROM hash and engine build. Advanced validation stays in this workspace, separate from artwork editing." />
+              </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="3" Classes="panel" Padding="9" Margin="0,9,0,0">
+              <TextBlock Name="BatchFooterText" Classes="caption" Text="No batch job running." TextWrapping="Wrap" />
+            </Border>
           </Grid>
         </Grid>
 
@@ -1508,6 +1748,29 @@
                   <StackPanel Grid.Row="1"><TextBlock Text="Source artwork" Classes="caption" /><TextBlock Name="SourceSizeText" Classes="mono" Text="—" /></StackPanel>
                   <StackPanel Grid.Row="1" Grid.Column="1"><TextBlock Text="Output scale" Classes="caption" /><TextBlock Name="InspectorScaleText" Classes="mono" Text="4×" /></StackPanel>
                 </Grid>
+              </StackPanel>
+
+              <Border Classes="divider" />
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="section" Text="ASSET METADATA" />
+                <TextBlock Text="Name" Classes="caption" />
+                <TextBox Name="AssetNameBox" PlaceholderText="User-visible asset name" />
+                <TextBlock Text="Category" Classes="caption" />
+                <TextBox Name="AssetCategoryBox" PlaceholderText="Sprites, Backgrounds, Bosses, Collectibles..." />
+                <Button Classes="subtle" Click="SaveAssetMetadata_Click" HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Path Classes="icon small" Data="{StaticResource Icon.Save}" />
+                    <TextBlock Text="Save name &amp; category" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="subtle" Click="AnalyzeContext_Click" HorizontalAlignment="Left">
+                  <StackPanel Orientation="Horizontal" Spacing="5">
+                    <Path Classes="icon small" Data="{StaticResource Icon.ShieldCheck}" />
+                    <TextBlock Text="Analyze standard context" />
+                  </StackPanel>
+                </Button>
+                <TextBlock Classes="caption" FontSize="9.5" TextWrapping="Wrap" Text="Picked assets keep custom names and categories across exports. Automatic discovery names remain measured." />
               </StackPanel>
 
               <Border Classes="divider" />

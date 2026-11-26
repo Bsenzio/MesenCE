@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -32,7 +33,7 @@ namespace Mesen.HdStudio
 		private readonly List<string> _hdStateHashes = new();
 		private readonly List<string> _originalStateHashes = new();
 
-		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log, int verifyAt = -1)
+		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log, IReadOnlyList<int>? verifyAtFrames = null)
 		{
 			_romPath = romPath;
 			_moviePath = moviePath;
@@ -43,12 +44,17 @@ namespace Mesen.HdStudio
 			_log = log;
 
 			shots = Math.Clamp(shots, 1, 20);
-			if(verifyAt > 0) {
-				//Exact-scene replay: the caller selected a frame from a deterministic
-				//capture and needs the screenshots at that same frame, not at evenly
-				//spaced checkpoints. This is what makes target-presence validation
-				//possible instead of inferring it from a later scene.
-				_checkpoints.Add((uint)verifyAt);
+			if(verifyAtFrames != null && verifyAtFrames.Count > 0) {
+				//Exact-scene replay: the caller selected frames from a deterministic
+				//capture and needs the screenshots at those same frames, not at evenly
+				//spaced checkpoints. Multiple scenes make it possible to distinguish a
+				//translation-independent rule from a one-screenshot coincidence.
+				foreach(int frame in verifyAtFrames.Where(f => f > 0).Distinct().OrderBy(f => f).Take(24)) {
+					_checkpoints.Add((uint)frame);
+				}
+				if(_checkpoints.Count == 0) {
+					_checkpoints.Add(120);
+				}
 			} else {
 				for(int i = 1; i <= shots; i++) {
 					_checkpoints.Add((uint)Math.Max(10, (long)frames * i / (shots + 1)));
@@ -167,7 +173,10 @@ namespace Mesen.HdStudio
 		/// <summary>Runs at maximum speed until close to the target, then frame by frame (both passes stop on the exact same frame)</summary>
 		private bool RunToFrame(uint target)
 		{
-			const int TimeoutSeconds = 120;
+			//Captured exact frames are normally only a few thousand frames away.
+			//A reset loop or a game that hides the frame counter must not block the
+			//whole batch for minutes: report that checkpoint as unreachable and move on.
+			const int TimeoutSeconds = 90;
 			Stopwatch sw = Stopwatch.StartNew();
 			string State() => $"frame={GetFrame()} paused={EmuApi.IsPaused()} running={EmuApi.IsRunning()}";
 

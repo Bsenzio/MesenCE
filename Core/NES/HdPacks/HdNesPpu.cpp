@@ -16,6 +16,7 @@ HdNesPpu::HdNesPpu(NesConsole* console, HdPackData* hdData) : NesPpu(console)
 	_info = _screenInfo[0];
 	_forceRemoveSpriteLimit = (_hdData->OptionFlags & (int)HdPackOptions::NoSpriteLimit) != 0;
 	EnableRenderedSpriteCapture();
+	EnableRenderedBackgroundCapture();
 }
 
 HdNesPpu::~HdNesPpu()
@@ -26,9 +27,11 @@ HdNesPpu::~HdNesPpu()
 
 void* HdNesPpu::OnBeforeSendFrame()
 {
-	//The visible scanlines are complete: publish the exact rendered-sprite evidence for
-	//the Lua/live-capture endFrame callback before the screen-info buffer rotates.
+	//The visible scanlines are complete: publish the exact rendered-sprite and
+	//rendered-background evidence for the Lua/live-capture endFrame callback before
+	//the screen-info buffer rotates.
 	CommitRenderedSprites();
+	CommitRenderedBackgrounds();
 
 	HdScreenInfo* info = _info;
 	info->FrameNumber = _frameCount;

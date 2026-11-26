@@ -5,6 +5,41 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
+## v0.7 Alpha - independent context replacement, render-time backgrounds, native library and batch workspaces (2026-11-26)
+
+Implemented in this release:
+
+- **Render-time background evidence:** `emu.getRenderedBackgroundInfo()` returns the
+  background tiles that actually contributed pixels to the displayed frame, with
+  mapper-resolved CHR identity, palette, nametable cell, scroll-at-render-time, screen
+  position and dynamic pattern changes. The live capture records this evidence per
+  sampled frame (`HdStudio/live/live-background-frames.tsv`) instead of relying on the
+  end-of-frame nametable/scroll state.
+- **Automatic standard context plans:** `--propose-context=FILE --asset=ID` finds the
+  selected composition across captured scenes, measures intended/unrelated cells and
+  emits only parser-supported `spriteNearby`, `tileNearby`, `hmirror`, `vmirror`,
+  `bgpriority` and `positionCheckX/Y` conditions. A per-cell map is persisted so each
+  part of a composition can be anchored on a different neighbour.
+- **Conservative independence classes:** strict independent, contextually isolated
+  across multiple verified scenes, scene-isolated, explicitly shared, unresolved and
+  failed. A single screenshot never promotes a rule to globally independent.
+- **Multi-scene exact-scene verification:** `--verify-at=FRAME1,FRAME2,...` replays
+  several deterministic frames in one HD/original pass and measures every captured
+  occurrence footprint.
+- **Native ROM Library workspace:** folder selection, alphabetical/search/mapper/CHR/
+  project filters, asynchronous local thumbnails and direct project opening.
+- **Native Batch workspace:** selection, all-eligible selection, capture depth,
+  replacement mode, worker count, start/pause/resume/cancel, progress, result and
+  failure review, with the resumable queue still keyed by ROM hash and engine build.
+- **Manual split and persistent metadata:** split a composition into individual
+  hardware-cell assets; custom names and categories are persisted for picked assets.
+- **Regression fixture:** offline context-planner test checks multi-scene matching and
+  rejects render-order-impossible below/right neighbour conditions.
+
+Measured results, including the 300-game target and the SMB3 background case, are in
+`docs/FINAL_ENGINEERING_REPORT_v0.7.md`. Reported v0.6 numbers below are historical
+unless explicitly reproduced.
+
 ## v0.6 Alpha - large-scale remastering validation and generalized engine work (2026-11-26)
 
 Implemented in this release:

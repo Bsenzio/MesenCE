@@ -20,6 +20,7 @@ struct NesTileInfoEx
 {
 	uint32_t AbsoluteTileAddr;
 	uint16_t TileAddr;
+	uint16_t NameTableAddress;
 	uint8_t OffsetY;
 };
 
@@ -98,6 +99,7 @@ public:
 		uint16_t tileAddr = (tileIndex << 4) | (_videoRamAddr >> 12) | _control.BackgroundPatternAddr;
 
 		_nextTileEx.OffsetY = _videoRamAddr >> 12;
+		_nextTileEx.NameTableAddress = GetNameTableAddr();
 		_nextTileEx.AbsoluteTileAddr = _mapper->GetPpuAbsoluteAddress(tileAddr).Address;
 	}
 
@@ -202,6 +204,23 @@ public:
 				}
 				tileInfo.Tile.OffsetY = lastTileEx.OffsetY;
 				tileInfo.Tile.OffsetX = (_xScroll + ((_cycle - 1) & 0x07)) & 0x07;
+
+				//HD Studio v0.7: render-time background evidence. Sampling at the first
+				//pixel of each 8x8 screen cell keeps the cost proportional to 960 cells
+				//instead of 61,440 pixels. The mapper-resolved pattern identity, palette
+				//and scroll are those used while this tile was actually drawn.
+				if(_collectRenderedBackgrounds && ((_cycle - 1) & 0x07) == 0 && (_scanline & 0x07) == 0) {
+					uint8_t tileData[16] = {};
+					if(_isChrRam) {
+						memcpy(tileData, tileInfo.Tile.TileData, 16);
+					} else {
+						_console->GetMapper()->CopyChrTile(lastTileEx.AbsoluteTileAddr & 0xFFFFFFF0, tileData);
+					}
+					AddRenderedBackground((int16_t)(_cycle - 1), _scanline, (int32_t)(lastTileEx.AbsoluteTileAddr / 16),
+						tileInfo.Tile.PaletteColors, tileData, (int16_t)GetHorizontalScroll(), (int16_t)GetVerticalScroll(),
+						lastTileEx.NameTableAddress, (uint8_t)((lastTileEx.NameTableAddress >> 10) & 0x03),
+						tileInfo.SpriteCount);
+				}
 			} else {
 				tileInfo.Tile.TileIndex = HdPpuTileInfo::NoTile;
 			}

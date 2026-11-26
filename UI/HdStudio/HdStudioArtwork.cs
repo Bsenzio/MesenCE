@@ -37,6 +37,9 @@ namespace Mesen.HdStudio
 			public bool FlipV;
 			public bool BackgroundPriority;
 			public string Palette = "";
+			/// <summary>Optional per-cell raw condition expression (parser-supported tokens,
+			/// '&amp;'-separated). Empty uses the asset-wide ExtraCondition.</summary>
+			public string Condition = "";
 		}
 
 		internal sealed class Cell
@@ -308,7 +311,11 @@ namespace Mesen.HdStudio
 				if(string.IsNullOrEmpty(key)) {
 					continue;
 				}
-				string condition = GetCondition(tile, mirrorConditions, matchBackgroundPriority, extraCondition);
+				//A cell-specific rule wins over the asset-wide expression. This is how a
+				//composition anchors each tile on a different neighbour; forcing one
+				//global rule would match only one cell of the object.
+				string condition = GetCondition(tile, mirrorConditions, matchBackgroundPriority,
+					string.IsNullOrWhiteSpace(tile.Condition) ? extraCondition : tile.Condition);
 
 				//The same original object can be drawn with several sprite/background palettes.
 				//A user replacement is visual content, not a palette, so it applies to every
@@ -404,6 +411,24 @@ namespace Mesen.HdStudio
 				return tile.TileData.ToUpperInvariant();
 			}
 			return tile.Pattern.ToUpperInvariant();
+		}
+
+		/// <summary>
+		/// Resolves a per-cell rule. "PATTERN@X,Y" wins over the pattern-wide "PATTERN"
+		/// entry, so a repeated pattern can use a different neighbor anchor at each
+		/// position in the composition without affecting other uses of the pattern.
+		/// </summary>
+		public static string LookupCellCondition(IReadOnlyDictionary<string, string> map, string pattern, int x, int y)
+		{
+			if(map == null || map.Count == 0) {
+				return "";
+			}
+			string key = (pattern ?? "").Trim().ToUpperInvariant();
+			if(map.TryGetValue(key + "@" + x.ToString(CultureInfo.InvariantCulture) + "," + y.ToString(CultureInfo.InvariantCulture), out string? exact) &&
+				!string.IsNullOrWhiteSpace(exact)) {
+				return exact;
+			}
+			return map.TryGetValue(key, out string? broad) && !string.IsNullOrWhiteSpace(broad) ? broad : "";
 		}
 
 		public static bool IsCustomConditionToken(string token)

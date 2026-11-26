@@ -124,6 +124,69 @@ namespace Mesen.HdStudio
 		public string When { get; init; } = "";
 	}
 
+	internal sealed class HdStudioRomRow : INotifyPropertyChanged
+	{
+		public string Name { get; init; } = "";
+		public string Path { get; init; } = "";
+		public string Mapper { get; init; } = "";
+		public string ChrType { get; init; } = "";
+		public string ProjectStatus { get; init; } = "";
+		public string CaptureStatus { get; init; } = "";
+		public string ReplacementStatus { get; init; } = "";
+		public string HdPackStatus { get; init; } = "";
+		public bool HasProject { get; init; }
+		public bool HasHdPack { get; init; }
+		public string Detail => $"{Mapper} · {ChrType} · {CaptureStatus} · {ReplacementStatus}";
+		private Bitmap? _thumbnail;
+		private bool _loaded;
+		public Bitmap? Thumbnail {
+			get {
+				if(!_loaded) {
+					_loaded = true;
+					_thumbnail = Load();
+				}
+				return _thumbnail;
+			}
+		}
+		public Func<HdStudioRomRow, Bitmap?>? ThumbnailLoader { get; set; }
+		private Bitmap? Load() => ThumbnailLoader?.Invoke(this);
+		public void SetThumbnail(Bitmap? bitmap)
+		{
+			_loaded = true;
+			_thumbnail = bitmap;
+			PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Thumbnail)));
+		}
+		public event PropertyChangedEventHandler? PropertyChanged;
+	}
+
+	internal sealed class HdStudioBatchRow : INotifyPropertyChanged
+	{
+		public string Name { get; init; } = "";
+		public string Path { get; init; } = "";
+		public string Sha256 { get; init; } = "";
+		public string Mapper { get; init; } = "";
+		public string ChrType { get; init; } = "";
+		public bool Eligible { get; init; } = true;
+		private bool _selected;
+		private string _status = "Queued";
+		private string _detail = "";
+		public bool IsSelected {
+			get => _selected;
+			set { if(_selected != value) { _selected = value; OnPropertyChanged(); } }
+		}
+		public string Status {
+			get => _status;
+			set { if(_status != value) { _status = value; OnPropertyChanged(); } }
+		}
+		public string Detail {
+			get => _detail;
+			set { if(_detail != value) { _detail = value; OnPropertyChanged(); } }
+		}
+		public string SelectionLabel => Mapper + " · " + ChrType;
+		public event PropertyChangedEventHandler? PropertyChanged;
+		private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+	}
+
 	internal sealed class HdStudioCandidateRow
 	{
 		public HdStudioCatalogAsset Asset { get; init; } = null!;
