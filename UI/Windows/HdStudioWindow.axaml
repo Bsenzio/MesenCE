@@ -194,6 +194,9 @@
           <Button Name="StopCaptureButton" Classes="tool" Click="StopCapture_Click" ToolTip.Tip="Stop capture" AutomationProperties.Name="Stop capture" IsEnabled="False">
             <Path Classes="icon" Data="{StaticResource Icon.Square}" />
           </Button>
+          <Button Classes="tool" Click="OpenArchaeology_Click" ToolTip.Tip="RetroArchaeology: discover graphics from the ROM without gameplay" AutomationProperties.Name="RetroArchaeology">
+            <Path Classes="icon accent" Data="{StaticResource Icon.Pickaxe}" />
+          </Button>
           <Button Classes="tool" Click="Browse_Click" ToolTip.Tip="Import artwork" AutomationProperties.Name="Import artwork">
             <Path Classes="icon" Data="{StaticResource Icon.ImagePlus}" />
           </Button>
@@ -399,7 +402,7 @@
                   <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                     <StackPanel Spacing="12">
                       <Border Classes="badge" HorizontalAlignment="Left">
-                        <TextBlock Text="RETROARCDO HD STUDIO - v0.7 ALPHA" />
+                        <TextBlock Text="RETROARCDO HD STUDIO - v0.9 ALPHA" />
                       </Border>
                       <TextBlock Classes="h1" Text="Remember the game.&#10;Reimagine the art." TextWrapping="Wrap" MaxWidth="680" />
                       <TextBlock Classes="muted" FontSize="13" TextWrapping="Wrap" MaxWidth="660"
@@ -427,6 +430,12 @@
                           <StackPanel Orientation="Horizontal" Spacing="7">
                             <Path Classes="icon small" Data="{StaticResource Icon.Sparkles}" />
                             <TextBlock Text="Open Example Project" />
+                          </StackPanel>
+                        </Button>
+                        <Button Click="OpenArchaeology_Click" Margin="0,0,8,8" Padding="14,9">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Path Classes="icon small accent" Data="{StaticResource Icon.Pickaxe}" />
+                            <TextBlock Text="RetroArchaeology" FontWeight="SemiBold" />
                           </StackPanel>
                         </Button>
                       </WrapPanel>
@@ -1249,7 +1258,7 @@
                       </Grid>
                       <CheckBox Name="DefaultGridCheck" Content="Show NES tile grid by default" IsChecked="True" Click="DefaultGrid_Click" />
                       <CheckBox Name="DefaultCheckerCheck" Content="Show transparency checkerboard" IsChecked="True" Click="DefaultChecker_Click" />
-                      <TextBlock Classes="caption" Text="Dark is the validated v0.7 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
+                      <TextBlock Classes="caption" Text="Dark is the validated v0.9 appearance. The palette is centralized for a future light variant." TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                   <Border Grid.Column="2" Classes="panel" Padding="14">
@@ -1298,7 +1307,7 @@
                     <ProgressBar Name="BuildProgress" Height="6" Minimum="0" Maximum="100" Value="0" />
                     <TextBlock Name="ProjectSummaryText" Classes="caption" TextWrapping="Wrap" />
                     <TextBlock Name="ValidationText" Classes="caption" TextWrapping="Wrap" />
-                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.7 Alpha - Original NES geometry preserved." />
+                    <TextBlock Name="ProjectVersionText" Classes="dim" FontSize="10.5" Text="RetroArcDo HD Studio v0.9 Alpha - Original NES geometry preserved." />
                   </StackPanel>
                 </Border>
 

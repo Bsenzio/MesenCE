@@ -1,0 +1,334 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Mesen.Windows.HdStudioArchaeologyWindow"
+        x:CompileBindings="False"
+        Width="1420" Height="900" MinWidth="1120" MinHeight="700"
+        WindowStartupLocation="CenterOwner"
+        Title="RetroArchaeology - RetroArcDo HD Studio"
+        Icon="/Assets/HdPack.png"
+        Background="{DynamicResource StudioBgBrush}">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="/HdStudio/HdStudioTheme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <DataTemplate x:Key="ArchaeologyAssetTemplate">
+        <Border Classes="card" Margin="2" Padding="8">
+          <Grid ColumnDefinitions="58,*,Auto" ColumnSpacing="10">
+            <Border Width="54" Height="54" CornerRadius="5" Background="{DynamicResource StudioCanvasBrush}" ClipToBounds="True">
+              <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="3" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" MaxLines="1" />
+              <TextBlock Text="{Binding Detail}" Classes="caption" FontSize="10" MaxLines="2" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="3" HorizontalAlignment="Right">
+              <Border Classes="badge"><TextBlock Text="{Binding Status}" FontSize="9" /></Border>
+              <TextBlock Text="{Binding ConfidenceText}" Classes="dim" FontSize="9" HorizontalAlignment="Right" />
+            </StackPanel>
+          </Grid>
+        </Border>
+      </DataTemplate>
+
+      <DataTemplate x:Key="ArchaeologyCandidateTemplate">
+        <Border Classes="card" Margin="2" Padding="8">
+          <Grid ColumnDefinitions="70,*,Auto" ColumnSpacing="10">
+            <Border Width="66" Height="50" CornerRadius="5" Background="{DynamicResource StudioCanvasBrush}" ClipToBounds="True">
+              <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="2" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" />
+              <TextBlock Text="{Binding Detail}" Classes="caption" FontSize="10" TextWrapping="Wrap" MaxLines="3" />
+            </StackPanel>
+            <Border Grid.Column="2" Classes="badge warning" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Status}" FontSize="9" />
+            </Border>
+          </Grid>
+        </Border>
+      </DataTemplate>
+
+      <DataTemplate x:Key="ArchaeologyGapTemplate">
+        <Border Classes="card" Margin="2" Padding="8">
+          <StackPanel Spacing="3">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" FontSize="12" />
+              <TextBlock Grid.Column="1" Text="{Binding PriorityText}" Classes="mono" FontSize="10" />
+            </Grid>
+            <TextBlock Text="{Binding Description}" Classes="caption" FontSize="10" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Action}" Classes="dim" FontSize="9" />
+          </StackPanel>
+        </Border>
+      </DataTemplate>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Window.Styles>
+    <StyleInclude Source="/HdStudio/HdStudioStyles.axaml" />
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <!-- Title / actions -->
+    <Border Grid.Row="0" Background="{DynamicResource StudioToolbarBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,0,1" Padding="14,9">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+        <Border Width="38" Height="38" CornerRadius="9" Background="{DynamicResource StudioAccentSoftBrush}" VerticalAlignment="Center">
+          <Path Classes="icon accent" Data="{StaticResource Icon.Pickaxe}" Width="21" Height="21" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="-1">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="RetroArchaeology" FontSize="16" FontWeight="Bold" />
+            <Border Classes="badge"><TextBlock Text="STATIC-FIRST HYBRID" FontSize="9" /></Border>
+          </StackPanel>
+          <TextBlock Name="ArchaeologyRomText" Text="No NES ROM loaded" Classes="caption" FontSize="10" />
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Name="ArchOpenRomButton" Classes="subtle" Click="OpenRom_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+              <TextBlock Text="Open ROM" />
+            </StackPanel>
+          </Button>
+          <Button Name="ArchStartButton" Classes="cta" Click="Start_Click" ToolTip.Tip="Run RetroArchaeology on the open ROM">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <Path Classes="icon small" Data="{StaticResource Icon.Play}" />
+              <TextBlock Text="Run Archaeology" FontWeight="SemiBold" />
+            </StackPanel>
+          </Button>
+          <Button Name="ArchPauseButton" Classes="subtle" Click="Pause_Click" IsEnabled="False">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Classes="icon small" Data="{StaticResource Icon.Pause}" />
+              <TextBlock Name="ArchPauseText" Text="Pause" />
+            </StackPanel>
+          </Button>
+          <Button Name="ArchCancelButton" Classes="danger" Click="Cancel_Click" IsEnabled="False">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Classes="icon small" Data="{StaticResource Icon.Square}" />
+              <TextBlock Text="Cancel" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Configuration / phase strip -->
+    <Border Grid.Row="1" Background="{DynamicResource StudioPanelAltBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,0,0,1" Padding="14,8">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="16">
+        <StackPanel Grid.Column="0" Spacing="2">
+          <TextBlock Text="MODE" Classes="section" FontSize="8" />
+          <ComboBox Name="ArchModeBox" Width="112" SelectedIndex="1">
+            <ComboBoxItem Content="Quick" />
+            <ComboBoxItem Content="Deep" />
+            <ComboBoxItem Content="Exhaustive" />
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="2">
+          <TextBlock Text="DYNAMIC CONFIRMATION" Classes="section" FontSize="8" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <CheckBox Name="ArchDynamicCheck" Content="Run bounded capture" />
+            <NumericUpDown Name="ArchFramesBox" Width="90" Minimum="300" Maximum="20000" Increment="300" Value="1800" />
+            <TextBlock Text="frames" Classes="caption" VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Spacing="2">
+          <TextBlock Text="BUDGET" Classes="section" FontSize="8" />
+          <TextBlock Name="ArchBudgetText" Text="deep: 256 assets / 128 streams / 180 s" Classes="caption" FontSize="10" />
+        </StackPanel>
+        <StackPanel Grid.Column="3" Spacing="2">
+          <TextBlock Text="PACK FOLDER" Classes="section" FontSize="8" />
+          <TextBlock Name="ArchaeologyPackText" Text="(derived from ROM)" Classes="caption" FontSize="10" MaxWidth="330" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Name="ReloadCatalogButton" Classes="subtle" Click="ReloadCatalog_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Classes="icon small" Data="{StaticResource Icon.RefreshCw}" />
+              <TextBlock Text="Reload" />
+            </StackPanel>
+          </Button>
+          <Button Name="OpenPackButton" Classes="subtle" Click="OpenPack_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Path Classes="icon small" Data="{StaticResource Icon.FolderOpen}" />
+              <TextBlock Text="Pack folder" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- Main workspace -->
+    <Grid Grid.Row="2" ColumnDefinitions="315,5,*,5,365" Margin="10">
+      <!-- Left: progress, summary, filters -->
+      <Border Grid.Column="0" Classes="panel" Padding="12">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+            <StackPanel Spacing="5">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Name="ArchPhaseText" Text="Ready" Classes="h3" FontSize="13" />
+                <TextBlock Name="ArchElapsedText" Grid.Column="1" Text="0.0 s" Classes="mono" FontSize="10" />
+              </Grid>
+              <ProgressBar Name="ArchProgress" Height="7" Minimum="0" Maximum="100" Value="0" />
+              <TextBlock Name="ArchPhaseDetailText" Text="Open a ROM and press Run Archaeology. No gameplay is required." Classes="caption" FontSize="10" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <Border Classes="divider" Height="1" />
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="PHASES" Classes="section" FontSize="8" />
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="3">
+                <Path Grid.Row="0" Grid.Column="0" Classes="icon small" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioSuccessBrush}" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Name="PhaseStaticText" Text="Static: waiting" Classes="caption" FontSize="10" Margin="7,0,0,0" />
+                <Path Grid.Row="1" Grid.Column="0" Classes="icon small" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioInfoBrush}" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Name="PhaseStructuralText" Text="Structural: waiting" Classes="caption" FontSize="10" Margin="7,0,0,0" />
+                <Path Grid.Row="2" Grid.Column="0" Classes="icon small" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioWarningBrush}" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Name="PhaseRuntimeText" Text="Runtime evidence: waiting" Classes="caption" FontSize="10" Margin="7,0,0,0" />
+                <Path Grid.Row="3" Grid.Column="0" Classes="icon small" Data="{StaticResource Icon.CircleCheck}" Stroke="{DynamicResource StudioAccentBrush}" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Name="PhaseCatalogText" Text="Catalog: waiting" Classes="caption" FontSize="10" Margin="7,0,0,0" />
+              </Grid>
+            </StackPanel>
+
+            <Border Classes="divider" Height="1" />
+
+            <StackPanel Spacing="4">
+              <TextBlock Text="DISCOVERED" Classes="section" FontSize="8" />
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="3">
+                <TextBlock Text="Unique CHR patterns" Classes="muted" FontSize="10" />
+                <TextBlock Grid.Column="1" Name="SumPatterns" Text="0" Classes="mono" FontSize="10" />
+                <TextBlock Grid.Row="1" Text="Runtime observed" Classes="muted" FontSize="10" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Name="SumObserved" Text="0" Classes="mono" FontSize="10" />
+                <TextBlock Grid.Row="2" Text="Catalog assets" Classes="muted" FontSize="10" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Name="SumAssets" Text="0" Classes="mono" FontSize="10" />
+                <TextBlock Grid.Row="3" Text="PRG candidates" Classes="muted" FontSize="10" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Name="SumCandidates" Text="0" Classes="mono" FontSize="10" />
+                <TextBlock Grid.Row="4" Text="Open evidence gaps" Classes="muted" FontSize="10" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Name="SumGaps" Text="0" Classes="mono" FontSize="10" />
+              </Grid>
+            </StackPanel>
+
+            <Border Classes="divider" Height="1" />
+
+            <StackPanel Spacing="5">
+              <TextBlock Text="FILTER" Classes="section" FontSize="8" />
+              <ComboBox Name="ArchFilterBox" SelectedIndex="0">
+                <ComboBoxItem Content="All assets" />
+                <ComboBoxItem Content="Observed only" />
+                <ComboBoxItem Content="Static only" />
+                <ComboBoxItem Content="CHR-RAM" />
+              </ComboBox>
+              <TextBox Name="ArchSearchBox" PlaceholderText="Search name, provenance, hash..." />
+            </StackPanel>
+
+            <Border Classes="card" Padding="10">
+              <StackPanel Spacing="4">
+                <TextBlock Text="EVIDENCE FIRST" Classes="section" FontSize="8" />
+                <TextBlock Classes="caption" FontSize="10" TextWrapping="Wrap"
+                           Text="Static CHR patterns are physical cartridge facts. Observed patterns have runtime witnesses. Candidates and unclassified compositions are not promoted to assets until evidence supports them." />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <GridSplitter Grid.Column="1" Width="5" ResizeDirection="Columns" />
+
+      <!-- Center: tabs -->
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+          <StackPanel>
+            <TextBlock Text="Graphical catalog" Classes="h2" FontSize="16" />
+            <TextBlock Name="ArchStatusText" Text="No catalog loaded." Classes="caption" FontSize="10" />
+          </StackPanel>
+          <TextBlock Grid.Column="1" Name="ArchCatalogPathText" Classes="dim" FontSize="9" VerticalAlignment="Bottom" MaxWidth="420" TextTrimming="CharacterEllipsis" />
+        </Grid>
+
+        <TabControl Grid.Row="1">
+          <TabItem Header="Assets">
+            <Grid RowDefinitions="*">
+              <ListBox Name="AssetList" ItemTemplate="{StaticResource ArchaeologyAssetTemplate}" SelectionChanged="AssetList_SelectionChanged" Background="Transparent" />
+            </Grid>
+          </TabItem>
+          <TabItem Header="Candidates">
+            <ListBox Name="CandidateList" ItemTemplate="{StaticResource ArchaeologyCandidateTemplate}" Background="Transparent" SelectionChanged="CandidateList_SelectionChanged" />
+          </TabItem>
+          <TabItem Header="Gaps">
+            <ListBox Name="GapList" ItemTemplate="{StaticResource ArchaeologyGapTemplate}" Background="Transparent" SelectionChanged="GapList_SelectionChanged" />
+          </TabItem>
+          <TabItem Header="Summary">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="6" Spacing="10">
+                <TextBlock Text="Evidence summary" Classes="h3" />
+                <TextBlock Name="ArchSummaryText" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                <TextBlock Text="The catalog shows observed counts and unresolved scope. It does not claim that every semantic object in the game has been discovered." Classes="caption" TextWrapping="Wrap" />
+                <Border Classes="card" Padding="10">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="WHAT IS AND IS NOT CLAIMED" Classes="section" FontSize="8" />
+                    <TextBlock Classes="caption" FontSize="10" TextWrapping="Wrap"
+                               Text="Physical CHR inventory and source offsets are extraction. Pointer tables, OAM tables and PRG tile streams are hypotheses. Runtime observations are witnesses. Replacement verification is a separate step in the main Studio and official Mesen." />
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+        </TabControl>
+      </Grid>
+
+      <GridSplitter Grid.Column="3" Width="5" ResizeDirection="Columns" />
+
+      <!-- Right: details -->
+      <Border Grid.Column="4" Classes="panel" Padding="12">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="10">
+            <TextBlock Text="Selection" Classes="h3" FontSize="13" />
+            <Border Height="150" CornerRadius="7" Background="{DynamicResource StudioCanvasBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="1" ClipToBounds="True">
+              <Image Name="DetailImage" Stretch="Uniform" Margin="6" />
+            </Border>
+            <TextBlock Name="DetailName" Text="Select an asset, candidate or gap." Classes="h3" FontSize="13" TextWrapping="Wrap" />
+            <WrapPanel>
+              <Border Name="DetailStatusBadge" Classes="badge" Margin="0,0,5,5"><TextBlock Name="DetailStatus" Text="-" /></Border>
+              <Border Classes="badge info" Margin="0,0,5,5"><TextBlock Name="DetailConfidence" Text="-" /></Border>
+            </WrapPanel>
+            <TextBlock Name="DetailMeta" Classes="caption" FontSize="10" TextWrapping="Wrap" />
+            <Border Classes="divider" Height="1" />
+            <StackPanel Spacing="3">
+              <TextBlock Text="PROVENANCE" Classes="section" FontSize="8" />
+              <TextBlock Name="DetailProvenance" Classes="caption" FontSize="10" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="GRAPH NODE" Classes="section" FontSize="8" />
+              <TextBlock Name="DetailGraph" Classes="mono" FontSize="9" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="TILES / KEYS" Classes="section" FontSize="8" />
+              <TextBlock Name="DetailTiles" Classes="mono" FontSize="9" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Spacing="3">
+              <TextBlock Text="WARNINGS" Classes="section" FontSize="8" />
+              <TextBlock Name="DetailNotes" Classes="caption" FontSize="10" TextWrapping="Wrap" />
+            </StackPanel>
+            <Border Classes="divider" Height="1" />
+            <Button Name="OpenInStudioButton" Classes="cta" Click="OpenInStudio_Click" IsEnabled="False">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Path Classes="icon small" Data="{StaticResource Icon.ExternalLink}" />
+                <TextBlock Text="Open in Artwork Workshop" FontWeight="SemiBold" />
+              </StackPanel>
+            </Button>
+            <TextBlock Classes="caption" FontSize="9" TextWrapping="Wrap" Text="Import artwork, preview and verify replacements in the existing Studio workflow. Archaeology never overwrites approved artwork." />
+            <Border Classes="card" Padding="10">
+              <StackPanel Spacing="4">
+                <TextBlock Text="NATIVE, OFFLINE, NO GAMEPLAY REQUIRED" Classes="section" FontSize="8" />
+                <TextBlock Classes="caption" FontSize="10" TextWrapping="Wrap"
+                           Text="The pipeline is local and deterministic. Dynamic confirmation is optional and bounded; no external AI service or game-specific profile is used." />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+
+    <!-- Status bar -->
+    <Border Grid.Row="3" Background="{DynamicResource StudioStatusBrush}" BorderBrush="{DynamicResource StudioBorderBrush}" BorderThickness="0,1,0,0" Padding="12,5">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Name="ArchStatusLeft" Classes="caption" FontSize="9" Text="RetroArchaeology is ready." />
+        <TextBlock Grid.Column="1" Name="ArchStatusRight" Classes="caption" FontSize="9" Text="local engine / no network" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

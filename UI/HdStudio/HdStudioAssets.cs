@@ -112,6 +112,9 @@ namespace Mesen.HdStudio
 			}
 
 			log($"Assets: {assets.Count} records ({assets.Count(a => a.Kind == "metasprite")} generic metasprites, {assets.Count(a => a.Kind == "semanticObject")} semantic objects, {assets.Count(a => a.Kind == "animationFrame")} animation frames, {assets.Count(a => a.Kind == "backgroundBlock")} background blocks, {assets.Count(a => a.Kind == "rawPattern")} raw patterns) -> {assetsFolder}");
+			//RetroArchaeology stores its additive static projection separately; merge it
+			//after the live catalog so a later --assets pass never discards it.
+			HdStudioArchaeologyCatalog.MergeIntoAssets(outFolder, log);
 			return 0;
 		}
 

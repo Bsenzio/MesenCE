@@ -31,7 +31,8 @@ using System.Threading.Tasks;
 namespace Mesen.Windows
 {
 	/// <summary>
-	/// RetroArcDo HD Studio v0.7 - graphical authoring shell.
+	/// RetroArcDo HD Studio v0.9 - graphical authoring shell with static-first
+	/// RetroArchaeology, the evidence graph and the existing authoring/verification path.
 	///
 	/// All file, catalog, compiler and exporter work remains in the shared HdStudio services.
 	/// This window owns presentation only: it selects an asset, edits the project's adaptation
@@ -40,7 +41,7 @@ namespace Mesen.Windows
 	/// </summary>
 	public partial class HdStudioWindow : MesenWindow
 	{
-		private const string Version = "0.7.0 Alpha";
+		private const string Version = "0.9.0 Alpha";
 
 		private string _romPath = "";
 		private string _packFolder = "";
@@ -4333,6 +4334,41 @@ namespace Mesen.Windows
 		private async void ExportRunButton_Click(object? sender, RoutedEventArgs e) => await RunExportAsync(zip: false);
 
 		//------------------------------------------------------------------ file operations
+
+		private async void OpenArchaeology_Click(object? sender, RoutedEventArgs e)
+		{
+			if(string.IsNullOrWhiteSpace(_romPath)) {
+				await OpenRomAsync();
+				if(string.IsNullOrWhiteSpace(_romPath)) {
+					return;
+				}
+			}
+			HdStudioArchaeologyWindow window = new(_romPath, _packFolder, this);
+			await window.ShowDialog(this);
+		}
+
+		/// <summary>
+		/// Called by the RetroArchaeology window after the artist selects a discovered
+		/// asset. The normal Studio catalog, inspector, importer and verifier remain the
+		/// only authoring path; archaeology only projects evidence into that catalog.
+		/// </summary>
+		public void OpenArchaeologyAsset(string romPath, string packFolder, string assetId)
+		{
+			_romPath = romPath;
+			_packFolder = packFolder;
+			_palette = ConfigManager.Config.Nes.UserPalette;
+			_romText.Text = Path.GetFileName(_romPath);
+			_projectText.Text = Path.GetFileNameWithoutExtension(_romPath) + " \u2022 archaeology";
+			Title = "RetroArcDo HD Studio - " + Path.GetFileNameWithoutExtension(_romPath);
+			RefreshFromDisk();
+			ShowWorkspace("artwork");
+			HdStudioCatalogAsset? asset = _catalog.Find(assetId);
+			if(asset != null) {
+				SelectAsset(asset);
+			} else {
+				SetStatus("Archaeology asset " + assetId + " is not in the catalog yet; press Reload.");
+			}
+		}
 
 		private async void OpenRom_Click(object? sender, RoutedEventArgs e) => await OpenRomAsync();
 

@@ -277,6 +277,7 @@ namespace Mesen.HdStudio
 		public int OriginX;
 		public int OriginY;
 		public string OriginalImage = "";
+		public string GraphNode = "";
 		public string ParentId = "";
 		public int FrameIndex = -1;
 		public string AnimationId = "";
@@ -294,6 +295,7 @@ namespace Mesen.HdStudio
 			"pickedObject" => "Objects",
 			"pickedBackground" => "Backgrounds",
 			"rawPattern" => "Raw patterns",
+			"staticPattern" => "Static patterns",
 			_ => "Other"
 		};
 
@@ -311,6 +313,7 @@ namespace Mesen.HdStudio
 				Source = HdStudioCatalog.GetString(element, "source"),
 				Provenance = HdStudioCatalog.GetString(element, "provenance"),
 				OriginalImage = HdStudioCatalog.GetString(element, "originalImage"),
+				GraphNode = HdStudioCatalog.GetString(element, "graphNode"),
 				ParentId = HdStudioCatalog.GetString(element, "parentId"),
 				AnimationId = HdStudioCatalog.GetString(element, "animationId"),
 				FrameIndex = HdStudioCatalog.GetInt(element, "frameIndex", -1),

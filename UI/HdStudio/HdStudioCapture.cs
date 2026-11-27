@@ -147,6 +147,20 @@ namespace Mesen.HdStudio
 			public int DiscoverSeed = 20261124;
 			public int DiscoverSaturation = 3;
 			public bool DiscoverRestart;
+			public bool Archaeology;
+			public string ArchMode = "deep";
+			public bool ArchDynamic;
+			public int ArchFrames = 1800;
+			public int ArchAssets;
+			public int ArchStreams;
+			public bool ArchNoStructural;
+			public bool ArchForce;
+			public bool ArchSelfTest;
+			public string? ArchBatchRoot;
+			public string? ArchOutRoot;
+			public int ArchParallel;
+			public string? ArchEvidence;
+			public string? ArchEvidenceMap;
 			public string? SheetSlicePath;
 			public int SliceColumns;
 			public int SliceRows;
@@ -193,6 +207,10 @@ namespace Mesen.HdStudio
 			if(opt.SelfTest) {
 				//No ROM/emulator is involved: verify geometry, segmentation and adaptation rules.
 				return HdStudioSelfTest.Run(Log);
+			}
+			if(opt.ArchSelfTest) {
+				//No commercial ROM/emulator is involved: synthetic cartridge + evidence graph fixtures.
+				return HdStudioArchaeologySelfTest.Run(Log);
 			}
 			if(opt.SheetSlicePath != null) {
 				//Offline sprite-sheet slicing: no ROM or emulator is involved.
@@ -270,6 +288,22 @@ namespace Mesen.HdStudio
 				return 0;
 			}
 
+			if(opt.Archaeology && opt.ArchBatchRoot != null) {
+				if(opt.Errors.Count > 0) {
+					foreach(string error in opt.Errors) {
+						Log("Error: " + error);
+					}
+					return -1;
+				}
+				string outRoot = opt.ArchOutRoot ?? Path.Combine(Program.OriginalFolder, "archaeology-batch");
+				HdStudioArchaeologyOptions batchOptions = BuildArchaeologyOptions(opt);
+				HdStudioArchaeologyBatchResult batch = HdStudioArchaeologyBatch.Run(opt.ArchBatchRoot!, outRoot, batchOptions,
+					opt.ArchParallel > 0 ? opt.ArchParallel : Math.Max(1, Environment.ProcessorCount - 1), Log, CancellationToken.None);
+				Log("Archaeology batch: " + batch.Attempted + " attempted, " + batch.Completed + " complete, " +
+					batch.Unsupported + " unsupported, " + batch.Errors + " errors, " + batch.Skipped + " skipped -> " + batch.SummaryPath);
+				return batch.Errors == 0 ? 0 : 1;
+			}
+
 			if(opt.Errors.Count > 0 || opt.RomPath == null) {
 				foreach(string error in opt.Errors) {
 					Log("Error: " + error);
@@ -288,6 +322,25 @@ namespace Mesen.HdStudio
 			}
 			string outFolder = opt.OutFolder ?? Path.Combine(ConfigManager.HdPackFolder, packName);
 			Directory.CreateDirectory(outFolder);
+
+			if(opt.Archaeology) {
+				HdStudioArchaeologyOptions archaeology = BuildArchaeologyOptions(opt);
+				HdStudioArchaeologyResult result = HdStudioArchaeology.Run(opt.RomPath!, outFolder, archaeology,
+					ConfigManager.Config.Nes.UserPalette, Log, null, CancellationToken.None);
+				foreach(string error in result.Errors) {
+					Log("Archaeology error: " + error);
+				}
+				if(result.Success) {
+					Log("RetroArchaeology complete: " + result.UniquePatterns + " unique patterns, " +
+						result.RuntimeObservedPatterns + " observed, " + result.AssetsExposed + " catalog assets, " +
+						result.Gaps + " open gaps, " + result.Seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s.");
+					Log("Graph: " + result.GraphPath);
+					Log("Catalog: " + result.CatalogPath);
+					return 0;
+				}
+				Log("RetroArchaeology stopped: " + result.StopReason);
+				return result.StopReason == "unsupported" ? 0 : 1;
+			}
 
 			if(opt.DiscoverMode != null) {
 				//Progressive discovery scheduler: runs resumable capture chunks, exports the
@@ -1136,6 +1189,52 @@ namespace Mesen.HdStudio
 							}
 							break;
 						case "discover-restart": opt.DiscoverRestart = true; break;
+						case "archaeology": opt.Archaeology = true; break;
+						case "arch-mode":
+							opt.ArchMode = value.ToLowerInvariant() switch {
+								"quick" => "quick",
+								"deep" => "deep",
+								"exhaustive" => "exhaustive",
+								_ => ""
+							};
+							if(opt.ArchMode.Length == 0) {
+								opt.Errors.Add("invalid archaeology mode (quick|deep|exhaustive): " + value);
+								opt.ArchMode = "deep";
+							}
+							break;
+						case "arch-dynamic": opt.ArchDynamic = true; break;
+						case "arch-frames":
+							if(!int.TryParse(value, out opt.ArchFrames) || opt.ArchFrames < 300) {
+								opt.Errors.Add("invalid archaeology dynamic frame budget (>=300): " + value);
+							}
+							break;
+						case "arch-assets":
+							if(!int.TryParse(value, out opt.ArchAssets) || opt.ArchAssets < 1) {
+								opt.Errors.Add("invalid archaeology asset cap (>=1): " + value);
+							}
+							break;
+						case "arch-streams":
+							if(!int.TryParse(value, out opt.ArchStreams) || opt.ArchStreams < 0) {
+								opt.Errors.Add("invalid archaeology stream cap (>=0): " + value);
+							}
+							break;
+						case "arch-no-structural": opt.ArchNoStructural = true; break;
+						case "arch-force": opt.ArchForce = true; break;
+						case "arch-selftest": opt.ArchSelfTest = true; break;
+						case "arch-batch":
+							opt.Archaeology = true;
+							opt.ArchBatchRoot = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
+						case "arch-out-root":
+							opt.ArchOutRoot = Path.GetFullPath(value, Program.OriginalFolder);
+							break;
+						case "arch-parallel":
+							if(!int.TryParse(value, out opt.ArchParallel) || opt.ArchParallel < 1) {
+								opt.Errors.Add("invalid archaeology parallel worker count (>=1): " + value);
+							}
+							break;
+						case "arch-evidence": opt.ArchEvidence = Path.GetFullPath(value, Program.OriginalFolder); break;
+						case "arch-evidence-map": opt.ArchEvidenceMap = Path.GetFullPath(value, Program.OriginalFolder); break;
 						case "slice-sheet": opt.SheetSlicePath = Path.GetFullPath(value, Program.OriginalFolder); break;
 						case "slice-out": opt.SliceOut = Path.GetFullPath(value, Program.OriginalFolder); break;
 						case "grid":
@@ -1307,6 +1406,32 @@ namespace Mesen.HdStudio
 			return arg;
 		}
 
+		private static HdStudioArchaeologyOptions BuildArchaeologyOptions(Options opt)
+		{
+			HdStudioArchaeologyOptions options = HdStudioArchaeologyOptions.ForMode(opt.ArchMode);
+			options.IncludeStructural = !opt.ArchNoStructural;
+			options.RunDynamicConfirmation = opt.ArchDynamic;
+			options.DynamicFrames = opt.ArchFrames;
+			options.Force = opt.ArchForce;
+			options.EngineFingerprint = HdStudioEvidenceGraph.ComputeEngineFingerprint();
+			options.EvidencePackFolder = opt.ArchEvidence ?? "";
+			options.EvidenceMapPath = opt.ArchEvidenceMap ?? "";
+			if(opt.ArchBatchRoot != null && opt.ArchAssets <= 0) {
+				//Batch output is intentionally bounded: 64 diverse static/observed
+				//records per ROM keeps the full-library evidence pack manageable while
+				//the graph still retains the complete physical inventory.
+				options.MaxAssets = 64;
+				options.MaxCandidateStreams = Math.Min(options.MaxCandidateStreams, 32);
+			}
+			if(opt.ArchAssets > 0) {
+				options.MaxAssets = opt.ArchAssets;
+			}
+			if(opt.ArchStreams > 0) {
+				options.MaxCandidateStreams = opt.ArchStreams;
+			}
+			return options;
+		}
+
 		private static void PrintUsage()
 		{
 			Log("");
@@ -1319,6 +1444,10 @@ namespace Mesen.HdStudio
 			Log("  --compile: rebuild HdStudio/project.hdstudio.json as a standard Mesen pack (--validate checks it without writing).");
 			Log("  --export [--export-root=DIR|--export-to=DIR] [--minimal] [--install]: stage, validate and install a distributable pack.");
 			Log("  --discover=quick|deep|replay|assisted [--discover-budget=N]: resumable, chunked discovery with a session file.");
+			Log("  --archaeology [--arch-mode=quick|deep|exhaustive] [--arch-dynamic [--arch-frames=N]]: static-first RetroArchaeology; writes HdStudio/archaeology/evidence-graph.json and catalog.json.");
+			Log("  --arch-selftest: run the synthetic archaeology, graph, catalog and batch fixtures (no ROM needed).");
+			Log("  --arch-batch=DIR [--arch-out-root=DIR] [--arch-parallel=N]: run the same RetroArchaeology pipeline over every .nes below DIR.");
+			Log("  --arch-evidence=DIR: read existing tiles/capture evidence read-only (single ROM); --arch-evidence-map=FILE: title->pack-folder JSON for batch correlation.");
 			Log("  --demo: records a short real-Mesen GIF with the HD pack active (SMB3 1-1).");
 		}
 
