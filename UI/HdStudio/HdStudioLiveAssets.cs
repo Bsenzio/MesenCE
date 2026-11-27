@@ -255,6 +255,8 @@ namespace Mesen.HdStudio
 				Validation = "observed-live",
 				Width = composition.Width,
 				Height = composition.Height,
+				OriginX = composition.X,
+				OriginY = composition.Y,
 				Tiles = tiles
 			};
 			foreach(string palette in composition.Sprites.Select(s => s.Palette).Distinct()) {

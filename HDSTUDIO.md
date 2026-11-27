@@ -5,6 +5,55 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
+## v0.8 - adaptive discovery, baseline-HD verification and multi-asset packs (2026-11-27)
+
+Measured on the local 1,291-ROM library:
+
+| Result | Value |
+|---|---:|
+| Verified unique ROMs after recovery | **1,268 / 1,291 (98.2%)** |
+| Development / validation / holdout | **758/772 / 317/324 / 193/195** |
+| Previously unsuccessful rows recovered | **231** (194 non-holdout + 37 holdout) |
+| Distinct background replacement rows | **328** |
+| Animation frame-identity packs | **43 / 60** |
+| Multi-asset combined packs | **19 / 30** |
+| Regression suite | **17 / 17** |
+| Offline acceptance + stock Mesen 2.1.1 | **passed** |
+| Remaining unresolved | 15 no-visible, 3 partial, 3 failed, 2 unsupported |
+
+- **Adaptive exploration in one capture:** `scripts/hdstudio_v08_autoreplace.py`
+  pauses at 900 / 1,800 / 3,600 / 6,000 frames, inspects the real visible frame and
+  resumes only while the screen is still producing new evidence. A stagnant
+  title/menu stops after 1,800 frames; a rendered background at 3,600 is used
+  instead of waiting for 6,000. The v0.7.1 fixed-frame selection is preserved as
+  historical evidence.
+- **Alternative deterministic profiles:** default, menu-escape and alternate
+  controller sequences are used in order only when the previous profile finds no
+  suitable object. They never read the screen, so HD and original passes receive
+  identical input.
+- **Background-only recovery:** when no nonblank hardware sprite is present, the
+  capture selects a real rendered background block (not a blank-tile recolour)
+  and verifies it in the observed scenes.
+- **Emphasis-aware verification:** Mesen's emphasis/dim bits can shift exact marker
+  colours. The validator now measures the authored pack against an empty HD pack
+  at the same scale, so authored changes are the HD-frame difference rather than a
+  colour-exact marker match. This corrected several v0.7.1 false "not replaced"
+  rows without weakening state-hash or ROM-integrity checks.
+- **Multi-asset combined packs:** minimal imports are rebuilt from the project so
+  several approved replacements coexist in one standard `hires.txt`; each asset's
+  own footprint is measured and shared-key collateral stays labelled.
+- **Animation frame identity:** the v0.8 harness emits standard `frameRange`
+  phases plus one distinct marker colour per animation frame. A frame only passes
+  when its own colour appears in its observed box at its observed emulator frame,
+  and the original frame reproduces the captured asset. The period is an
+  observed-phase approximation (span + 1) and every row records that limitation.
+- **Animation origin persistence:** live animation-frame assets now store their
+  captured screen origin (`HdStudioLiveAssets.BuildAsset`), so the editor can
+  place and inspect an animation frame without re-deriving it from the TSV.
+
+The detailed v0.8 report and evidence paths are in
+`docs/FINAL_ENGINEERING_REPORT_v0.8.md` in the documentation repository.
+
 ## v0.7.1 - full-library benchmark, save-RAM isolation and runtime animation fixtures (2026-11-26)
 
 - Every indexed ROM hash is queued for a replacement outcome; cached rows are

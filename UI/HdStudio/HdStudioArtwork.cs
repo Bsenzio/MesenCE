@@ -433,13 +433,14 @@ namespace Mesen.HdStudio
 
 		public static bool IsCustomConditionToken(string token)
 		{
-			int colon = token.IndexOf(':');
+			string raw = token.StartsWith("!", StringComparison.Ordinal) ? token.Substring(1) : token;
+			int colon = raw.IndexOf(':');
 			if(colon <= 0) {
 				return false;
 			}
-			string type = token.Substring(0, colon).Trim();
+			string type = raw.Substring(0, colon).Trim();
 			return type is "spriteNearby" or "tileNearby" or "positionCheckX" or "positionCheckY"
-				or "originPositionCheckX" or "originPositionCheckY";
+				or "originPositionCheckX" or "originPositionCheckY" or "frameRange";
 		}
 
 		public static string CustomConditionName(string token)
@@ -457,10 +458,11 @@ namespace Mesen.HdStudio
 		{
 			List<string> definitions = new();
 			HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-			foreach(string raw in (extraCondition ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+			foreach(string rawToken in (extraCondition ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+				string raw = rawToken.StartsWith("!", StringComparison.Ordinal) ? rawToken.Substring(1) : rawToken;
 				if(!IsCustomConditionToken(raw)) {
 					if(raw.Contains(':')) {
-						errors?.Add($"Condition {raw}: unsupported custom condition type. Use hmirror, vmirror, bgpriority, sppalette0-3 or a supported nearby/position expression.");
+						errors?.Add($"Condition {raw}: unsupported custom condition type. Use hmirror, vmirror, bgpriority, sppalette0-3 or a supported nearby/position/frameRange expression.");
 					}
 					continue;
 				}
@@ -471,7 +473,16 @@ namespace Mesen.HdStudio
 				if(!seen.Add(name)) {
 					continue;
 				}
-				if(type is "spriteNearby" or "tileNearby") {
+				if(type is "frameRange") {
+					if(args.Length < 2 ||
+						!int.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int period) ||
+						!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int phase) ||
+						period < 1 || period > 0xFFFF || phase < 0 || phase >= period) {
+						errors?.Add($"Condition {raw}: expected frameRange:period,phase with 1 <= period <= 65535 and 0 <= phase < period.");
+						continue;
+					}
+					definitions.Add($"<condition>{name},frameRange,{period},{phase}");
+				} else if(type is "spriteNearby" or "tileNearby") {
 					if(args.Length < 4) {
 						errors?.Add($"Condition {raw}: expected {type}:x,y,tile,palette[,ignorePalette].");
 						continue;
@@ -536,7 +547,12 @@ namespace Mesen.HdStudio
 			}
 			if(!string.IsNullOrWhiteSpace(extraCondition)) {
 				foreach(string raw in extraCondition.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
-					string token = IsCustomConditionToken(raw) ? CustomConditionName(raw) : raw;
+					bool inverted = raw.StartsWith("!", StringComparison.Ordinal);
+					string baseToken = inverted ? raw.Substring(1) : raw;
+					string token = IsCustomConditionToken(baseToken) ? CustomConditionName(baseToken) : baseToken;
+					if(inverted) {
+						token = "!" + token;
+					}
 					if(!conditions.Contains(token, StringComparer.OrdinalIgnoreCase)) {
 						conditions.Add(token);
 					}

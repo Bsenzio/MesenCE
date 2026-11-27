@@ -1,7 +1,29 @@
 # HD Studio validation
 
-**Current release:** v0.7 Alpha (2026-11-26)  
-**Machine-readable evidence:** `D:\RetroArcDo_HDStudio\validation\v0.7\` after publication.
+**Current release:** v0.8 (2026-11-27)  
+**Machine-readable evidence:** `D:\RetroArcDo_HDStudio\validation\v0.8\` after publication.
+
+v0.8 keeps the v0.7.1 evidence as the historical baseline and adds staged adaptive
+recovery, background-only fallback, emphasis-aware baseline verification,
+multi-asset combined packs and true per-frame animation identity.
+
+## v0.8 headline
+
+| Check | Actual |
+|---|---:|
+| Verified unique ROMs after recovery | 1,268 / 1,291 (98.2%) |
+| Development / validation / holdout | 758/772 / 317/324 / 193/195 |
+| Non-holdout recovery | 194 / 213 |
+| Holdout recovery | 37 / 39 |
+| Distinct background replacement rows | 328 |
+| Animation frame-identity packs | 43 / 60 |
+| Multi-asset combined packs | 19 / 30 |
+| Regression suite | 17 / 17 |
+| Offline acceptance incl. stock Mesen 2.1.1 | passed |
+| Remaining unresolved | 15 no-visible, 3 partial, 3 failed, 2 unsupported mapper |
+
+See `docs/FINAL_ENGINEERING_REPORT_v0.8.md`, `docs/VALIDATION_v0.8.md` and
+`validation/v0.8/metrics-v08.json`.
 
 The v0.6 numbers below remain historical until reproduced. v0.7 adds render-time
 background evidence, automatic standard context plans, multi-scene exact replay

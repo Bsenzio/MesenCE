@@ -9,6 +9,8 @@ namespace Mesen.HdStudio
 {
 	internal static class HdStudioSamplingModes
 	{
+		public const string Fast = "fast";
+		public const string Minimal = "minimal";
 		public const string Efficient = "efficient";
 		public const string Balanced = "balanced";
 		public const string Exhaustive = "exhaustive";
@@ -17,6 +19,8 @@ namespace Mesen.HdStudio
 		public static string DisplayName(string mode)
 		{
 			return mode switch {
+				Fast => "Fast (every 12 frames, backgrounds every 240)",
+				Minimal => "Minimal sampling (every 30 frames, backgrounds every 600)",
 				Efficient => "Efficient (every 4 frames, backgrounds every 60)",
 				Exhaustive => "Exhaustive (every displayed frame)",
 				SingleFrame => "Single-frame inspection",
@@ -27,6 +31,8 @@ namespace Mesen.HdStudio
 		public static (int Sprites, int Background, bool Single) Values(string mode)
 		{
 			return mode switch {
+				Fast => (12, 240, false),
+				Minimal => (30, 600, false),
 				Efficient => (4, 60, false),
 				Exhaustive => (1, 1, false),
 				SingleFrame => (1, 1, true),
@@ -38,7 +44,7 @@ namespace Mesen.HdStudio
 		{
 			string value = (mode ?? "").Trim().ToLowerInvariant();
 			return value switch {
-				Efficient or Exhaustive or SingleFrame => value,
+				Fast or Minimal or Efficient or Exhaustive or SingleFrame => value,
 				_ => Balanced
 			};
 		}
