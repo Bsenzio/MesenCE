@@ -32,6 +32,7 @@ namespace Mesen.HdStudio
 		private readonly Action<string> _log;
 		private readonly List<string> _hdStateHashes = new();
 		private readonly List<string> _originalStateHashes = new();
+		private readonly List<(string Original, string Backup)> _saveBackups = new();
 
 		public HdStudioVerify(string romPath, string? moviePath, List<string> luaScripts, bool useBuiltInExplorer, string packFolder, int frames, int shots, Action<string> log, IReadOnlyList<int>? verifyAtFrames = null)
 		{
@@ -79,6 +80,12 @@ namespace Mesen.HdStudio
 			foreach(string oldFile in Directory.GetFiles(_verifyFolder, "frame_*.png")) {
 				File.Delete(oldFile);
 			}
+			//Battery-backed games must start both passes from the same save-RAM
+			//state. Otherwise the first pass can write a .sav file and the second
+			//pass loads it, producing a real state difference unrelated to HD
+			//rendering. Back up the user's save data, run both passes blank, and
+			//restore it afterwards.
+			IsolateSaveData();
 
 			EmuApi.InitDll();
 			ConfigManager.Config.ApplyConfig();
@@ -93,6 +100,7 @@ namespace Mesen.HdStudio
 				ok = RunPass(true, "hd", out hdSize) & RunPass(false, "original", out originalSize);
 				CompareStateHashes();
 			} finally {
+				RestoreSaveData();
 				ConfigManager.Config.Nes.EnableHdPacks = originalSetting;
 				ConfigManager.Config.Nes.ApplyConfig();
 				EmuApi.Release();
@@ -108,9 +116,63 @@ namespace Mesen.HdStudio
 			return ok && hdLoaded ? 0 : -3;
 		}
 
+		private void IsolateSaveData()
+		{
+			try {
+				string folder = ConfigManager.SaveFolder;
+				if(!Directory.Exists(folder)) {
+					return;
+				}
+				string prefix = Path.GetFileNameWithoutExtension(_romPath);
+				string backupFolder = Path.Combine(_verifyFolder, "save-backup");
+				Directory.CreateDirectory(backupFolder);
+				foreach(string file in Directory.GetFiles(folder, prefix + ".*")) {
+					string backup = Path.Combine(backupFolder, Path.GetFileName(file));
+					File.Move(file, backup, true);
+					_saveBackups.Add((file, backup));
+					_log($"  isolated save data: {Path.GetFileName(file)}");
+				}
+			} catch(Exception ex) {
+				_log("  save-RAM isolation warning: " + ex.Message);
+			}
+		}
+
+		private void RemoveNewSaveData()
+		{
+			try {
+				string folder = ConfigManager.SaveFolder;
+				if(!Directory.Exists(folder)) {
+					return;
+				}
+				string prefix = Path.GetFileNameWithoutExtension(_romPath);
+				foreach(string file in Directory.GetFiles(folder, prefix + ".*")) {
+					File.Delete(file);
+				}
+			} catch(Exception ex) {
+				_log("  save-RAM cleanup warning: " + ex.Message);
+			}
+		}
+
+		private void RestoreSaveData()
+		{
+			try {
+				RemoveNewSaveData();
+				foreach((string original, string backup) in _saveBackups) {
+					if(File.Exists(backup)) {
+						Directory.CreateDirectory(Path.GetDirectoryName(original) ?? ".");
+						File.Move(backup, original, true);
+					}
+				}
+			} catch(Exception ex) {
+				_log("  save-RAM restore warning: " + ex.Message);
+			}
+		}
+
 		private bool RunPass(bool enableHdPacks, string suffix, out FrameInfo screenSize)
 		{
 			screenSize = new FrameInfo();
+			//Each pass starts with no battery save written by the other pass.
+			RemoveNewSaveData();
 			ConfigManager.Config.Nes.EnableHdPacks = enableHdPacks;
 			ConfigManager.Config.Nes.ApplyConfig();
 

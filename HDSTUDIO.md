@@ -5,6 +5,18 @@
 > The README includes full SMB3 maps, the named object atlas, GIFs, Mermaid diagrams, the 25-ROM validation matrix
 > and the complete `master..hdstudio` patch.
 
+## v0.7.1 - full-library benchmark, save-RAM isolation and runtime animation fixtures (2026-11-26)
+
+- Every indexed ROM hash is queued for a replacement outcome; cached rows are
+  reused only when the SHA-256, engine/config and scale match.
+- Battery/EEPROM save files are backed up and removed before each verification
+  pass, then restored. This removes the v0.7 state-hash mismatches on
+  battery-backed games without weakening the CPU/PPU state comparison.
+- CHR-RAM content-key plans are rewritten to standard `positionCheck` rules and
+  reported as scene-isolated, never as independent.
+- Runtime animation verification uses observed live frame numbers and per-frame
+  occurrence boxes; a synthetic two-phase fixture and two 1942 sequences pass.
+
 ## v0.7 Alpha - independent context replacement, render-time backgrounds, native library and batch workspaces (2026-11-26)
 
 Implemented in this release:
