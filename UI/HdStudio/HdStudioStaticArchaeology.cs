@@ -16,12 +16,15 @@ namespace Mesen.HdStudio
 		public bool IncludePrgCandidates = true;
 		public bool UseExistingRuntimeEvidence = true;
 		public bool RunDynamicConfirmation = false;
+		public bool ResolveGaps = true;
 		public int DynamicFrames = 1800;
 		public int MaxAssets = 256;
 		public int MaxCandidateStreams = 128;
 		public int MaxPaletteCandidates = 128;
 		public int MaxInstructions = 600000;
 		public int MaxSecondsPerRom = 180;
+		public int MaxGapResolutionSeconds = 25;
+		public int MaxGapResolutionOps = 2048;
 		public int ThumbnailScale = 4;
 		public bool ExportCatalog = true;
 		public bool MergeIntoAssets = true;
@@ -39,12 +42,15 @@ namespace Mesen.HdStudio
 				IncludePrgCandidates = IncludePrgCandidates,
 				UseExistingRuntimeEvidence = UseExistingRuntimeEvidence,
 				RunDynamicConfirmation = RunDynamicConfirmation,
+				ResolveGaps = ResolveGaps,
 				DynamicFrames = DynamicFrames,
 				MaxAssets = MaxAssets,
 				MaxCandidateStreams = MaxCandidateStreams,
 				MaxPaletteCandidates = MaxPaletteCandidates,
 				MaxInstructions = MaxInstructions,
 				MaxSecondsPerRom = MaxSecondsPerRom,
+				MaxGapResolutionSeconds = MaxGapResolutionSeconds,
+				MaxGapResolutionOps = MaxGapResolutionOps,
 				ThumbnailScale = ThumbnailScale,
 				ExportCatalog = ExportCatalog,
 				MergeIntoAssets = MergeIntoAssets,
@@ -66,21 +72,22 @@ namespace Mesen.HdStudio
 			HdStudioArchaeologyOptions options = new() { Mode = NormalizeMode(mode) };
 			switch(options.Mode) {
 				case "quick":
-					options.MaxAssets = 64;
+					options.MaxAssets = 256;
 					options.MaxCandidateStreams = 16;
 					options.MaxPaletteCandidates = 32;
 					options.MaxInstructions = 150000;
 					options.MaxSecondsPerRom = 60;
 					break;
 				case "exhaustive":
-					options.MaxAssets = 1024;
+					options.MaxAssets = 0;
 					options.MaxCandidateStreams = 512;
 					options.MaxPaletteCandidates = 512;
 					options.MaxInstructions = 1800000;
 					options.MaxSecondsPerRom = 600;
+					options.MaxGapResolutionSeconds = 60;
 					break;
 				default:
-					options.MaxAssets = 256;
+					options.MaxAssets = 0;
 					options.MaxCandidateStreams = 128;
 					options.MaxPaletteCandidates = 128;
 					options.MaxInstructions = 600000;
@@ -124,6 +131,7 @@ namespace Mesen.HdStudio
 		public string PackFolder = "";
 		public string GraphPath = "";
 		public string CatalogPath = "";
+		public string GapResolutionPath = "";
 		public string AssetsPath = "";
 		public string EngineFingerprint = "";
 		public string RunFingerprint = "";
@@ -152,6 +160,13 @@ namespace Mesen.HdStudio
 		public int UnresolvedIndirectJumps;
 		public int UnresolvedCrossBankTargets;
 		public int RejectedCandidates;
+		public int GapsResolved;
+		public int GapsPartiallyResolved;
+		public int GapsUnresolved;
+		public int GapsUnsupported;
+		public int Compositions;
+		public int AnimationSequences;
+		public int Metatiles;
 		public readonly List<string> Errors = new();
 		public readonly List<string> Notes = new();
 

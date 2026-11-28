@@ -80,23 +80,52 @@ mapper/CHR association or runtime witness.
 - Confidence is explicitly `certain` or `heuristic`; no calibrated probability
   is claimed.
 
-## 6. Catalog projection
+## 6. Catalog projection and pagination
 
 - Observed patterns are projected as `rawPattern` records with canonical
   existing catalog ids where the same pattern+palette already exists.
 - Static-only patterns are projected as `staticPattern` records, with the
   neutral palette `0F001020` and an explicit "palette unresolved" warning.
-- Diversity selection uses an 8x8 silhouette bit signature and rejects
-  near-identical variants for the exposed set; the graph still retains every
-  physical pattern.
-- `assets.json` merge is additive. Existing ids and approved artwork win;
-  the merge is idempotent and writes a `.prev` backup.
+- The v0.9 catalog is paginated at 512 assets per page. `catalog.json` is page
+  0 and `catalog-pages/page-NNNN.json` holds the rest; no fixed 64-asset cap is
+  applied in deep/exhaustive mode. Near-duplicate silhouettes are marked and
+  retained instead of being silently discarded.
+- `assets.json` merges page 0 in bulk and materializes a deeper page's selected
+  asset on demand. Existing ids and approved artwork win; the merge is
+  idempotent and writes a `.prev` backup.
+- Thumbnails are bounded to keep a 27,000-asset ROM practical; the asset
+  records, source offsets, tile identity and palette remain present in the page
+  files. A missing thumbnail is not a missing asset.
 
-## 7. What was not validated
+## 7. Automatic evidence-gap resolution
+
+The resolver executes a bounded analysis per open gap and records a terminal
+outcome in `gap-resolutions.json`:
+
+| Gap | Executed analysis | Honest promotion rule |
+|---|---|---|
+| palette table unvalidated | Match candidate PRG palette bytes against observed palettes; scan a bounded window around the candidate | Promoted only on exact observed palette match |
+| PRG stream unvalidated | Decode every 16-byte tile and compare SHA-256 with CHR/runtime pattern content | Promoted only when enough byte-identical tiles associate it |
+| CHR-RAM upload unknown | Re-walk reachable blocks for `$2006`/`$2007` stores and source loads | Routine node, not a decompression claim |
+| cross-bank jump/call | Map target CPU address into every physical PRG window | Resolved only when exactly one window matches |
+| indirect jump | Pointer is normally a RAM vector | Unresolved unless a runtime witness exists; never guessed |
+| pointer table | Little-endian target range and monotonicity bound | Corroborated only when the bound passes |
+| map/metatile | Parse observed 16x16 background blocks and positional background frames | `metatile`/`mapFrame`/`mapStructure` are observed-scope nodes; no static map decoder claim |
+| animation | Group observed compositions with identical layout/palette and changing tile sets | Observed frame identity only; internal timer/period is not claimed |
+| composition | Group runtime OAM/object parts by proximity and relative layout | Observed composition only; nametable-only objects remain separate |
+| unobserved static patterns | Compare observed count with static inventory | Remains partial; absence is not evidence of non-use |
+
+The resolver adds no emulated frames. It reads the physical ROM and existing
+read-only evidence; it is bounded by `--arch-gap-seconds` and a fixed operation
+count, and remaining gaps are marked `budget-exhausted`.
+
+## 8. What was not validated
 
 - No universal map/metatile/animation decoder.
 - No claim that every semantic object or every observed asset in a game was
   found.
 - No calibrated confidence, no per-ROM LLM inference and no whole-game
   completeness percentage.
-- External tool comparisons were not run; they are recorded as not evaluated.
+- External tool comparisons were not run as black-box binaries; the adopted
+  technique ablations are recorded in `docs/PRIOR_ART_INTEGRATION_v0.9.md` and
+  the controlled v0.9 science run.

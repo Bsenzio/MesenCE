@@ -112,6 +112,7 @@ namespace Mesen.HdStudio
 		public int Candidates;
 		public int PaletteCandidates;
 		public int Gaps;
+		public int PageCount;
 		public bool TwentyObservedAvailable;
 		public readonly List<string> Errors = new();
 	}
@@ -140,6 +141,8 @@ namespace Mesen.HdStudio
 
 			List<HdStudioArchaeologyCatalogAsset> assets = new();
 			List<ulong> selectedSilhouetteBits = new();
+			int thumbnailsRendered = 0;
+			int assetLimit = options.MaxAssets <= 0 ? int.MaxValue : options.MaxAssets;
 
 			List<HdStudioEvidenceNode> observedPatterns = graph.Nodes.Values
 				.Where(n => n.Type == "pattern" && n.Status == "runtime-observed" && n.Properties.GetValueOrDefault("isBlank") != "true")
@@ -153,7 +156,7 @@ namespace Mesen.HdStudio
 
 			void AddPatternAsset(HdStudioEvidenceNode node, bool observed)
 			{
-				if(assets.Count >= options.MaxAssets) {
+				if(assets.Count >= assetLimit) {
 					return;
 				}
 				if(!int.TryParse(node.Properties.GetValueOrDefault("firstTileIndex", "-1"), out int tileIndex) || tileIndex < 0) {
@@ -164,9 +167,11 @@ namespace Mesen.HdStudio
 					return;
 				}
 				ulong silhouette = Silhouette(tile);
+				bool nearDuplicate = false;
 				foreach(ulong selected in selectedSilhouetteBits) {
 					if(BitCount(silhouette ^ selected) <= 2) {
-						return;
+						nearDuplicate = true;
+						break;
 					}
 				}
 				string? observedPalette = node.Properties.GetValueOrDefault("observedPalettes", "")
@@ -203,6 +208,9 @@ namespace Mesen.HdStudio
 				asset.Notes.Add(observed
 					? "Static physical pattern identity plus observed pixels. The catalog does not claim that this is the whole semantic object."
 					: "Static physical CHR pattern. No runtime observation or semantic label is implied; replacement applicability is unverified.");
+				if(nearDuplicate) {
+					asset.Notes.Add("Near-duplicate silhouette of an earlier asset; retained because the catalog is paginated and no discovered asset is silently discarded.");
+				}
 				foreach(string p in node.Properties.GetValueOrDefault("observedPalettes", "").Split(',', StringSplitOptions.RemoveEmptyEntries)) {
 					if(p.Length == 8 && !asset.PaletteVariants.Contains(p)) {
 						asset.PaletteVariants.Add(p);
@@ -211,9 +219,12 @@ namespace Mesen.HdStudio
 				if(asset.PaletteVariants.Count == 0) {
 					asset.PaletteVariants.Add(NeutralPalette);
 				}
-				string thumb = RenderTileThumbnail(thumbs, assetId, tile, asset.Palette, palette, options.ThumbnailScale);
-				if(thumb.Length > 0) {
-					asset.OriginalImage = thumb;
+				if(thumbnailsRendered < 512) {
+					string thumb = RenderTileThumbnail(thumbs, assetId, tile, asset.Palette, palette, options.ThumbnailScale);
+					if(thumb.Length > 0) {
+						asset.OriginalImage = thumb;
+						thumbnailsRendered++;
+					}
 				}
 				assets.Add(asset);
 				selectedSilhouetteBits.Add(silhouette);
@@ -231,7 +242,7 @@ namespace Mesen.HdStudio
 				AddPatternAsset(node, false);
 			}
 			foreach(HdStudioEvidenceNode node in graph.Nodes.Values.Where(n => n.Type == "chrRamObservation")) {
-				if(assets.Count >= options.MaxAssets) {
+				if(assets.Count >= assetLimit) {
 					break;
 				}
 				string tileData = node.Properties.GetValueOrDefault("tileData", "");
@@ -264,9 +275,12 @@ namespace Mesen.HdStudio
 				asset.Notes.Add("CHR-RAM identity is a runtime content key, not a physical cartridge tile. PositionCheck may be needed for a scene-isolated replacement.");
 				asset.PaletteVariants.Add(paletteValue);
 				byte[] tile = Convert.FromHexString(tileData);
-				string thumb = RenderTileThumbnail(thumbs, assetId, tile, asset.Palette, palette, options.ThumbnailScale);
-				if(thumb.Length > 0) {
-					asset.OriginalImage = thumb;
+				if(thumbnailsRendered < 512) {
+					string thumb = RenderTileThumbnail(thumbs, assetId, tile, asset.Palette, palette, options.ThumbnailScale);
+					if(thumb.Length > 0) {
+						asset.OriginalImage = thumb;
+						thumbnailsRendered++;
+					}
 				}
 				assets.Add(asset);
 				result.AssetsObserved++;
@@ -293,7 +307,12 @@ namespace Mesen.HdStudio
 				.Take(80)
 				.ToList();
 
+			const int pageSize = 512;
+			result.PageCount = Math.Max(1, (assets.Count + pageSize - 1) / pageSize);
 			result.CatalogPath = Path.Combine(archaeology, "catalog.json");
+			string pagesFolder = Path.Combine(archaeology, "catalog-pages");
+			Directory.CreateDirectory(pagesFolder);
+			WriteCatalogPages(pagesFolder, assets, pageSize, result.PageCount);
 			string temp = result.CatalogPath + ".tmp";
 			using(FileStream stream = File.Create(temp)) {
 				using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = true });
@@ -326,6 +345,14 @@ namespace Mesen.HdStudio
 				json.WriteNumber("assetsExposed", result.AssetsExposed);
 				json.WriteNumber("assetsObserved", result.AssetsObserved);
 				json.WriteNumber("assetsStatic", result.AssetsStatic);
+				json.WriteNumber("catalogPages", result.PageCount);
+				json.WriteNumber("catalogPageSize", pageSize);
+				json.WriteNumber("compositions", graph.CountNodes("composition"));
+				json.WriteNumber("animationSequences", graph.CountNodes("animationSequence"));
+				json.WriteNumber("metatiles", graph.CountNodes("metatile"));
+				json.WriteNumber("gapsResolved", graph.Gaps.Values.Count(g => g.Status == "resolved"));
+				json.WriteNumber("gapsPartiallyResolved", graph.Gaps.Values.Count(g => g.Status == "partially-resolved"));
+				json.WriteNumber("gapsUnresolved", graph.Gaps.Values.Count(g => g.Status == "unresolved" || g.Status == "unsupported" || g.Status == "budget-exhausted"));
 				json.WriteBoolean("twentyObservedAvailable", result.TwentyObservedAvailable);
 				json.WriteNumber("codeBlocks", graph.CountNodes("codeBlock"));
 				json.WriteNumber("ppuWrites", graph.CountNodes("ppuReference"));
@@ -335,8 +362,17 @@ namespace Mesen.HdStudio
 				json.WriteNumber("paletteCandidates", paletteCandidates.Count);
 				json.WriteNumber("openGaps", graph.Gaps.Values.Count(g => g.Status == "open"));
 				json.WriteEndObject();
+				json.WriteStartObject("pagination");
+				json.WriteNumber("pageSize", pageSize);
+				json.WriteNumber("pageCount", result.PageCount);
+				json.WriteNumber("totalAssets", assets.Count);
+				json.WriteNumber("assetsInThisPage", Math.Min(pageSize, assets.Count));
+				json.WriteString("pageFolder", "catalog-pages");
+				json.WriteString("pagePattern", "page-%04d.json");
+				json.WriteString("note", "catalog.json is page 0; remaining pages are loaded progressively and never silently truncated");
+				json.WriteEndObject();
 				json.WriteStartArray("assets");
-				foreach(HdStudioArchaeologyCatalogAsset asset in assets) {
+				foreach(HdStudioArchaeologyCatalogAsset asset in assets.Take(pageSize)) {
 					asset.WriteJson(json);
 				}
 				json.WriteEndArray();
@@ -361,6 +397,7 @@ namespace Mesen.HdStudio
 					json.WriteNumber("expectedGain", gap.ExpectedGain);
 					json.WriteNumber("cost", gap.Cost);
 					json.WriteString("status", gap.Status);
+					json.WriteString("resolution", gap.Resolution);
 					json.WriteEndObject();
 				}
 				json.WriteEndArray();
@@ -379,8 +416,12 @@ namespace Mesen.HdStudio
 			result.Candidates = candidates.Count;
 			result.PaletteCandidates = paletteCandidates.Count;
 			result.Gaps = gaps.Count;
-			log?.Invoke("Archaeology catalog: " + result.AssetsExposed + " assets (" + result.AssetsObserved + " observed, " +
-				result.AssetsStatic + " static), " + candidates.Count + " PRG candidate streams, " + gaps.Count + " prioritized gaps -> " + result.CatalogPath);
+			graph.Notes.Add("Catalog pagination: " + result.AssetsExposed.ToString(CultureInfo.InvariantCulture) +
+				" assets in " + result.PageCount.ToString(CultureInfo.InvariantCulture) +
+				" page(s). The native workspace loads every page progressively; page files remain the authoritative access for large inventories.");
+			log?.Invoke("Archaeology catalog: " + result.AssetsExposed + " assets in " + result.PageCount + " page(s) (" +
+				result.AssetsObserved + " observed, " + result.AssetsStatic + " static), " + candidates.Count +
+				" PRG candidate streams, " + gaps.Count + " prioritized gaps -> " + result.CatalogPath);
 
 			if(options.MergeIntoAssets) {
 				result.AssetsMerged = MergeIntoAssets(packFolder, log);
@@ -395,6 +436,21 @@ namespace Mesen.HdStudio
 		/// asset is never replaced by a static projection.
 		/// </summary>
 		public static int MergeIntoAssets(string packFolder, Action<string>? log)
+		{
+			return MergeIntoAssets(packFolder, log, "", 512);
+		}
+
+		/// <summary>
+		/// Materializes one selected catalog asset into the authoring catalog. Page
+		/// zero is merged in bulk; deeper pages are merged on demand so a 27,000-asset
+		/// ROM does not duplicate the entire paginated evidence store in assets.json.
+		/// </summary>
+		public static int MergeSingleIntoAssets(string packFolder, string assetId, Action<string>? log)
+		{
+			return MergeIntoAssets(packFolder, log, assetId, 1);
+		}
+
+		private static int MergeIntoAssets(string packFolder, Action<string>? log, string onlyAssetId, int bulkLimit)
 		{
 			string studio = Path.Combine(packFolder, HdStudioReport.StudioFolderName);
 			string catalogPath = Path.Combine(HdStudioEvidenceGraph.GraphFolder(packFolder), "catalog.json");
@@ -414,6 +470,44 @@ namespace Mesen.HdStudio
 				int mapper = GetInt(game, "mapper");
 				long chrBytes = GetLong(game, "chrBytes");
 				string chrMode = GetString(game, "chrMode");
+
+				List<JsonElement> catalogAssetElements = new();
+				foreach(JsonElement item in catalogAssets.EnumerateArray()) {
+					if(onlyAssetId.Length == 0 || string.Equals(GetString(item, "id"), onlyAssetId, StringComparison.OrdinalIgnoreCase)) {
+						catalogAssetElements.Add(item.Clone());
+					}
+					if(onlyAssetId.Length == 0 && catalogAssetElements.Count >= bulkLimit) {
+						break;
+					}
+				}
+				int pageCount = 1;
+				if(catalogRoot.TryGetProperty("pagination", out JsonElement pagination)) {
+					pageCount = Math.Max(1, GetInt(pagination, "pageCount", 1));
+				}
+				if(onlyAssetId.Length > 0 || catalogAssetElements.Count < bulkLimit) {
+					string pagesFolder = Path.Combine(Path.GetDirectoryName(catalogPath) ?? ".", "catalog-pages");
+					for(int page = 1; page < pageCount && page < 65536; page++) {
+						string pagePath = Path.Combine(pagesFolder, "page-" + page.ToString("D4", CultureInfo.InvariantCulture) + ".json");
+						if(!File.Exists(pagePath)) {
+							break;
+						}
+						using JsonDocument pageDoc = JsonDocument.Parse(File.ReadAllText(pagePath));
+						if(pageDoc.RootElement.TryGetProperty("assets", out JsonElement pageAssets) && pageAssets.ValueKind == JsonValueKind.Array) {
+							foreach(JsonElement item in pageAssets.EnumerateArray()) {
+								if(onlyAssetId.Length > 0 && !string.Equals(GetString(item, "id"), onlyAssetId, StringComparison.OrdinalIgnoreCase)) {
+									continue;
+								}
+								catalogAssetElements.Add(item.Clone());
+							}
+						}
+						if(onlyAssetId.Length == 0 && catalogAssetElements.Count >= bulkLimit) {
+							break;
+						}
+						if(onlyAssetId.Length > 0 && catalogAssetElements.Count > 0) {
+							break;
+						}
+					}
+				}
 
 				List<JsonElement> existingAssets = new();
 				JsonElement existingRoot = default;
@@ -449,7 +543,7 @@ namespace Mesen.HdStudio
 				}
 
 				List<HdStudioArchaeologyCatalogAsset> additions = new();
-				foreach(JsonElement item in catalogAssets.EnumerateArray()) {
+				foreach(JsonElement item in catalogAssetElements) {
 					string id = GetString(item, "id");
 					if(id.Length == 0 || existingIds.Contains(id)) {
 						continue;
@@ -605,6 +699,46 @@ namespace Mesen.HdStudio
 			} catch {
 			}
 			return map;
+		}
+
+		private static void WriteCatalogPages(string folder, List<HdStudioArchaeologyCatalogAsset> assets, int pageSize, int pageCount)
+		{
+			Directory.CreateDirectory(folder);
+			for(int page = 1; page < pageCount; page++) {
+				string path = Path.Combine(folder, "page-" + page.ToString("D4", CultureInfo.InvariantCulture) + ".json");
+				string temp = path + ".tmp";
+				using(FileStream stream = File.Create(temp)) {
+					using Utf8JsonWriter json = new(stream, new JsonWriterOptions() { Indented = false });
+					json.WriteStartObject();
+					json.WriteString("schemaVersion", SchemaVersion);
+					json.WriteNumber("pageIndex", page);
+					json.WriteNumber("pageCount", pageCount);
+					json.WriteNumber("totalAssets", assets.Count);
+					json.WriteNumber("pageSize", pageSize);
+					json.WriteStartArray("assets");
+					foreach(HdStudioArchaeologyCatalogAsset asset in assets.Skip(page * pageSize).Take(pageSize)) {
+						asset.WriteJson(json);
+					}
+					json.WriteEndArray();
+					json.WriteEndObject();
+				}
+				if(File.Exists(path)) {
+					File.Replace(temp, path, null, true);
+				} else {
+					File.Move(temp, path);
+				}
+			}
+			//Remove stale trailing pages from an earlier larger catalog so a page
+			//reference can never resolve to old content.
+			foreach(string stale in Directory.EnumerateFiles(folder, "page-*.json")) {
+				string name = Path.GetFileNameWithoutExtension(stale);
+				if(name.Length > 5 && int.TryParse(name.Substring(5), out int index) && index >= pageCount) {
+					try {
+						File.Delete(stale);
+					} catch {
+					}
+				}
+			}
 		}
 
 		private static void WriteCandidate(Utf8JsonWriter json, HdStudioEvidenceNode node)

@@ -18,9 +18,9 @@ def load(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--batch", default=r"D:\MesenHighWork\validation-v09\library-static\archaeology-batch.json")
-    ap.add_argument("--out", default=r"D:\MesenHighWork\validation-v09\library-static")
-    ap.add_argument("--v08", default=r"D:\RetroArcDo_HDStudio\validation\v0.8\master-matrix-v08.json")
+    ap.add_argument("--batch", default=r"D:\MesenHighWork\validation-v09\library-static-v09b\archaeology-batch.json")
+    ap.add_argument("--out", default=r"D:\MesenHighWork\validation-v09\library-static-v09b")
+    ap.add_argument("--v08", default=r"D:\MesenHighWork\validation-v08\master-matrix-v08.json")
     args = ap.parse_args()
     batch = load(args.batch)
     rows = batch["rows"]
@@ -50,6 +50,13 @@ def main():
         "dataReferences": 0,
         "pointerTables": 0,
         "openGaps": 0,
+        "gapsResolved": 0,
+        "gapsPartial": 0,
+        "gapsUnresolved": 0,
+        "compositions": 0,
+        "animationSequences": 0,
+        "metatiles": 0,
+        "catalogPages": 0,
         "chrRamRoms": 0,
         "chrRamObservedRoms": 0,
         "staticCandidateRoms": 0,
@@ -68,7 +75,7 @@ def main():
         if row["status"] == "error":
             aggregate["errors"].append({"fileName": row["fileName"], "error": row["error"]})
             continue
-        if row["status"] != "complete":
+        if row["status"] not in ("complete", "skipped"):
             continue
         folder = row["outputFolder"]
         catalog_path = os.path.join(folder, "HdStudio", "archaeology", "catalog.json")
@@ -101,6 +108,13 @@ def main():
         aggregate["dataReferences"] += s.get("dataReferences", 0)
         aggregate["pointerTables"] += s.get("pointerTables", 0)
         aggregate["openGaps"] += s.get("openGaps", 0)
+        aggregate["gapsResolved"] += s.get("gapsResolved", 0)
+        aggregate["gapsPartial"] += s.get("gapsPartiallyResolved", 0)
+        aggregate["gapsUnresolved"] += s.get("gapsUnresolved", 0)
+        aggregate["compositions"] += s.get("compositions", 0)
+        aggregate["animationSequences"] += s.get("animationSequences", 0)
+        aggregate["metatiles"] += s.get("metatiles", 0)
+        aggregate["catalogPages"] += s.get("catalogPages", 1)
         observed = s.get("observedChrRomPatterns", 0) + s.get("observedChrRamPatterns", 0)
         if observed > 0:
             aggregate["observedRoms"] += 1

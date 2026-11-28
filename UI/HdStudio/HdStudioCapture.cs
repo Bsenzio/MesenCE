@@ -151,9 +151,11 @@ namespace Mesen.HdStudio
 			public string ArchMode = "deep";
 			public bool ArchDynamic;
 			public int ArchFrames = 1800;
-			public int ArchAssets;
+			public int ArchAssets = -1;
 			public int ArchStreams;
 			public bool ArchNoStructural;
+			public bool ArchNoResolve;
+			public int ArchGapSeconds;
 			public bool ArchForce;
 			public bool ArchSelfTest;
 			public string? ArchBatchRoot;
@@ -333,7 +335,8 @@ namespace Mesen.HdStudio
 				if(result.Success) {
 					Log("RetroArchaeology complete: " + result.UniquePatterns + " unique patterns, " +
 						result.RuntimeObservedPatterns + " observed, " + result.AssetsExposed + " catalog assets, " +
-						result.Gaps + " open gaps, " + result.Seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s.");
+						result.GapsResolved + " gaps resolved (" + result.GapsPartiallyResolved + " partial, " +
+						result.GapsUnresolved + " unresolved), " + result.Seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s.");
 					Log("Graph: " + result.GraphPath);
 					Log("Catalog: " + result.CatalogPath);
 					return 0;
@@ -1209,8 +1212,8 @@ namespace Mesen.HdStudio
 							}
 							break;
 						case "arch-assets":
-							if(!int.TryParse(value, out opt.ArchAssets) || opt.ArchAssets < 1) {
-								opt.Errors.Add("invalid archaeology asset cap (>=1): " + value);
+							if(!int.TryParse(value, out opt.ArchAssets) || opt.ArchAssets < 0) {
+								opt.Errors.Add("invalid archaeology asset limit (0=all, or >0): " + value);
 							}
 							break;
 						case "arch-streams":
@@ -1219,6 +1222,12 @@ namespace Mesen.HdStudio
 							}
 							break;
 						case "arch-no-structural": opt.ArchNoStructural = true; break;
+						case "arch-no-resolve": opt.ArchNoResolve = true; break;
+						case "arch-gap-seconds":
+							if(!int.TryParse(value, out opt.ArchGapSeconds) || opt.ArchGapSeconds < 1) {
+								opt.Errors.Add("invalid archaeology gap-resolution seconds (>=1): " + value);
+							}
+							break;
 						case "arch-force": opt.ArchForce = true; break;
 						case "arch-selftest": opt.ArchSelfTest = true; break;
 						case "arch-batch":
@@ -1412,18 +1421,19 @@ namespace Mesen.HdStudio
 			options.IncludeStructural = !opt.ArchNoStructural;
 			options.RunDynamicConfirmation = opt.ArchDynamic;
 			options.DynamicFrames = opt.ArchFrames;
+			options.ResolveGaps = !opt.ArchNoResolve;
+			options.MaxGapResolutionSeconds = opt.ArchGapSeconds > 0 ? opt.ArchGapSeconds : options.MaxGapResolutionSeconds;
 			options.Force = opt.ArchForce;
 			options.EngineFingerprint = HdStudioEvidenceGraph.ComputeEngineFingerprint();
 			options.EvidencePackFolder = opt.ArchEvidence ?? "";
 			options.EvidenceMapPath = opt.ArchEvidenceMap ?? "";
-			if(opt.ArchBatchRoot != null && opt.ArchAssets <= 0) {
-				//Batch output is intentionally bounded: 64 diverse static/observed
-				//records per ROM keeps the full-library evidence pack manageable while
-				//the graph still retains the complete physical inventory.
-				options.MaxAssets = 64;
-				options.MaxCandidateStreams = Math.Min(options.MaxCandidateStreams, 32);
+			if(opt.ArchBatchRoot != null && opt.ArchAssets < 0) {
+				//Batch catalogs are paginated and no longer capped. Assets are written
+				//to page files so large inventories remain accessible.
+				options.MaxAssets = 0;
+				options.MaxCandidateStreams = Math.Min(options.MaxCandidateStreams, 128);
 			}
-			if(opt.ArchAssets > 0) {
+			if(opt.ArchAssets >= 0) {
 				options.MaxAssets = opt.ArchAssets;
 			}
 			if(opt.ArchStreams > 0) {
@@ -1444,7 +1454,7 @@ namespace Mesen.HdStudio
 			Log("  --compile: rebuild HdStudio/project.hdstudio.json as a standard Mesen pack (--validate checks it without writing).");
 			Log("  --export [--export-root=DIR|--export-to=DIR] [--minimal] [--install]: stage, validate and install a distributable pack.");
 			Log("  --discover=quick|deep|replay|assisted [--discover-budget=N]: resumable, chunked discovery with a session file.");
-			Log("  --archaeology [--arch-mode=quick|deep|exhaustive] [--arch-dynamic [--arch-frames=N]]: static-first RetroArchaeology; writes HdStudio/archaeology/evidence-graph.json and catalog.json.");
+			Log("  --archaeology [--arch-mode=quick|deep|exhaustive] [--arch-dynamic [--arch-frames=N]] [--arch-assets=N|0] [--arch-no-resolve] [--arch-gap-seconds=N]: static-first RetroArchaeology; writes a paginated HdStudio/archaeology catalog and executes automatic gap resolution.");
 			Log("  --arch-selftest: run the synthetic archaeology, graph, catalog and batch fixtures (no ROM needed).");
 			Log("  --arch-batch=DIR [--arch-out-root=DIR] [--arch-parallel=N]: run the same RetroArchaeology pipeline over every .nes below DIR.");
 			Log("  --arch-evidence=DIR: read existing tiles/capture evidence read-only (single ROM); --arch-evidence-map=FILE: title->pack-folder JSON for batch correlation.");

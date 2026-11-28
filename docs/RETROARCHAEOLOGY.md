@@ -55,18 +55,53 @@ Mesen.exe --hdstudio --arch-selftest
 `--arch-evidence` is read-only. Historical captures are labelled as historical
 evidence and do not replace a final-engine replacement verification.
 
+## Automatic evidence-gap resolution
+
+The graph does not stop at a list of recommended actions. A bounded native
+resolver selects an analysis for each open gap, executes it, and writes
+`HdStudio/archaeology/gap-resolutions.json` with a terminal outcome and a
+reason. Examples:
+
+- palette tables are validated against observed palettes;
+- PRG 2bpp streams are matched byte-for-byte to CHR/runtime patterns;
+- CHR-RAM upload routines are isolated from reachable `$2006`/`$2007` writes;
+- cross-bank targets are mapped to one physical PRG window or reported
+  ambiguous;
+- pointer tables must pass a consistency bound;
+- runtime `objects.txt`, `live-sprites.tsv`, `bg_observed.tsv` and
+  `live-background-frames.tsv` reconstruct observed compositions, animation
+  identities, 16x16 metatiles and observed nametable placements;
+- maps and animation frames without a runtime witness remain explicitly
+  unresolved; adjacent CHR bytes are never promoted into sequences.
+
+A resolved gap is not a claim that the whole game is reconstructed. The status
+ladder and the `reconstructionScope` property keep "observed composition",
+"observed metatile" and "observed map placement" separate from a static decoder.
+
+## Paginated catalogs
+
+The previous 64-asset full-library cap is removed. `deep` and `exhaustive`
+runs write every discovered nonblank pattern. `catalog.json` is page 0;
+additional pages are written to `archaeology/catalog-pages/page-NNNN.json`
+(512 assets per page). The native workspace loads pages progressively and
+materializes a selected deep-page asset into `assets.json` on demand, so large
+inventories do not duplicate the evidence store. A per-ROM asset cap remains
+available only when the caller explicitly asks for one (`--arch-assets=N`);
+`--arch-assets=0` means all.
+
 ## Modes and budgets
 
-| Mode | Catalog asset cap | PRG stream cap | Structural instruction cap | Per-ROM time cap |
+| Mode | Catalog assets | PRG stream cap | Structural instruction cap | Per-ROM time cap |
 |---|---:|---:|---:|---:|
-| Quick | 64 | 16 | 150,000 | 60 s |
-| Deep | 256 | 128 | 600,000 | 180 s |
-| Exhaustive | 1,024 | 512 | 1,800,000 | 600 s |
+| Quick | 256 | 16 | 150,000 | 60 s |
+| Deep | all (paginated) | 128 | 600,000 | 180 s |
+| Exhaustive | all (paginated) | 512 | 1,800,000 | 600 s |
 
-Batch mode defaults to 64 assets and 32 streams per ROM to keep the
-full-library evidence pack manageable. The graph still contains every unique
-physical CHR pattern. Budgets are finite; stopping at a budget is not proof of
-saturation or completeness.
+Batch mode uses the same paginated catalog and no longer applies a fixed
+64-asset cap. Budgets are finite; stopping at a budget is not proof of
+saturation or completeness. `--arch-gap-seconds=N` and `--arch-no-resolve`
+control the automatic resolver.
+
 
 ## What the statuses mean
 

@@ -41,6 +41,11 @@ namespace Mesen.HdStudio
 		public int ObservedPatterns;
 		public int Assets;
 		public int Gaps;
+		public int GapsResolved;
+		public int GapsPartial;
+		public int GapsUnresolved;
+		public int Compositions;
+		public int AnimationSequences;
 		public double Seconds;
 		public string OutputFolder = "";
 		public string Error = "";
@@ -144,6 +149,11 @@ namespace Mesen.HdStudio
 						row.ObservedPatterns = archaeology.RuntimeObservedPatterns;
 						row.Assets = archaeology.AssetsExposed;
 						row.Gaps = archaeology.Gaps;
+						row.GapsResolved = archaeology.GapsResolved;
+						row.GapsPartial = archaeology.GapsPartiallyResolved;
+						row.GapsUnresolved = archaeology.GapsUnresolved;
+						row.Compositions = archaeology.Compositions;
+						row.AnimationSequences = archaeology.AnimationSequences;
 						row.Seconds = archaeology.Seconds;
 						row.EngineFingerprint = archaeology.EngineFingerprint;
 						row.RunFingerprint = archaeology.RunFingerprint;
@@ -202,6 +212,11 @@ namespace Mesen.HdStudio
 				json.WriteNumber("cancelled", result.Cancelled);
 				json.WriteNumber("skipped", result.Skipped);
 				json.WriteNumber("duplicates", result.Duplicates);
+				json.WriteNumber("gapsResolved", result.Rows.Sum(r => r.GapsResolved));
+				json.WriteNumber("gapsPartial", result.Rows.Sum(r => r.GapsPartial));
+				json.WriteNumber("gapsUnresolved", result.Rows.Sum(r => r.GapsUnresolved));
+				json.WriteNumber("compositions", result.Rows.Sum(r => r.Compositions));
+				json.WriteNumber("animationSequences", result.Rows.Sum(r => r.AnimationSequences));
 				json.WriteStartArray("rows");
 				foreach(HdStudioArchaeologyBatchRow row in result.Rows) {
 					json.WriteStartObject();
@@ -216,6 +231,11 @@ namespace Mesen.HdStudio
 					json.WriteNumber("observedPatterns", row.ObservedPatterns);
 					json.WriteNumber("assets", row.Assets);
 					json.WriteNumber("gaps", row.Gaps);
+					json.WriteNumber("gapsResolved", row.GapsResolved);
+					json.WriteNumber("gapsPartial", row.GapsPartial);
+					json.WriteNumber("gapsUnresolved", row.GapsUnresolved);
+					json.WriteNumber("compositions", row.Compositions);
+					json.WriteNumber("animationSequences", row.AnimationSequences);
 					json.WriteNumber("seconds", row.Seconds);
 					json.WriteString("outputFolder", row.OutputFolder);
 					json.WriteString("engineFingerprint", row.EngineFingerprint);
@@ -232,13 +252,16 @@ namespace Mesen.HdStudio
 				File.Move(temp, result.SummaryPath);
 			}
 			StringBuilder csv = new();
-			csv.AppendLine("path,fileName,sha256,status,stopReason,mapper,chrMode,uniquePatterns,observedPatterns,assets,gaps,seconds,outputFolder,error");
+			csv.AppendLine("path,fileName,sha256,status,stopReason,mapper,chrMode,uniquePatterns,observedPatterns,assets,gaps,gapsResolved,gapsPartial,gapsUnresolved,compositions,animationSequences,seconds,outputFolder,error");
 			foreach(HdStudioArchaeologyBatchRow row in result.Rows) {
 				csv.AppendLine(string.Join(",", new[] {
 					Csv(row.Path), Csv(row.FileName), Csv(row.Sha256), Csv(row.Status), Csv(row.StopReason),
 					row.Mapper.ToString(CultureInfo.InvariantCulture), Csv(row.ChrMode),
 					row.UniquePatterns.ToString(CultureInfo.InvariantCulture), row.ObservedPatterns.ToString(CultureInfo.InvariantCulture),
 					row.Assets.ToString(CultureInfo.InvariantCulture), row.Gaps.ToString(CultureInfo.InvariantCulture),
+					row.GapsResolved.ToString(CultureInfo.InvariantCulture), row.GapsPartial.ToString(CultureInfo.InvariantCulture),
+					row.GapsUnresolved.ToString(CultureInfo.InvariantCulture), row.Compositions.ToString(CultureInfo.InvariantCulture),
+					row.AnimationSequences.ToString(CultureInfo.InvariantCulture),
 					row.Seconds.ToString("0.0", CultureInfo.InvariantCulture), Csv(row.OutputFolder), Csv(row.Error)
 				}));
 			}
@@ -266,6 +289,7 @@ namespace Mesen.HdStudio
 					(!options.Force && !string.Equals(fingerprint, HdStudioEvidenceGraph.ComputeFingerprint(
 						options.Mode + "|struct=" + options.IncludeStructural + "|prg=" + options.IncludePrgCandidates +
 						"|assets=" + options.MaxAssets + "|streams=" + options.MaxCandidateStreams +
+						"|resolve=" + options.ResolveGaps + "|gapsex=" + options.MaxGapResolutionSeconds +
 						"|evidence=" + options.EvidencePackFolder), StringComparison.OrdinalIgnoreCase))) {
 					return false;
 				}
@@ -298,6 +322,11 @@ namespace Mesen.HdStudio
 				json.WriteNumber("observedPatterns", row.ObservedPatterns);
 				json.WriteNumber("assets", row.Assets);
 				json.WriteNumber("gaps", row.Gaps);
+				json.WriteNumber("gapsResolved", row.GapsResolved);
+				json.WriteNumber("gapsPartial", row.GapsPartial);
+				json.WriteNumber("gapsUnresolved", row.GapsUnresolved);
+				json.WriteNumber("compositions", row.Compositions);
+				json.WriteNumber("animationSequences", row.AnimationSequences);
 				json.WriteNumber("seconds", row.Seconds);
 				json.WriteString("outputFolder", row.OutputFolder);
 				json.WriteString("error", row.Error);

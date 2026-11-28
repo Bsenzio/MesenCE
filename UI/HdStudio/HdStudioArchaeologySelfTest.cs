@@ -155,6 +155,28 @@ namespace Mesen.HdStudio
 				Check("catalog-gaps", catalogGraph.Gaps.Values.Any(g => g.Kind == "map-not-reconstructed") &&
 					catalogGraph.Gaps.Values.Any(g => g.Kind == "animation-not-reconstructed"), "missing honest reconstruction gaps");
 
+				//Automatic gap resolution: observed compositions, animation identity
+				//and an observed map placement must come from runtime evidence, not
+				//from guessed PRG bytes.
+				Directory.CreateDirectory(Path.Combine(pack, HdStudioReport.StudioFolderName, "live"));
+				File.WriteAllText(Path.Combine(pack, HdStudioReport.StudioFolderName, "objects.txt"),
+					"#frameCount\tfirstFrame\twidth\theight\tsprites\n" +
+					"20\t1\t16\t16\t0,0,01,0F001020,0;8,0,02,0F001020,0;\n" +
+					"20\t21\t16\t16\t0,0,03,0F001020,0;8,0,04,0F001020,0;\n");
+				File.WriteAllText(Path.Combine(pack, HdStudioReport.StudioFolderName, "bg_observed.tsv"),
+					"# uses\tpalette\tkey0\tkey1\tkey2\tkey3\n1\t0F001020\t01\t02\t03\t04\n");
+				File.WriteAllText(Path.Combine(pack, HdStudioReport.StudioFolderName, "live", "live-background-frames.tsv"),
+					"#frame\tx\ty\ttileX\ttileY\tmapX\tmapY\ttile\tpalette\tpattern\tchrType\tchrAddr\n" +
+					"100\t8\t16\t1\t1\t0\t0\t01\t0F001020\t01\tNesChrRom\t16\n");
+				options.ResolveGaps = true;
+				HdStudioGapResolutionResult resolution = HdStudioGapResolver.Run(rom, catalogGraph, pack, options, pack, null, CancellationToken.None);
+				Check("gap-resolver-runtime", resolution.Compositions > 0 && resolution.AnimationSequences > 0 && resolution.MapPlacements > 0,
+					"compositions=" + resolution.Compositions + " animations=" + resolution.AnimationSequences + " mapRows=" + resolution.MapPlacements);
+				Check("gap-resolver-terminal", resolution.Resolved > 0 && catalogGraph.Gaps.Values.All(g => g.Status != "open"),
+					"resolved=" + resolution.Resolved + " open=" + catalogGraph.Gaps.Values.Count(g => g.Status == "open"));
+				Check("gap-resolver-evidence-file", resolution.Path.Length > 0 && File.Exists(resolution.Path),
+					resolution.Path);
+
 				string batchRoot = Path.Combine(root, "batch");
 				string batchOut = Path.Combine(root, "batch-out");
 				Directory.CreateDirectory(batchRoot);

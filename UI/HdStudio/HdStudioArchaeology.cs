@@ -28,6 +28,7 @@ namespace Mesen.HdStudio
 			result.RunFingerprint = HdStudioEvidenceGraph.ComputeFingerprint(
 				options.Mode + "|struct=" + options.IncludeStructural + "|prg=" + options.IncludePrgCandidates +
 				"|assets=" + options.MaxAssets + "|streams=" + options.MaxCandidateStreams +
+				"|resolve=" + options.ResolveGaps + "|gapsex=" + options.MaxGapResolutionSeconds +
 				"|evidence=" + options.EvidencePackFolder);
 
 			void Report(string phase, int index, int count, double percent, string message)
@@ -79,7 +80,7 @@ namespace Mesen.HdStudio
 				FileBytes = rom.Bytes.Length
 			};
 			graph.Notes.Add("Mode: " + options.Mode + ". Static-first pipeline; no emulator was started unless dynamic confirmation was explicitly requested.");
-			graph.Notes.Add("Assets exposed: at most " + options.MaxAssets + " diverse static/observed patterns; the graph keeps the full physical inventory.");
+			graph.Notes.Add("Assets exposed: " + (options.MaxAssets <= 0 ? "all discovered nonblank patterns, paginated" : "at most " + options.MaxAssets + " diverse static/observed patterns") + "; the graph keeps the full physical inventory.");
 
 			using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
 			if(options.MaxSecondsPerRom > 0) {
@@ -161,11 +162,27 @@ namespace Mesen.HdStudio
 				if(previous != null) {
 					graph.MergePrevious(previous);
 				}
+
+				if(options.ResolveGaps) {
+					Report("Gaps", 5, 7, 0.84, "executing bounded automatic gap-resolution analyses");
+					HdStudioGapResolutionResult resolution = HdStudioGapResolver.Run(rom, graph, result.PackFolder,
+						options, options.EvidencePackFolder.Length > 0 ? options.EvidencePackFolder : result.PackFolder,
+						log, token);
+					result.GapResolutionPath = resolution.Path;
+					result.GapsResolved = resolution.Resolved;
+					result.GapsPartiallyResolved = resolution.PartiallyResolved;
+					result.GapsUnresolved = resolution.Unresolved;
+					result.GapsUnsupported = resolution.Unsupported;
+					result.Compositions = resolution.Compositions;
+					result.AnimationSequences = resolution.AnimationSequences;
+					result.Metatiles = resolution.Metatiles;
+				}
+
 				result.Gaps = graph.Gaps.Count;
 				result.GraphPath = graphPath;
 				graph.Save(graphPath);
 
-				Report("Catalog", 5, 6, 0.9, "building the native catalog projection and preserving approved artwork");
+				Report("Catalog", 6, 7, 0.9, "building the paginated native catalog projection and preserving approved artwork");
 				HdStudioArchaeologyCatalogResult catalog = HdStudioArchaeologyCatalog.Build(result.PackFolder, rom, graph, options, palette, log);
 				result.AssetsExposed = catalog.AssetsExposed;
 				result.CatalogPath = catalog.CatalogPath;
@@ -175,7 +192,11 @@ namespace Mesen.HdStudio
 				}
 				result.Success = true;
 				result.StopReason = "complete";
-				Report("Catalog", 5, 6, 1.0, catalog.AssetsExposed.ToString("N0", CultureInfo.InvariantCulture) + " catalog assets; " + result.Gaps.ToString("N0", CultureInfo.InvariantCulture) + " open evidence gaps");
+				Report("Catalog", 6, 7, 1.0, catalog.AssetsExposed.ToString("N0", CultureInfo.InvariantCulture) + " catalog assets in " +
+					catalog.PageCount.ToString(CultureInfo.InvariantCulture) + " page(s); " +
+					result.GapsResolved.ToString("N0", CultureInfo.InvariantCulture) + " gaps resolved, " +
+					result.GapsPartiallyResolved.ToString("N0", CultureInfo.InvariantCulture) + " partial, " +
+					result.GapsUnresolved.ToString("N0", CultureInfo.InvariantCulture) + " unresolved");
 			} catch(OperationCanceledException) {
 				result.Success = false;
 				result.StopReason = cancelledByUser ? "cancelled" : "budget";

@@ -4363,6 +4363,14 @@ namespace Mesen.Windows
 			RefreshFromDisk();
 			ShowWorkspace("artwork");
 			HdStudioCatalogAsset? asset = _catalog.Find(assetId);
+			if(asset == null) {
+				//Deep catalog pages are materialized on demand; page zero is already
+				//in assets.json. This keeps every discovered asset reachable without
+				//duplicating the whole paginated evidence store.
+				HdStudioArchaeologyCatalog.MergeSingleIntoAssets(packFolder, assetId, Log);
+				RefreshFromDisk();
+				asset = _catalog.Find(assetId);
+			}
 			if(asset != null) {
 				SelectAsset(asset);
 			} else {

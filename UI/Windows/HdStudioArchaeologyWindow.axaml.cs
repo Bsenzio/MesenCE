@@ -6,6 +6,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Mesen.Config;
 using Mesen.HdStudio;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -28,6 +29,7 @@ namespace Mesen.Windows
 	{
 		private readonly HdStudioWindow? _owner;
 		private string _romPath = "";
+		private HdStudioRomImage? _romImage;
 		private string _packFolder = "";
 		private string _catalogPath = "";
 		private bool _running;
@@ -186,6 +188,43 @@ namespace Mesen.Windows
 						}
 					}
 				}
+				HashSet<string> loadedAssetIds = new(StringComparer.OrdinalIgnoreCase);
+				foreach(HdStudioArchaeologyAssetRow row in _allAssets) {
+					loadedAssetIds.Add(row.Id);
+				}
+				int pageCount = 1;
+				if(root.TryGetProperty("pagination", out JsonElement pagination) && pagination.ValueKind == JsonValueKind.Object) {
+					pageCount = Math.Max(1, GetInt(pagination, "pageCount", 1));
+					_summary.CatalogPages = pageCount;
+					_summary.AssetsTotal = GetInt(pagination, "totalAssets", _allAssets.Count);
+				}
+				if(pageCount > 1) {
+					string pagesFolder = Path.Combine(Path.GetDirectoryName(_catalogPath) ?? "", "catalog-pages");
+					int loadedPages = 1;
+					for(int page = 1; page < pageCount; page++) {
+						string pagePath = Path.Combine(pagesFolder, "page-" + page.ToString("D4", CultureInfo.InvariantCulture) + ".json");
+						if(!File.Exists(pagePath)) {
+							break;
+						}
+						using JsonDocument pageDoc = JsonDocument.Parse(File.ReadAllText(pagePath));
+						if(pageDoc.RootElement.TryGetProperty("assets", out JsonElement pageAssets) && pageAssets.ValueKind == JsonValueKind.Array) {
+							foreach(JsonElement item in pageAssets.EnumerateArray()) {
+								HdStudioArchaeologyAssetRow? row = HdStudioArchaeologyAssetRow.FromJson(item, _packFolder, ThumbnailFor);
+								if(row != null && loadedAssetIds.Add(row.Id)) {
+									_allAssets.Add(row);
+								}
+							}
+						}
+						loadedPages++;
+						if(_allAssets.Count >= 50000) {
+							//The list itself is virtualized, but loading an unbounded
+							//number of rows into one process is not. Remaining pages stay
+							//on disk and are reachable by the page files and CLI.
+							break;
+						}
+					}
+					_statusLeft.Text = "Loaded " + loadedPages + " of " + pageCount + " catalog pages.";
+				}
 				if(root.TryGetProperty("candidates", out JsonElement candidates) && candidates.ValueKind == JsonValueKind.Array) {
 					foreach(JsonElement item in candidates.EnumerateArray()) {
 						HdStudioArchaeologyCandidateRow? row = HdStudioArchaeologyCandidateRow.FromJson(item, _packFolder, ThumbnailFor);
@@ -205,7 +244,8 @@ namespace Mesen.Windows
 				ApplyFilter();
 				UpdateSummary();
 				_statusText.Text = _summary.AssetsExposed + " assets (" + _summary.AssetsObserved + " observed, " + _summary.AssetsStatic +
-					" static), " + _summary.CandidateStreams + " PRG candidates, " + _summary.OpenGaps + " open gaps.";
+					" static, " + _summary.CatalogPages + " page(s)), " + _summary.CandidateStreams + " PRG candidates, " +
+					_summary.GapsResolved + " gaps resolved, " + _summary.GapsActive + " unresolved/partial.";
 				_catalogPathText.Text = _catalogPath;
 				_statusLeft.Text = "Catalog loaded. Static patterns are extraction; observed patterns have runtime witnesses; replacement verification is separate.";
 				_phaseText.Text = "Catalog loaded";
@@ -257,8 +297,8 @@ namespace Mesen.Windows
 				"Pointer-table candidates: " + _summary.PointerTables + "\n" +
 				"PRG pattern-stream candidates: " + _summary.CandidateStreams + "\n" +
 				"Palette-table candidates: " + _summary.PaletteCandidates + "\n" +
-				"Catalog assets: " + _summary.AssetsExposed + " (" + _summary.AssetsObserved + " observed, " + _summary.AssetsStatic + " static)\n" +
-				"Open evidence gaps: " + _summary.OpenGaps + "\n" +
+				"Catalog assets: " + _summary.AssetsExposed + " (" + _summary.AssetsObserved + " observed, " + _summary.AssetsStatic + " static) in " + _summary.CatalogPages + " page(s)\n" +
+				"Evidence gaps: " + _summary.GapsResolved + " resolved, " + _summary.GapsPartial + " partial, " + _summary.GapsUnresolved + " unresolved\n" +
 				"Graph: " + _summary.GraphPath + "\n" +
 				"Catalog: " + _summary.CatalogPath;
 		}
@@ -274,12 +314,19 @@ namespace Mesen.Windows
 
 		private Bitmap? ThumbnailFor(HdStudioArchaeologyThumbSource source)
 		{
-			if(source.OriginalImage.Length == 0) {
-				return null;
-			}
-			string key = source.OriginalImage + "|" + source.RomFolder;
+			string key = source.OriginalImage + "|" + source.RomFolder + "|" + source.ChrType + "|" + source.ChrAddress + "|" + source.Palette + "|" + source.Pattern;
 			if(_bitmapCache.TryGetValue(key, out Bitmap? cached)) {
 				return cached;
+			}
+			if(source.OriginalImage.Length == 0 && source.Pattern.Length > 0) {
+				Bitmap? generated = RenderPatternThumbnail(source);
+				if(generated != null) {
+					_bitmapCache[key] = generated;
+					return generated;
+				}
+			}
+			if(source.OriginalImage.Length == 0) {
+				return null;
 			}
 			try {
 				string folder = Path.Combine(source.PackFolder, HdStudioReport.StudioFolderName);
@@ -301,6 +348,61 @@ namespace Mesen.Windows
 			} catch {
 				return null;
 			}
+		}
+
+		private Bitmap? RenderPatternThumbnail(HdStudioArchaeologyThumbSource source)
+		{
+			try {
+				byte[]? tile = null;
+				if(string.Equals(source.ChrType, "NesChrRam", StringComparison.OrdinalIgnoreCase) && source.Pattern.Length == 32) {
+					tile = Convert.FromHexString(source.Pattern);
+				} else if(source.ChrAddress >= 0 && File.Exists(_romPath)) {
+					_romImage ??= HdStudioRomImage.Load(_romPath);
+					if(_romImage.Valid) {
+						tile = _romImage.GetChrTile(source.ChrAddress / 16);
+					}
+				}
+				if(tile == null || tile.Length < 16) {
+					return null;
+				}
+				const int scale = 4;
+				using SKBitmap bitmap = new(8 * scale, 8 * scale, SKColorType.Rgba8888, SKAlphaType.Premul);
+				uint[] palette = ConfigManager.Config.Nes.UserPalette;
+				for(int y = 0; y < 8; y++) {
+					for(int x = 0; x < 8; x++) {
+						int color = ((tile[y] >> (7 - x)) & 1) | (((tile[y + 8] >> (7 - x)) & 1) << 1);
+						SKColor pixel = ToSkColor(palette, source.Palette, color);
+						for(int sy = 0; sy < scale; sy++) {
+							for(int sx = 0; sx < scale; sx++) {
+								bitmap.SetPixel(x * scale + sx, y * scale + sy, pixel);
+							}
+						}
+					}
+				}
+				using SKImage image = SKImage.FromBitmap(bitmap);
+				using SKData data = image.Encode(SKEncodedImageFormat.Png, 100);
+				using MemoryStream stream = new(data.ToArray());
+				return new Bitmap(stream);
+			} catch {
+				return null;
+			}
+		}
+
+		private static SKColor ToSkColor(uint[] nesPalette, string palette, int colorIndex)
+		{
+			if(colorIndex == 0) {
+				return new SKColor(0, 0, 0, 0);
+			}
+			if(!uint.TryParse(palette, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint value)) {
+				return new SKColor(128, 128, 128, 255);
+			}
+			int shift = (3 - colorIndex) * 8;
+			int nesColor = (int)((value >> shift) & 0x3F);
+			if(nesColor < 0 || nesColor >= nesPalette.Length) {
+				return new SKColor(128, 128, 128, 255);
+			}
+			uint argb = nesPalette[nesColor];
+			return new SKColor((byte)((argb >> 16) & 0xFF), (byte)((argb >> 8) & 0xFF), (byte)(argb & 0xFF), 255);
 		}
 
 		private void ApplyFilter()
@@ -583,6 +685,10 @@ namespace Mesen.Windows
 		public string PackFolder = "";
 		public string OriginalImage = "";
 		public string RomFolder = "";
+		public string ChrType = "";
+		public int ChrAddress = -1;
+		public string Palette = "";
+		public string Pattern = "";
 	}
 
 	internal sealed class HdStudioArchaeologyAssetRow
@@ -598,6 +704,8 @@ namespace Mesen.Windows
 		public string OriginalImage = "";
 		public string Pattern = "";
 		public string ChrType = "";
+		public int ChrAddress = -1;
+		public string Palette = "";
 		public string ConfidenceText = "";
 		public bool Observed;
 		public bool Replaceable;
@@ -610,7 +718,15 @@ namespace Mesen.Windows
 			get {
 				if(!_thumbLoaded) {
 					_thumbLoaded = true;
-					_thumb = _loader?.Invoke(new HdStudioArchaeologyThumbSource() { PackFolder = PackFolder, OriginalImage = OriginalImage, RomFolder = PackFolder });
+					_thumb = _loader?.Invoke(new HdStudioArchaeologyThumbSource() {
+					PackFolder = PackFolder,
+					OriginalImage = OriginalImage,
+					RomFolder = PackFolder,
+					ChrType = ChrType,
+					ChrAddress = ChrAddress,
+					Palette = Palette,
+					Pattern = Pattern
+				});
 				}
 				return _thumb;
 			}
@@ -642,7 +758,9 @@ namespace Mesen.Windows
 			if(item.TryGetProperty("tiles", out JsonElement tiles) && tiles.ValueKind == JsonValueKind.Array && tiles.GetArrayLength() > 0) {
 				row.Pattern = GetString(tiles[0], "pattern");
 				row.ChrType = GetString(tiles[0], "chrType", "NesChrRom");
+				row.ChrAddress = tiles[0].TryGetProperty("chrAddress", out JsonElement chrAddress) && chrAddress.TryGetInt32(out int address) ? address : -1;
 				string palette = GetString(tiles[0], "palette");
+				row.Palette = palette;
 				row.Detail = "pattern " + row.Pattern + " / " + palette + " / " + row.ChrType;
 			}
 			List<string> notes = new();
@@ -789,6 +907,12 @@ namespace Mesen.Windows
 		public int CandidateStreams;
 		public int PaletteCandidates;
 		public int OpenGaps;
+		public int GapsResolved;
+		public int GapsPartial;
+		public int GapsUnresolved;
+		public int GapsActive;
+		public int CatalogPages;
+		public int AssetsTotal;
 		public string GraphPath = "";
 		public string CatalogPath = "";
 
@@ -821,6 +945,12 @@ namespace Mesen.Windows
 			summary.CandidateStreams = GetInt(s, "candidateStreams");
 			summary.PaletteCandidates = GetInt(s, "paletteCandidates");
 			summary.OpenGaps = GetInt(s, "openGaps");
+			summary.GapsResolved = GetInt(s, "gapsResolved");
+			summary.GapsPartial = GetInt(s, "gapsPartiallyResolved");
+			summary.GapsUnresolved = GetInt(s, "gapsUnresolved");
+			summary.GapsActive = summary.OpenGaps + summary.GapsPartial + summary.GapsUnresolved;
+			summary.CatalogPages = GetInt(s, "catalogPages", 1);
+			summary.AssetsTotal = GetInt(s, "assetsExposed");
 			summary.GraphPath = "";
 			return summary;
 		}
